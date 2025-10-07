@@ -1,0 +1,12 @@
+[package]
+name = "nanolambda-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Language runtime management"
+
+[dependencies]
+tokio = { version = "1.40", features = ["full"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"

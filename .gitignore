@@ -1,0 +1,45 @@
+# Target directories
+/target/
+**/target/
+
+# Lock files (commit Cargo.lock for binaries, ignore for libraries)
+# We'll keep it since this is a binary project
+# Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+*.profraw
+*.profdata
+
+# Function storage (runtime data)
+/functions/
+/snapshots/
+/data/
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+
+# Documentation build
+/target/doc/
+
+# Temporary files
+tmp/
+temp/
