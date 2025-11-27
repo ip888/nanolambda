@@ -11,6 +11,7 @@ use tracing::info;
 pub mod routes;
 pub mod handlers;
 pub mod models;
+pub mod auth;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::StorageManager;
@@ -67,8 +68,12 @@ impl ApiServer {
     /// Start the API server
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
         let state = Arc::new(self);
+        
+        // Clone storage for auth middleware
+        let storage_for_auth = state.storage.clone();
 
-        let app = Router::new()
+        // Protected routes (require authentication)
+        let protected_routes = Router::new()
             // Function management
             .route("/functions", post(handlers::create_function))
             .route("/functions", get(handlers::list_functions))
@@ -84,9 +89,27 @@ impl ApiServer {
             .route("/functions/{name}/versions", post(handlers::publish_function_version))
             .route("/functions/{name}/versions/{version}", get(handlers::get_function_version))
             
+            // API Key management (viewing/revoking requires auth)
+            .route("/auth/keys", get(handlers::list_api_keys))
+            .route("/auth/keys/{id}", delete(handlers::revoke_api_key))
+            .layer(axum::middleware::from_fn_with_state(
+                storage_for_auth,
+                auth::auth_middleware
+            ))
+            .with_state(state.clone());
+        
+        // Public routes (no auth required)
+        let public_routes = Router::new()
+            // API key creation (must be public to get first key)
+            .route("/auth/keys", post(handlers::create_api_key))
+            
             // Health check
             .route("/health", get(handlers::health_check))
             .with_state(state);
+        
+        let app = Router::new()
+            .merge(protected_routes)
+            .merge(public_routes);
 
         info!("Starting API server on 0.0.0.0:8080");
         let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;

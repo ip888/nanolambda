@@ -79,6 +79,30 @@ impl StorageManager {
             "CREATE INDEX IF NOT EXISTS idx_functions_runtime ON functions(runtime)",
             [],
         )?;
+
+        // API Keys table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                permissions TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER,
+                status TEXT DEFAULT 'active',
+                last_used_at INTEGER
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_api_keys_key ON api_keys(key)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(status)",
+            [],
+        )?;
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_functions_version ON functions(name, version)",
             [],
@@ -645,6 +669,143 @@ impl StorageManager {
             .unwrap()
             .as_secs() as i64
     }
+
+    // API Key operations
+    
+    /// Create a new API key
+    pub fn create_api_key(&self, request: CreateApiKeyRequest) -> Result<ApiKey> {
+        let conn = self.pool.get()?;
+        
+        // Generate unique key
+        let key = self.generate_api_key();
+        let now = Self::current_timestamp();
+        
+        // Convert permissions to JSON
+        let permissions_json = serde_json::to_string(&request.permissions)?;
+        
+        conn.execute(
+            "INSERT INTO api_keys (key, name, permissions, created_at, expires_at, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                &key,
+                &request.name,
+                &permissions_json,
+                now,
+                request.expires_at,
+                ApiKeyStatus::Active.as_str()
+            ],
+        )?;
+        
+        let id = conn.last_insert_rowid();
+        
+        Ok(ApiKey {
+            id,
+            key,
+            name: request.name,
+            permissions: request.permissions,
+            created_at: now,
+            expires_at: request.expires_at,
+            status: ApiKeyStatus::Active,
+            last_used_at: None,
+        })
+    }
+    
+    /// Get API key by key string
+    pub fn get_api_key(&self, key: &str) -> Result<Option<ApiKey>> {
+        let conn = self.pool.get()?;
+        
+        let result = conn.query_row(
+            "SELECT id, key, name, permissions, created_at, expires_at, status, last_used_at
+             FROM api_keys WHERE key = ?1",
+            params![key],
+            |row| {
+                let permissions_json: String = row.get(3)?;
+                let permissions: Vec<String> = serde_json::from_str(&permissions_json)
+                    .unwrap_or_default();
+                
+                Ok(ApiKey {
+                    id: row.get(0)?,
+                    key: row.get(1)?,
+                    name: row.get(2)?,
+                    permissions,
+                    created_at: row.get(4)?,
+                    expires_at: row.get(5)?,
+                    status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?),
+                    last_used_at: row.get(7)?,
+                })
+            },
+        ).optional()?;
+        
+        Ok(result)
+    }
+    
+    /// List all API keys
+    pub fn list_api_keys(&self) -> Result<Vec<ApiKey>> {
+        let conn = self.pool.get()?;
+        
+        let mut stmt = conn.prepare(
+            "SELECT id, key, name, permissions, created_at, expires_at, status, last_used_at
+             FROM api_keys ORDER BY created_at DESC"
+        )?;
+        
+        let keys = stmt.query_map([], |row| {
+            let permissions_json: String = row.get(3)?;
+            let permissions: Vec<String> = serde_json::from_str(&permissions_json)
+                .unwrap_or_default();
+            
+            Ok(ApiKey {
+                id: row.get(0)?,
+                key: row.get(1)?,
+                name: row.get(2)?,
+                permissions,
+                created_at: row.get(4)?,
+                expires_at: row.get(5)?,
+                status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?),
+                last_used_at: row.get(7)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+        
+        Ok(keys)
+    }
+    
+    /// Revoke API key
+    pub fn revoke_api_key(&self, id: i64) -> Result<()> {
+        let conn = self.pool.get()?;
+        
+        let updated = conn.execute(
+            "UPDATE api_keys SET status = ?1 WHERE id = ?2",
+            params![ApiKeyStatus::Revoked.as_str(), id],
+        )?;
+        
+        if updated == 0 {
+            return Err(StorageError::NotFound);
+        }
+        
+        Ok(())
+    }
+    
+    /// Update last used timestamp
+    pub fn update_api_key_last_used(&self, key: &str) -> Result<()> {
+        let conn = self.pool.get()?;
+        let now = Self::current_timestamp();
+        
+        conn.execute(
+            "UPDATE api_keys SET last_used_at = ?1 WHERE key = ?2",
+            params![now, key],
+        )?;
+        
+        Ok(())
+    }
+    
+    /// Generate a secure API key
+    fn generate_api_key(&self) -> String {
+        let random_bytes: [u8; 32] = rand::random();
+        let mut hasher = Sha256::new();
+        hasher.update(&random_bytes);
+        let result = hasher.finalize();
+        format!("nl_{}", hex::encode(result))
+    }
 }
 
 #[cfg(test)]
@@ -780,3 +941,4 @@ mod tests {
         assert_eq!(stats.error_count, 1);
     }
 }
+

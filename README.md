@@ -16,6 +16,7 @@ NanoLambda enables you to run serverless functions on your own infrastructure wi
 - ✅ **~32ms cold starts** - **3-10x faster** than AWS Lambda
 - ✅ **Process pooling** - Instant execution after first invocation
 - ✅ **Function versioning** - AWS Lambda-compatible versioning system
+- ✅ **API key authentication** - Secure access with Bearer tokens
 - ✅ **AWS Lambda API compatibility** - Drop-in replacement
 - ✅ **MicroVM isolation** - Hardware-backed security (coming soon)
 - ✅ **70% cost reduction** - Run on your own hardware
@@ -79,6 +80,7 @@ Comprehensive documentation is available in the `/docs` directory:
 ### API Reference
 - **[API-Reference.md](docs/api-reference.md)** - API documentation
 - **[API_VERSIONING.md](docs/API_VERSIONING.md)** - Function versioning guide ⚡ NEW
+- **[API_AUTHENTICATION.md](docs/API_AUTHENTICATION.md)** - API key authentication guide 🔐 NEW
 
 ---
 

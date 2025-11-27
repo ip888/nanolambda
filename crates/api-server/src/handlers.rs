@@ -760,3 +760,130 @@ pub async fn publish_function_version(
         }
     }
 }
+
+// ============================================================================
+// API Key Management Handlers
+// ============================================================================
+
+use nanolambda_storage::{CreateApiKeyRequest, ApiKey};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateKeyResponse {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub permissions: Vec<String>,
+    pub created_at: i64,
+    pub expires_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListKeysResponse {
+    pub keys: Vec<ApiKeyInfo>,
+    pub count: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApiKeyInfo {
+    pub id: i64,
+    pub name: String,
+    pub permissions: Vec<String>,
+    pub status: String,
+    pub created_at: i64,
+    pub expires_at: Option<i64>,
+    pub last_used_at: Option<i64>,
+    // Don't expose the actual key in list operations
+}
+
+impl From<ApiKey> for ApiKeyInfo {
+    fn from(key: ApiKey) -> Self {
+        ApiKeyInfo {
+            id: key.id,
+            name: key.name,
+            permissions: key.permissions,
+            status: key.status.as_str().to_string(),
+            created_at: key.created_at,
+            expires_at: key.expires_at,
+            last_used_at: key.last_used_at,
+        }
+    }
+}
+
+/// POST /auth/keys - Create new API key
+pub async fn create_api_key(
+    State(state): State<Arc<ApiServer>>,
+    Json(request): Json<CreateApiKeyRequest>,
+) -> Result<Json<CreateKeyResponse>, (StatusCode, Json<ErrorResponse>)> {
+    match state.storage().create_api_key(request) {
+        Ok(key) => {
+            info!("Created API key '{}' with id {}", key.name, key.id);
+            Ok(Json(CreateKeyResponse {
+                id: key.id,
+                key: key.key,
+                name: key.name,
+                permissions: key.permissions,
+                created_at: key.created_at,
+                expires_at: key.expires_at,
+            }))
+        }
+        Err(e) => {
+            error!("Failed to create API key: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "StorageError".to_string(),
+                    message: format!("Failed to create API key: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// GET /auth/keys - List all API keys
+pub async fn list_api_keys(
+    State(state): State<Arc<ApiServer>>,
+) -> Result<Json<ListKeysResponse>, (StatusCode, Json<ErrorResponse>)> {
+    match state.storage().list_api_keys() {
+        Ok(keys) => {
+            let key_infos: Vec<ApiKeyInfo> = keys.into_iter().map(|k| k.into()).collect();
+            let count = key_infos.len();
+            Ok(Json(ListKeysResponse {
+                keys: key_infos,
+                count,
+            }))
+        }
+        Err(e) => {
+            error!("Failed to list API keys: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "StorageError".to_string(),
+                    message: format!("Failed to list API keys: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// DELETE /auth/keys/{id} - Revoke API key
+pub async fn revoke_api_key(
+    State(state): State<Arc<ApiServer>>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    match state.storage().revoke_api_key(id) {
+        Ok(_) => {
+            info!("Revoked API key with id {}", id);
+            Ok(StatusCode::NO_CONTENT)
+        }
+        Err(e) => {
+            error!("Failed to revoke API key: {}", e);
+            Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "NotFound".to_string(),
+                    message: format!("API key not found: {}", e),
+                }),
+            ))
+        }
+    }
+}

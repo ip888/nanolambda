@@ -111,3 +111,47 @@ pub struct FunctionStats {
     pub timeout_count: i64,
     pub last_invoked_at: Option<i64>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKey {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub permissions: Vec<String>,
+    pub created_at: i64,
+    pub expires_at: Option<i64>,
+    pub status: ApiKeyStatus,
+    pub last_used_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ApiKeyStatus {
+    Active,
+    Revoked,
+}
+
+impl ApiKeyStatus {
+    pub fn as_str(&self) -> &str {
+        match self {
+            ApiKeyStatus::Active => "active",
+            ApiKeyStatus::Revoked => "revoked",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "active" => ApiKeyStatus::Active,
+            "revoked" => ApiKeyStatus::Revoked,
+            _ => ApiKeyStatus::Active,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateApiKeyRequest {
+    pub name: String,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    pub expires_at: Option<i64>,
+}
