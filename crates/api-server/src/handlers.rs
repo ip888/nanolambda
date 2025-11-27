@@ -1,3 +1,762 @@
-//! Request handlers
+//! Request handlers - Integrated with storage and runtime
 
-// TODO: Implement request handlers
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
+use std::collections::HashMap;
+use std::sync::Arc;
+use serde::{Deserialize, Serialize};
+use tracing::{info, error};
+use uuid::Uuid;
+
+use crate::ApiServer;
+use nanolambda_storage::{FunctionConfig as StorageFunctionConfig, InvocationRecord, InvocationStatus};
+use nanolambda_runtime::{GenericFunctionConfig, Language};
+use nanolambda_runtime::runtime_trait::Runtime;
+
+// ============================================================================
+// Request/Response Models
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateFunctionRequest {
+    pub name: String,
+    pub runtime: String,
+    pub handler: String,
+    pub code: String,
+    pub memory_mb: u64,
+    pub timeout_ms: u64,
+    #[serde(default)]
+    pub environment: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FunctionResponse {
+    pub name: String,
+    pub runtime: String,
+    pub handler: String,
+    pub memory_mb: u64,
+    pub timeout_ms: u64,
+    pub status: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListFunctionsResponse {
+    pub functions: Vec<FunctionResponse>,
+    pub count: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InvokeRequest {
+    #[serde(default)]
+    pub payload: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InvokeResponse {
+    pub request_id: String,
+    pub status_code: u16,
+    pub body: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub metrics: ExecutionMetrics,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExecutionMetrics {
+    pub execution_time_ms: u64,
+    pub memory_used_mb: f64,
+    pub cold_start: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorResponse {
+    pub error: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub version: String,
+}
+
+// ============================================================================
+// Handler Functions
+// ============================================================================
+
+/// Create a new function
+pub async fn create_function(
+    State(state): State<Arc<ApiServer>>,
+    Json(request): Json<CreateFunctionRequest>,
+) -> Result<Json<FunctionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Creating function: {}", request.name);
+    
+    // Create function config for storage
+    let config = StorageFunctionConfig {
+        name: request.name.clone(),
+        runtime: request.runtime.clone(),
+        handler: request.handler.clone(),
+        code: request.code,
+        memory_mb: request.memory_mb,
+        timeout_ms: request.timeout_ms,
+        environment: request.environment,
+    };
+    
+    // Store function in database
+    match state.storage().create_function(config) {
+        Ok(_function_id) => {
+            // Retrieve the created function to get all fields
+            match state.storage().get_function(&request.name) {
+                Ok(Some(function)) => {
+                    Ok(Json(FunctionResponse {
+                        name: function.name,
+                        runtime: function.runtime,
+                        handler: function.handler,
+                        memory_mb: function.memory_mb,
+                        timeout_ms: function.timeout_ms,
+                        status: function.status.as_str().to_string(),
+                        created_at: function.created_at,
+                        updated_at: function.updated_at,
+                    }))
+                }
+                Ok(None) => {
+                    error!("Function created but not found: {}", request.name);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: "InternalError".to_string(),
+                            message: "Function created but not retrievable".to_string(),
+                        }),
+                    ))
+                }
+                Err(e) => {
+                    error!("Failed to retrieve created function: {}", e);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: "InternalError".to_string(),
+                            message: format!("Failed to retrieve function: {}", e),
+                        }),
+                    ))
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to create function: {}", e);
+            Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "CreateFailed".to_string(),
+                    message: format!("Failed to create function: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// List all functions
+pub async fn list_functions(
+    State(state): State<Arc<ApiServer>>,
+) -> Result<Json<ListFunctionsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Listing all functions");
+    
+    match state.storage().list_functions() {
+        Ok(functions) => {
+            let function_responses: Vec<FunctionResponse> = functions
+                .into_iter()
+                .map(|f| FunctionResponse {
+                    name: f.name,
+                    runtime: f.runtime,
+                    handler: f.handler,
+                    memory_mb: f.memory_mb,
+                    timeout_ms: f.timeout_ms,
+                    status: f.status.as_str().to_string(),
+                    created_at: f.created_at,
+                    updated_at: f.updated_at,
+                })
+                .collect();
+            
+            let count = function_responses.len();
+            Ok(Json(ListFunctionsResponse {
+                functions: function_responses,
+                count,
+            }))
+        }
+        Err(e) => {
+            error!("Failed to list functions: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "ListFailed".to_string(),
+                    message: format!("Failed to list functions: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// Get a specific function
+pub async fn get_function(
+    State(state): State<Arc<ApiServer>>,
+    Path(name): Path<String>,
+) -> Result<Json<FunctionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Getting function: {}", name);
+    
+    match state.storage().get_function(&name) {
+        Ok(Some(function)) => {
+            Ok(Json(FunctionResponse {
+                name: function.name,
+                runtime: function.runtime,
+                handler: function.handler,
+                memory_mb: function.memory_mb,
+                timeout_ms: function.timeout_ms,
+                status: function.status.as_str().to_string(),
+                created_at: function.created_at,
+                updated_at: function.updated_at,
+            }))
+        }
+        Ok(None) => {
+            Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "FunctionNotFound".to_string(),
+                    message: format!("Function '{}' not found", name),
+                }),
+            ))
+        }
+        Err(e) => {
+            error!("Failed to get function: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "GetFailed".to_string(),
+                    message: format!("Failed to get function: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// Update an existing function
+pub async fn update_function(
+    State(state): State<Arc<ApiServer>>,
+    Path(name): Path<String>,
+    Json(request): Json<CreateFunctionRequest>,
+) -> Result<Json<FunctionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Updating function: {}", name);
+    
+    // Create function config for storage
+    let config = StorageFunctionConfig {
+        name: request.name,
+        runtime: request.runtime,
+        handler: request.handler,
+        code: request.code,
+        memory_mb: request.memory_mb,
+        timeout_ms: request.timeout_ms,
+        environment: request.environment,
+    };
+    
+    // Update function in database
+    match state.storage().update_function(&name, config) {
+        Ok(_) => {
+            // Retrieve the updated function
+            match state.storage().get_function(&name) {
+                Ok(Some(function)) => {
+                    Ok(Json(FunctionResponse {
+                        name: function.name,
+                        runtime: function.runtime,
+                        handler: function.handler,
+                        memory_mb: function.memory_mb,
+                        timeout_ms: function.timeout_ms,
+                        status: function.status.as_str().to_string(),
+                        created_at: function.created_at,
+                        updated_at: function.updated_at,
+                    }))
+                }
+                Ok(None) => {
+                    Err((
+                        StatusCode::NOT_FOUND,
+                        Json(ErrorResponse {
+                            error: "FunctionNotFound".to_string(),
+                            message: format!("Function '{}' not found after update", name),
+                        }),
+                    ))
+                }
+                Err(e) => {
+                    error!("Failed to retrieve updated function: {}", e);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: "InternalError".to_string(),
+                            message: format!("Failed to retrieve function: {}", e),
+                        }),
+                    ))
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to update function: {}", e);
+            Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "UpdateFailed".to_string(),
+                    message: format!("Failed to update function: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// Delete a function
+pub async fn delete_function(
+    State(state): State<Arc<ApiServer>>,
+    Path(name): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    info!("Deleting function: {}", name);
+    
+    match state.storage().delete_function(&name) {
+        Ok(_) => {
+            Ok(StatusCode::NO_CONTENT)
+        }
+        Err(e) => {
+            error!("Failed to delete function: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "DeleteFailed".to_string(),
+                    message: format!("Failed to delete function: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// Handler for function invocation - INTEGRATED WITH STORAGE + RUNTIME
+pub async fn invoke_function(
+    State(state): State<Arc<ApiServer>>,
+    Path(name): Path<String>,
+    Json(request): Json<InvokeRequest>,
+) -> Result<Json<InvokeResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Invoking function: {}", name);
+    
+    let request_id = Uuid::new_v4().to_string();
+    let started_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    
+    // 1. Load function from database
+    let function = match state.storage().get_function(&name) {
+        Ok(Some(f)) => f,
+        Ok(None) => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "FunctionNotFound".to_string(),
+                    message: format!("Function '{}' not found", name),
+                }),
+            ));
+        }
+        Err(e) => {
+            error!("Failed to get function from storage: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "StorageError".to_string(),
+                    message: format!("Failed to load function: {}", e),
+                }),
+            ));
+        }
+    };
+    
+    // 2. Check if function is active
+    if function.status != nanolambda_storage::FunctionStatus::Active {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "FunctionNotActive".to_string(),
+                message: format!("Function '{}' is not active", name),
+            }),
+        ));
+    }
+    
+    // 3. Detect language from runtime
+    let language = if function.runtime.starts_with("python") {
+        Language::Python
+    } else if function.runtime.starts_with("nodejs") {
+        Language::NodeJS
+    } else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "UnsupportedRuntime".to_string(),
+                message: format!("Runtime '{}' is not supported", function.runtime),
+            }),
+        ));
+    };
+    
+    // 4. Build configuration based on runtime type
+    let execution_result = match language {
+        Language::Python => {
+            // Python uses synchronous FunctionConfig
+            let py_config = nanolambda_runtime::FunctionConfig {
+                id: function.id,
+                version: function.version,
+                name: function.name.clone(),
+                code: function.code.clone(),
+                handler: function.handler.clone(),
+                environment: function.environment.clone(),
+                memory_limit_mb: function.memory_mb,
+                timeout_seconds: function.timeout_ms / 1000,
+                working_dir: None,
+            };
+            
+            // Clone the payload for the blocking task
+            let payload = request.payload.clone();
+            let executor = Arc::clone(state.python_executor());
+            
+            tokio::task::spawn_blocking(move || {
+                // This runs in a blocking thread pool
+                let runtime = tokio::runtime::Handle::try_current().ok();
+                let exec = if let Some(rt) = runtime {
+                    rt.block_on(executor.lock())
+                } else {
+                    // Fallback: create a new runtime for the blocking task
+                    tokio::runtime::Runtime::new().unwrap().block_on(executor.lock())
+                };
+                exec.execute(py_config, payload)
+            }).await
+                .map_err(|e| (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "ExecutionError".to_string(),
+                        message: format!("Task join error: {}", e),
+                    }),
+                ))?
+        }
+        Language::NodeJS => {
+            // Node.js implements Runtime trait with GenericFunctionConfig
+            let config = GenericFunctionConfig::new(
+                function.name.clone(),
+                Language::NodeJS,
+                function.code.clone(),
+                function.handler.clone(),
+            )
+            .with_memory_limit(function.memory_mb)
+            .with_timeout(function.timeout_ms / 1000);
+            
+            let executor = state.nodejs_executor().lock().await;
+            executor.execute(&config, request.payload.clone()).await
+        }
+        Language::Java => {
+            return Err((
+                StatusCode::NOT_IMPLEMENTED,
+                Json(ErrorResponse {
+                    error: "NotImplemented".to_string(),
+                    message: "Java runtime not yet implemented".to_string(),
+                }),
+            ));
+        }
+    };
+    
+    // 5. Process execution result
+    match execution_result {
+        Ok(exec_result) => {
+            let completed_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            
+            // Record invocation in database
+            let invocation_record = InvocationRecord {
+                function_id: function.id,
+                request_id: request_id.clone(),
+                status: if exec_result.success {
+                    InvocationStatus::Success
+                } else {
+                    InvocationStatus::Error
+                },
+                started_at,
+                completed_at: Some(completed_at),
+                execution_time_ms: Some(exec_result.metrics.execution_ms as i64),
+                memory_used_mb: Some(exec_result.metrics.memory_peak_mb as i64),
+                cold_start: exec_result.metrics.is_cold_start,
+                error_message: exec_result.error.clone(),
+            };
+            
+            if let Err(e) = state.storage().record_invocation(invocation_record) {
+                error!("Failed to record invocation: {}", e);
+                // Continue anyway - execution succeeded
+            }
+            
+            // Parse result string to JSON
+            let result_value = if let Some(ref result_str) = exec_result.result {
+                serde_json::from_str(result_str).unwrap_or(serde_json::Value::String(result_str.clone()))
+            } else {
+                serde_json::Value::Null
+            };
+            
+            // Return response
+            if exec_result.success {
+                Ok(Json(InvokeResponse {
+                    request_id,
+                    status_code: 200,
+                    body: result_value,
+                    error: None,
+                    metrics: ExecutionMetrics {
+                        execution_time_ms: exec_result.metrics.execution_ms,
+                        memory_used_mb: exec_result.metrics.memory_peak_mb,
+                        cold_start: exec_result.metrics.is_cold_start,
+                    },
+                }))
+            } else {
+                Ok(Json(InvokeResponse {
+                    request_id,
+                    status_code: 500,
+                    body: serde_json::Value::Null,
+                    error: exec_result.error,
+                    metrics: ExecutionMetrics {
+                        execution_time_ms: exec_result.metrics.execution_ms,
+                        memory_used_mb: exec_result.metrics.memory_peak_mb,
+                        cold_start: exec_result.metrics.is_cold_start,
+                    },
+                }))
+            }
+        }
+        Err(e) => {
+            error!("Function execution error: {}", e);
+            
+            // Record failed invocation
+            let completed_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            
+            let invocation_record = InvocationRecord {
+                function_id: function.id,
+                request_id: request_id.clone(),
+                status: InvocationStatus::Error,
+                started_at,
+                completed_at: Some(completed_at),
+                execution_time_ms: None,
+                memory_used_mb: None,
+                cold_start: false,
+                error_message: Some(e.to_string()),
+            };
+            
+            if let Err(err) = state.storage().record_invocation(invocation_record) {
+                error!("Failed to record failed invocation: {}", err);
+            }
+            
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "ExecutionError".to_string(),
+                    message: format!("Function execution failed: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// Health check endpoint
+pub async fn health_check() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "healthy".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
+}
+
+// ============================================================================
+// Versioning Endpoints
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PublishVersionRequest {
+    pub runtime: String,
+    pub handler: String,
+    pub code: String,
+    pub memory_mb: u64,
+    pub timeout_ms: u64,
+    #[serde(default)]
+    pub environment: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VersionResponse {
+    pub id: i64,
+    pub name: String,
+    pub version: i64,
+    pub is_latest: bool,
+    pub runtime: String,
+    pub handler: String,
+    pub code_hash: String,
+    pub memory_mb: u64,
+    pub timeout_ms: u64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListVersionsResponse {
+    pub versions: Vec<VersionResponse>,
+    pub count: usize,
+}
+
+/// List all versions of a function
+pub async fn list_function_versions(
+    State(state): State<Arc<ApiServer>>,
+    Path(name): Path<String>,
+) -> Result<Json<ListVersionsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Listing versions for function: {}", name);
+    
+    match state.storage().list_function_versions(&name) {
+        Ok(functions) => {
+            let versions: Vec<VersionResponse> = functions
+                .into_iter()
+                .map(|f| VersionResponse {
+                    id: f.id,
+                    name: f.name,
+                    version: f.version,
+                    is_latest: f.is_latest,
+                    runtime: f.runtime,
+                    handler: f.handler,
+                    code_hash: f.code_hash,
+                    memory_mb: f.memory_mb,
+                    timeout_ms: f.timeout_ms,
+                    created_at: f.created_at,
+                    updated_at: f.updated_at,
+                })
+                .collect();
+            
+            let count = versions.len();
+            Ok(Json(ListVersionsResponse { versions, count }))
+        }
+        Err(e) => {
+            error!("Failed to list versions: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "StorageError".to_string(),
+                    message: format!("Failed to list versions: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// Get a specific version of a function
+pub async fn get_function_version(
+    State(state): State<Arc<ApiServer>>,
+    Path((name, version)): Path<(String, i64)>,
+) -> Result<Json<VersionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Getting function {} version {}", name, version);
+    
+    match state.storage().get_function_by_version(&name, version) {
+        Ok(Some(f)) => Ok(Json(VersionResponse {
+            id: f.id,
+            name: f.name,
+            version: f.version,
+            is_latest: f.is_latest,
+            runtime: f.runtime,
+            handler: f.handler,
+            code_hash: f.code_hash,
+            memory_mb: f.memory_mb,
+            timeout_ms: f.timeout_ms,
+            created_at: f.created_at,
+            updated_at: f.updated_at,
+        })),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "VersionNotFound".to_string(),
+                message: format!("Function '{}' version {} not found", name, version),
+            }),
+        )),
+        Err(e) => {
+            error!("Failed to get version: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "StorageError".to_string(),
+                    message: format!("Failed to get version: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// Publish a new version of a function
+pub async fn publish_function_version(
+    State(state): State<Arc<ApiServer>>,
+    Path(name): Path<String>,
+    Json(request): Json<PublishVersionRequest>,
+) -> Result<Json<VersionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Publishing new version for function: {}", name);
+    
+    // Create config for new version
+    let config = StorageFunctionConfig {
+        name: name.clone(),
+        runtime: request.runtime,
+        handler: request.handler,
+        code: request.code,
+        memory_mb: request.memory_mb,
+        timeout_ms: request.timeout_ms,
+        environment: request.environment,
+    };
+    
+    match state.storage().publish_version(&name, config) {
+        Ok(new_id) => {
+            info!("Published new version for function '{}' with id {}", name, new_id);
+            
+            // Get the newly created version to return
+            match state.storage().get_function(&name) {
+                Ok(Some(f)) => Ok(Json(VersionResponse {
+                    id: f.id,
+                    name: f.name,
+                    version: f.version,
+                    is_latest: f.is_latest,
+                    runtime: f.runtime,
+                    handler: f.handler,
+                    code_hash: f.code_hash,
+                    memory_mb: f.memory_mb,
+                    timeout_ms: f.timeout_ms,
+                    created_at: f.created_at,
+                    updated_at: f.updated_at,
+                })),
+                Ok(None) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "InternalError".to_string(),
+                        message: "Version created but could not be retrieved".to_string(),
+                    }),
+                )),
+                Err(e) => {
+                    error!("Failed to retrieve new version: {}", e);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: "StorageError".to_string(),
+                            message: format!("Version created but could not be retrieved: {}", e),
+                        }),
+                    ))
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to publish version: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "StorageError".to_string(),
+                    message: format!("Failed to publish version: {}", e),
+                }),
+            ))
+        }
+    }
+}
