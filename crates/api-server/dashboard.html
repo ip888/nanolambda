@@ -134,7 +134,7 @@
         
         .charts-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }
@@ -215,6 +215,76 @@
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.3; }
+        }
+        
+        /* Responsive Design - Mobile First */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .subtitle {
+                font-size: 14px;
+            }
+            
+            .last-update {
+                float: none;
+                margin-top: 10px;
+                font-size: 12px;
+            }
+            
+            .time-windows {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            
+            .time-window {
+                padding: 6px 12px;
+                font-size: 14px;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .charts-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .chart-container {
+                height: auto;
+                min-height: 280px;
+            }
+            
+            .chart-wrapper {
+                height: 220px;
+            }
+            
+            .metric-value {
+                font-size: 28px;
+            }
+        }
+        
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (min-width: 1025px) {
+            .charts-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
 </head>
@@ -577,10 +647,8 @@
             
             document.getElementById('dashboard-content').innerHTML = html;
             
-            // Initialize charts if needed (first render)
-            if (!charts.invocations) {
-                initCharts();
-            }
+            // Always reinitialize charts after innerHTML (canvas elements are destroyed)
+            initCharts();
             
             // Update charts with new data
             updateCharts(metrics);

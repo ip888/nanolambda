@@ -14,6 +14,7 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use crate::pool::ProcessPool;
+use base64::{Engine as _, engine::general_purpose};
 
 #[derive(Error, Debug)]
 pub enum ExecutorError {
@@ -185,8 +186,8 @@ impl PythonExecutor {
     
     /// Detect available Python installation
     fn detect_python() -> Result<(PathBuf, String)> {
-        // Try Python 3.12 first, then 3.11, then python3
-        for python_cmd in &["python3.12", "python3.11", "python3"] {
+        // Try latest Python versions first: 3.13, 3.12, 3.11, then python3
+        for python_cmd in &["python3.13", "python3.12", "python3.11", "python3"] {
             if let Ok(output) = Command::new(python_cmd)
                 .arg("--version")
                 .output()
@@ -356,23 +357,25 @@ impl PythonExecutor {
         let event_json = serde_json::to_string(event)
             .map_err(|e| ExecutorError::InvalidCode(format!("Invalid event JSON: {}", e)))?;
         
-        // Escape the JSON string for Python (replace backslashes and quotes)
-        let event_json_escaped = event_json.replace("\\", "\\\\").replace("\"", "\\\"");
+        // Base64 encode the event JSON to avoid escaping issues
+        let event_b64 = general_purpose::STANDARD.encode(event_json.as_bytes());
         
         let wrapper = format!(r#"#!/usr/bin/env python3
 import json
 import sys
 import traceback
+import base64
 from function import {handler}
 
 def __wrapper_main__():
     try:
-        # Parse event from JSON string
-        event_str = "{event_json}"
-        event = json.loads(event_str)
+        # Decode event from base64
+        event_b64 = "{event_b64}"
+        event_json = base64.b64decode(event_b64).decode('utf-8')
+        event = json.loads(event_json)
         
-        # Execute handler
-        result = {handler}(event, {{}})
+        # Execute handler (pass only event, not context)
+        result = {handler}(event)
         
         # Output result as JSON
         output = {{
@@ -396,7 +399,7 @@ if __name__ == '__main__':
     __wrapper_main__()
 "#, 
             handler = config.handler,
-            event_json = event_json_escaped
+            event_b64 = event_b64
         );
         
         Ok(wrapper)

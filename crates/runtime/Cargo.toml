@@ -13,6 +13,9 @@ async-trait = "0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# Base64 encoding
+base64 = "0.22"
+
 # Error handling
 anyhow = { workspace = true }
 thiserror = { workspace = true }
