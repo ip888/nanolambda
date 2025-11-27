@@ -13,6 +13,7 @@ use std::sync::Arc;
 pub struct AuthContext {
     pub api_key_id: i64,
     pub permissions: Vec<String>,
+    pub api_key: String,  // Store the actual API key for rate limiting
 }
 
 /// Extract API key from Authorization header
@@ -74,6 +75,7 @@ pub async fn auth_middleware(
     let auth_context = AuthContext {
         api_key_id: api_key.id,
         permissions: api_key.permissions,
+        api_key: token.clone(),
     };
     req.extensions_mut().insert(auth_context);
     

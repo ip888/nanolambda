@@ -337,11 +337,11 @@ pub async fn delete_function(
     }
 }
 
-/// Handler for function invocation - INTEGRATED WITH STORAGE + RUNTIME
+/// Handler for function invocation - INTEGRATED WITH STORAGE + RUNTIME + CONCURRENCY + RATE LIMITING
 pub async fn invoke_function(
     State(state): State<Arc<ApiServer>>,
     Path(name): Path<String>,
-    Json(request): Json<InvokeRequest>,
+    req: axum::extract::Request,
 ) -> Result<Json<InvokeResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Invoking function: {}", name);
     
@@ -350,6 +350,55 @@ pub async fn invoke_function(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
+    
+    // Extract auth context and request body
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    // Parse request body
+    let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
+        .await
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Failed to read request body: {}", e),
+            }),
+        ))?;
+    
+    let request: InvokeRequest = serde_json::from_slice(&bytes)
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Invalid JSON: {}", e),
+            }),
+        ))?;
+    
+    // 0a. Check rate limit
+    if let Err(e) = state.rate_limiter().check_rate_limit(&api_key).await {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ErrorResponse {
+                error: "RateLimitExceeded".to_string(),
+                message: format!("{}", e),
+            }),
+        ));
+    }
+    
+    // 0b. Acquire concurrency permits (queues if at limit, rejects if queue full)
+    let _concurrency_guard = match state.concurrency().acquire(&name).await {
+        Ok(guard) => guard,
+        Err(e) => {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(ErrorResponse {
+                    error: "ConcurrencyLimitReached".to_string(),
+                    message: format!("Function '{}' is at capacity: {}", name, e),
+                }),
+            ));
+        }
+    };
     
     // 1. Load function from database
     let function = match state.storage().get_function(&name) {
@@ -508,6 +557,18 @@ pub async fn invoke_function(
                 },
             };
             state.metrics().record(metrics_point).await;
+            
+            // Record usage for billing
+            let usage_record = crate::usage_tracker::UsageRecord {
+                timestamp: completed_at,
+                api_key: api_key.clone(),
+                function_name: name.clone(),
+                execution_time_ms: exec_result.metrics.execution_ms as i64,
+                memory_used_mb: exec_result.metrics.memory_peak_mb,
+                cold_start: exec_result.metrics.is_cold_start,
+                success: exec_result.success,
+            };
+            state.usage_tracker().record(usage_record).await;
             
             // Parse result string to JSON
             let result_value = if let Some(ref result_str) = exec_result.result {
@@ -934,4 +995,175 @@ pub async fn get_metrics(
 /// GET /dashboard - Serve metrics dashboard
 pub async fn get_dashboard() -> Html<&'static str> {
     Html(include_str!("../dashboard.html"))
+}
+
+/// GET /concurrency - Get concurrency statistics
+pub async fn get_concurrency_stats(
+    State(state): State<Arc<ApiServer>>,
+) -> Json<serde_json::Value> {
+    let global_stats = state.concurrency().get_global_stats();
+    let function_stats = state.concurrency().get_all_stats().await;
+    
+    Json(serde_json::json!({
+        "global": {
+            "max_concurrent": global_stats.max_global_concurrent,
+            "current_running": global_stats.current_global_running,
+            "max_per_function": global_stats.max_per_function,
+            "max_queue_size": global_stats.max_queue_size,
+        },
+        "functions": function_stats,
+    }))
+}
+
+// ============================================================================
+// Rate Limiting Handlers
+// ============================================================================
+
+/// GET /rate-limit/status - Get rate limit status for current API key
+pub async fn get_rate_limit_status(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    let status = state.rate_limiter().get_status(&api_key).await;
+    
+    Ok(Json(serde_json::json!({
+        "tier": serde_json::to_value(&status.tier).unwrap(),
+        "available_tokens": status.available_tokens,
+        "capacity": status.capacity,
+        "refill_rate": format!("{:.2}/sec", status.refill_rate),
+        "refill_rate_per_min": format!("{:.0}/min", status.refill_rate * 60.0),
+    })))
+}
+
+/// GET /rate-limit/stats - Get all rate limit statistics (admin only)
+pub async fn get_all_rate_limit_stats(
+    State(state): State<Arc<ApiServer>>,
+) -> Json<serde_json::Value> {
+    let all_stats = state.rate_limiter().get_all_stats().await;
+    
+    let stats_json: Vec<_> = all_stats
+        .into_iter()
+        .map(|(key, status)| {
+            serde_json::json!({
+                "api_key": key,
+                "tier": serde_json::to_value(&status.tier).unwrap(),
+                "available_tokens": status.available_tokens,
+                "capacity": status.capacity,
+                "refill_rate_per_min": format!("{:.0}/min", status.refill_rate * 60.0),
+            })
+        })
+        .collect();
+    
+    Json(serde_json::json!({ "rate_limits": stats_json }))
+}
+
+/// PUT /rate-limit/tier - Set rate limit tier for an API key (admin only)
+#[derive(Debug, Deserialize)]
+pub struct SetTierRequest {
+    pub api_key: String,
+    pub tier: String,
+}
+
+pub async fn set_rate_limit_tier(
+    State(state): State<Arc<ApiServer>>,
+    Json(request): Json<SetTierRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    use crate::rate_limiter::RateLimitTier;
+    
+    let tier = match request.tier.to_lowercase().as_str() {
+        "free" => RateLimitTier::Free,
+        "hobby" => RateLimitTier::Hobby,
+        "developer" => RateLimitTier::Developer,
+        "production" => RateLimitTier::Production,
+        "enterprise" => RateLimitTier::Enterprise,
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidTier".to_string(),
+                    message: format!("Unknown tier: {}. Valid: free, hobby, developer, production, enterprise", request.tier),
+                }),
+            ));
+        }
+    };
+    
+    state.rate_limiter().set_tier(&request.api_key, tier).await;
+    
+    Ok(StatusCode::OK)
+}
+
+// ============================================================================
+// Usage Tracking & Billing Handlers
+// ============================================================================
+
+/// GET /usage/stats - Get usage stats for current API key
+pub async fn get_usage_stats(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    match state.usage_tracker().get_stats(&api_key).await {
+        Some(stats) => Ok(Json(serde_json::to_value(&stats).unwrap())),
+        None => Ok(Json(serde_json::json!({
+            "api_key": api_key,
+            "total_invocations": 0,
+            "message": "No usage recorded yet"
+        }))),
+    }
+}
+
+/// GET /usage/billing - Get billing information for current API key
+pub async fn get_billing_info(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    match state.usage_tracker().get_stats(&api_key).await {
+        Some(stats) => {
+            let billing = crate::usage_tracker::UsageTracker::calculate_bill(&stats);
+            Ok(Json(serde_json::to_value(&billing).unwrap()))
+        },
+        None => Ok(Json(serde_json::json!({
+            "api_key": api_key,
+            "total_cost": 0.0,
+            "message": "No usage recorded yet"
+        }))),
+    }
+}
+
+/// GET /usage/all - Get usage stats for all API keys (admin)
+pub async fn get_all_usage_stats(
+    State(state): State<Arc<ApiServer>>,
+) -> Json<serde_json::Value> {
+    let all_stats = state.usage_tracker().get_all_stats().await;
+    
+    let stats_with_billing: Vec<_> = all_stats
+        .iter()
+        .map(|stats| {
+            let billing = crate::usage_tracker::UsageTracker::calculate_bill(stats);
+            serde_json::json!({
+                "api_key": stats.api_key,
+                "invocations": stats.total_invocations,
+                "successful": stats.successful_invocations,
+                "failed": stats.failed_invocations,
+                "functions_used": stats.functions_used.len(),
+                "total_cost": format!("${:.4}", billing.total_cost),
+                "invocation_cost": format!("${:.4}", billing.invocation_cost),
+                "memory_cost": format!("${:.4}", billing.memory_cost),
+                "gb_seconds": format!("{:.2}", billing.gb_seconds),
+            })
+        })
+        .collect();
+    
+    Json(serde_json::json!({
+        "usage_stats": stats_with_billing,
+        "total_customers": all_stats.len(),
+    }))
 }

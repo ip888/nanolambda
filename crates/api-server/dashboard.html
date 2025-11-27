@@ -305,6 +305,36 @@
             <button class="time-window" data-window="all_time">All Time</button>
         </div>
         
+        <!-- API Key Input for Usage Tracking -->
+        <div class="api-key-section" style="margin: 20px 0; padding: 15px; background: #1e293b; border-radius: 8px; border: 1px solid #334155;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <label style="color: #94a3b8; font-size: 14px;">🔑 API Key (optional):</label>
+                <input type="text" id="apiKeyInput" placeholder="nl_..." autocomplete="off"
+                    style="flex: 1; min-width: 300px; padding: 8px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; font-family: 'Courier New', monospace; font-size: 13px;">
+                <button id="toggleApiKeyBtn" onclick="toggleApiKeyVisibility()" 
+                    style="padding: 8px 12px; background: #334155; color: #94a3b8; border: none; border-radius: 4px; cursor: pointer;" title="Toggle visibility">
+                    👁️
+                </button>
+                <button id="loadUsageBtn" onclick="fetchUsageData()" 
+                    style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
+                    Load Usage & Billing
+                </button>
+                <button id="clearApiKeyBtn" onclick="clearApiKey()" 
+                    style="padding: 8px 16px; background: #64748b; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    Clear
+                </button>
+            </div>
+            <div id="usageError" style="margin-top: 8px; color: #ef4444; font-size: 13px; display: none;"></div>
+        </div>
+        
+        <!-- Usage & Billing Section -->
+        <div id="usageSection" style="display: none; margin-bottom: 30px;">
+            <h2 style="color: #e2e8f0; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                💳 Usage & Billing
+            </h2>
+            <div id="usageContent"></div>
+        </div>
+        
         <div id="dashboard-content">
             <div class="no-data">Loading metrics...</div>
         </div>
@@ -689,6 +719,183 @@
             if (max === 0) return 0;
             return Math.min(100, (value / max) * 100);
         }
+        
+        // Usage & Billing Functions
+        async function fetchUsageData() {
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            const errorEl = document.getElementById('usageError');
+            const usageSection = document.getElementById('usageSection');
+            const usageContent = document.getElementById('usageContent');
+            
+            if (!apiKey) {
+                errorEl.textContent = 'Please enter an API key';
+                errorEl.style.display = 'block';
+                return;
+            }
+            
+            errorEl.style.display = 'none';
+            usageContent.innerHTML = '<div style="padding: 20px; text-align: center; color: #94a3b8;">Loading...</div>';
+            usageSection.style.display = 'block';
+            
+            try {
+                // Fetch usage stats, billing info, and rate limit status in parallel
+                const [usageRes, billingRes, rateLimitRes] = await Promise.all([
+                    fetch('/usage/stats', {
+                        headers: { 'Authorization': `Bearer ${apiKey}` }
+                    }),
+                    fetch('/usage/billing', {
+                        headers: { 'Authorization': `Bearer ${apiKey}` }
+                    }),
+                    fetch('/rate-limit/status', {
+                        headers: { 'Authorization': `Bearer ${apiKey}` }
+                    })
+                ]);
+                
+                if (!usageRes.ok || !billingRes.ok || !rateLimitRes.ok) {
+                    throw new Error('Invalid API key or unauthorized');
+                }
+                
+                const usage = await usageRes.json();
+                const billing = await billingRes.json();
+                const rateLimit = await rateLimitRes.json();
+                
+                renderUsageData(usage, billing, rateLimit);
+                
+                // Store API key for future use
+                sessionStorage.setItem('nanolambda_api_key', apiKey);
+            } catch (error) {
+                errorEl.textContent = `Error: ${error.message}`;
+                errorEl.style.display = 'block';
+                usageSection.style.display = 'none';
+            }
+        }
+        
+        function renderUsageData(usage, billing, rateLimit) {
+            const hasUsage = usage.total_invocations > 0;
+            
+            const html = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <!-- Rate Limit Card -->
+                    <div class="metric-card" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
+                        <div class="metric-label">🎯 Rate Limit Tier</div>
+                        <div class="metric-value" style="text-transform: uppercase; font-size: 1.8rem;">
+                            ${rateLimit.tier}
+                        </div>
+                        <div class="metric-secondary">
+                            ${rateLimit.refill_rate_per_min} 
+                            <span style="font-size: 12px; opacity: 0.8;">(burst: ${rateLimit.capacity})</span>
+                        </div>
+                        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 13px;">
+                            Available: <strong>${rateLimit.available_tokens}</strong> / ${rateLimit.capacity} tokens
+                        </div>
+                    </div>
+                    
+                    <!-- Total Cost Card -->
+                    <div class="metric-card" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                        <div class="metric-label">💰 Total Cost</div>
+                        <div class="metric-value">
+                            $${hasUsage ? billing.total_cost.toFixed(4) : '0.0000'}
+                        </div>
+                        <div class="metric-secondary">
+                            Invocations: $${hasUsage ? billing.invocation_cost.toFixed(4) : '0.0000'}<br>
+                            Memory: $${hasUsage ? billing.memory_cost.toFixed(4) : '0.0000'}
+                        </div>
+                    </div>
+                    
+                    <!-- Invocations Card -->
+                    <div class="metric-card">
+                        <div class="metric-label">📊 Total Invocations</div>
+                        <div class="metric-value">
+                            ${hasUsage ? (usage.total_invocations || 0).toLocaleString() : '0'}
+                        </div>
+                        <div class="metric-secondary">
+                            ✅ ${hasUsage ? (usage.successful_invocations || 0) : 0} success<br>
+                            ❌ ${hasUsage ? (usage.failed_invocations || 0) : 0} failed
+                        </div>
+                    </div>
+                    
+                    <!-- Resource Usage Card -->
+                    <div class="metric-card">
+                        <div class="metric-label">⚡ Resource Usage</div>
+                        <div class="metric-value" style="font-size: 1.5rem;">
+                            ${hasUsage ? billing.gb_seconds.toFixed(2) : '0.00'}
+                            <span class="metric-unit">GB-s</span>
+                        </div>
+                        <div class="metric-secondary">
+                            Execution: ${hasUsage ? (usage.total_execution_time_ms / 1000).toFixed(1) : '0'}s total<br>
+                            Cold Starts: ${hasUsage ? usage.cold_starts : 0}
+                        </div>
+                    </div>
+                </div>
+                
+                ${hasUsage && usage.functions_used && usage.functions_used.length > 0 ? `
+                <div style="background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155;">
+                    <h3 style="color: #e2e8f0; margin: 0 0 10px 0; font-size: 14px;">📦 Functions Used</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        ${usage.functions_used.map(fn => `
+                            <span style="background: #334155; padding: 4px 12px; border-radius: 4px; font-size: 13px; color: #94a3b8;">
+                                ${fn}
+                            </span>
+                        `).join('')}
+                    </div>
+                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #334155; font-size: 12px; color: #64748b;">
+                        Period: ${new Date((usage.first_use || 0) * 1000).toLocaleString()} → ${new Date((usage.last_use || 0) * 1000).toLocaleString()}
+                    </div>
+                </div>
+                ` : `
+                <div style="background: #1e293b; padding: 20px; border-radius: 8px; border: 1px solid #334155; text-align: center; color: #94a3b8;">
+                    No usage recorded yet. Start by invoking functions!
+                </div>
+                `}
+                
+                <div style="margin-top: 15px; padding: 12px; background: #0f172a; border-radius: 6px; border: 1px solid #1e293b; font-size: 12px; color: #64748b;">
+                    <strong style="color: #94a3b8;">Pricing:</strong> $0.0001 per invocation + $0.00001 per GB-second
+                </div>
+            `;
+            
+            document.getElementById('usageContent').innerHTML = html;
+        }
+        
+        function clearApiKey() {
+            const input = document.getElementById('apiKeyInput');
+            const btn = document.getElementById('toggleApiKeyBtn');
+            input.value = '';
+            input.type = 'text';
+            btn.textContent = '👁️';
+            document.getElementById('usageSection').style.display = 'none';
+            document.getElementById('usageError').style.display = 'none';
+            sessionStorage.removeItem('nanolambda_api_key');
+            input.focus();
+        }
+        
+        function toggleApiKeyVisibility() {
+            const input = document.getElementById('apiKeyInput');
+            const btn = document.getElementById('toggleApiKeyBtn');
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                btn.textContent = '👁️';
+            }
+        }
+        
+        // Load API key from session storage if available
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedApiKey = sessionStorage.getItem('nanolambda_api_key');
+            if (savedApiKey) {
+                document.getElementById('apiKeyInput').value = savedApiKey;
+                fetchUsageData();
+            }
+            
+            // Also check URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const apiKeyParam = urlParams.get('apiKey');
+            if (apiKeyParam) {
+                document.getElementById('apiKeyInput').value = apiKeyParam;
+                fetchUsageData();
+            }
+        });
         
         // Time window switching
         document.querySelectorAll('.time-window').forEach(btn => {

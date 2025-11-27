@@ -86,8 +86,8 @@ struct WarmProcess {
 }
 
 impl WarmProcess {
-    /// Create a new warm process
-    fn new(python_path: &str, function_code: &str) -> Result<Self> {
+    /// Create a new warm process with custom handler name
+    fn new(python_path: &str, function_code: &str, handler_name: &str) -> Result<Self> {
         // Create a Python script that stays alive and processes requests
         let runner_script = format!(r#"
 import sys
@@ -103,6 +103,13 @@ function_code = '''
 # Execute the function code to define the handler
 exec(function_code)
 
+# Get the handler function by name
+handler_name = '{}'
+if handler_name not in globals():
+    sys.stderr.write(f"Error: Handler '{{handler_name}}' not found in function code\n")
+    sys.exit(1)
+handler_func = globals()[handler_name]
+
 # Main loop: read requests from stdin, execute, write results to stdout
 while True:
     try:
@@ -113,13 +120,12 @@ while True:
             
         request = json.loads(line)
         event = request.get('event', {{}})
-        context = request.get('context', {{}})
         
         start_time = time.time()
         
-        # Execute the handler
+        # Execute the handler (only pass event, not context)
         try:
-            result = handler(event, context)
+            result = handler_func(event)
             execution_time = (time.time() - start_time) * 1000
             
             response = {{
@@ -150,7 +156,7 @@ while True:
         sys.stdout.write(json.dumps(error_response) + '\n')
         sys.stdout.flush()
         break
-"#, function_code);
+"#, function_code, handler_name);
 
         // Spawn the Python process
         let mut child = Command::new(python_path)
@@ -352,7 +358,7 @@ impl ProcessPool {
     }
 
     /// Get or create a warm process for a function version
-    fn get_or_create(&self, function_id: i64, version: i64, function_code: &str) -> Result<()> {
+    fn get_or_create(&self, function_id: i64, version: i64, function_code: &str, handler_name: &str) -> Result<()> {
         let cache_key = Self::make_cache_key(function_id, version);
         let mut processes = self.processes.lock().unwrap();
         
@@ -375,7 +381,7 @@ impl ProcessPool {
         }
         
         // Create new warm process
-        let process = WarmProcess::new(&self.python_path, function_code)?;
+        let process = WarmProcess::new(&self.python_path, function_code, handler_name)?;
         processes.insert(cache_key, process);
         
         Ok(())
@@ -388,6 +394,7 @@ impl ProcessPool {
         function_id: i64,
         version: i64,
         function_code: &str,
+        handler_name: &str,
         event: &Value,
     ) -> Result<(bool, String, Option<String>, u64, bool, u64, u64, f64)> {
         let cache_key = Self::make_cache_key(function_id, version);
@@ -398,7 +405,7 @@ impl ProcessPool {
             !processes.contains_key(&cache_key)
         };
         
-        self.get_or_create(function_id, version, function_code)?;
+        self.get_or_create(function_id, version, function_code, handler_name)?;
         
         // Execute on the warm process
         let mut processes = self.processes.lock().unwrap();
@@ -464,21 +471,21 @@ def handler(event, context):
         let event = serde_json::json!({"name": "Test"});
         
         // First invocation (cold start) - function_id: 1, version: 1
-        let result1 = pool.execute_warm(1, 1, function_code, &event);
+        let result1 = pool.execute_warm(1, 1, function_code, "handler", &event);
         assert!(result1.is_ok());
         let (success1, _, _, _, is_cold1, _mem, _peak_mem, _cpu) = result1.unwrap();
         assert!(success1);
         assert!(is_cold1); // First call should be cold start
         
         // Second invocation (warm start) - same function_id and version
-        let result2 = pool.execute_warm(1, 1, function_code, &event);
+        let result2 = pool.execute_warm(1, 1, function_code, "handler", &event);
         assert!(result2.is_ok());
         let (success2, _, _, _, is_cold2, _mem2, _peak_mem2, _cpu2) = result2.unwrap();
         assert!(success2);
         assert!(!is_cold2); // Second call should be warm start
         
         // Third invocation with different version - should be cold start
-        let result3 = pool.execute_warm(1, 2, function_code, &event);
+        let result3 = pool.execute_warm(1, 2, function_code, "handler", &event);
         assert!(result3.is_ok());
         let (success3, _, _, _, is_cold3, _mem3, _peak_mem3, _cpu3) = result3.unwrap();
         assert!(success3);

@@ -170,7 +170,7 @@ impl PythonExecutor {
             base_dir,
             keep_dirs: false,
             pool: Some(pool),
-            enable_warm_starts: false, // Disabled for now - pool doesn't support dynamic handler names
+            enable_warm_starts: true, // Enabled - ProcessPool now supports dynamic handler names
         })
     }
     
@@ -224,7 +224,7 @@ impl PythonExecutor {
         // Try warm start if enabled and pool is available
         if self.enable_warm_starts && self.pool.is_some() {
             if let Some(ref pool) = self.pool {
-                match pool.execute_warm(config.id, config.version, &config.code, &event) {
+                match pool.execute_warm(config.id, config.version, &config.code, &config.handler, &event) {
                     Ok((success, result_str, error, execution_ms, is_cold_start, _memory_mb, peak_memory_mb, cpu_percent)) => {
                         let total_ms = start_time.elapsed().as_millis() as u64;
                         let cold_start_ms = if is_cold_start { total_ms - execution_ms } else { 0 };

@@ -13,10 +13,16 @@ pub mod handlers;
 pub mod models;
 pub mod auth;
 pub mod metrics;
+pub mod concurrency;
+pub mod rate_limiter;
+pub mod usage_tracker;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::StorageManager;
 use crate::metrics::MetricsCollector;
+use crate::concurrency::{ConcurrencyController, ConcurrencyConfig};
+use crate::rate_limiter::{RateLimiter, RateLimitTier};
+use crate::usage_tracker::UsageTracker;
 
 /// API server state
 pub struct ApiServer {
@@ -24,6 +30,9 @@ pub struct ApiServer {
     python_executor: Arc<Mutex<PythonExecutor>>,
     nodejs_executor: Arc<Mutex<NodeJSExecutor>>,
     metrics: Arc<MetricsCollector>,
+    concurrency: Arc<ConcurrencyController>,
+    rate_limiter: Arc<RateLimiter>,
+    usage_tracker: Arc<UsageTracker>,
 }
 
 impl ApiServer {
@@ -32,12 +41,16 @@ impl ApiServer {
         let storage = StorageManager::new(db_path)?;
         let python_executor = PythonExecutor::new()?;
         let nodejs_executor = NodeJSExecutor::new()?;
+        let concurrency_config = ConcurrencyConfig::default();
         
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
             nodejs_executor: Arc::new(Mutex::new(nodejs_executor)),
             metrics: Arc::new(MetricsCollector::new()),
+            concurrency: Arc::new(ConcurrencyController::new(concurrency_config)),
+            rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
+            usage_tracker: Arc::new(UsageTracker::new(10000)),
         })
     }
     
@@ -46,12 +59,16 @@ impl ApiServer {
         let storage = StorageManager::new_in_memory()?;
         let python_executor = PythonExecutor::new()?;
         let nodejs_executor = NodeJSExecutor::new()?;
+        let concurrency_config = ConcurrencyConfig::default();
         
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
             nodejs_executor: Arc::new(Mutex::new(nodejs_executor)),
             metrics: Arc::new(MetricsCollector::new()),
+            concurrency: Arc::new(ConcurrencyController::new(concurrency_config)),
+            rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
+            usage_tracker: Arc::new(UsageTracker::new(10000)),
         })
     }
 
@@ -73,6 +90,21 @@ impl ApiServer {
     /// Get metrics collector reference
     pub fn metrics(&self) -> &Arc<MetricsCollector> {
         &self.metrics
+    }
+    
+    /// Get concurrency controller reference
+    pub fn concurrency(&self) -> &Arc<ConcurrencyController> {
+        &self.concurrency
+    }
+    
+    /// Get rate limiter reference
+    pub fn rate_limiter(&self) -> &Arc<RateLimiter> {
+        &self.rate_limiter
+    }
+    
+    /// Get usage tracker reference
+    pub fn usage_tracker(&self) -> &Arc<UsageTracker> {
+        &self.usage_tracker
     }
 
     /// Start the API server
@@ -102,6 +134,14 @@ impl ApiServer {
             // API Key management (viewing/revoking requires auth)
             .route("/auth/keys", get(handlers::list_api_keys))
             .route("/auth/keys/{id}", delete(handlers::revoke_api_key))
+            
+            // Rate limiting status (requires auth)
+            .route("/rate-limit/status", get(handlers::get_rate_limit_status))
+            
+            // Usage tracking and billing (requires auth)
+            .route("/usage/stats", get(handlers::get_usage_stats))
+            .route("/usage/billing", get(handlers::get_billing_info))
+            
             .layer(axum::middleware::from_fn_with_state(
                 storage_for_auth,
                 auth::auth_middleware
@@ -116,6 +156,14 @@ impl ApiServer {
             // Metrics (public for now, could be protected later)
             .route("/metrics", get(handlers::get_metrics))
             .route("/dashboard", get(handlers::get_dashboard))
+            .route("/concurrency", get(handlers::get_concurrency_stats))
+            
+            // Rate limiting admin endpoints (public for now, should be protected)
+            .route("/rate-limit/stats", get(handlers::get_all_rate_limit_stats))
+            .route("/rate-limit/tier", put(handlers::set_rate_limit_tier))
+            
+            // Usage tracking admin endpoints (public for now, should be protected)
+            .route("/usage/all", get(handlers::get_all_usage_stats))
             
             // Health check
             .route("/health", get(handlers::health_check))
