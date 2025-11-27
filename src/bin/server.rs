@@ -3,6 +3,7 @@
 //! Main entry point for the NanoLambda API server.
 
 use anyhow::Result;
+use nanolambda_api::ApiServer;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -14,22 +15,27 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
     
-    info!("Starting NanoLambda Server v{}", nanolambda::VERSION);
+    info!("Starting NanoLambda Server v{}", env!("CARGO_PKG_VERSION"));
     info!("========================================");
     
-    // TODO: Initialize components
-    info!("Initializing VMM...");
+    // Get database path from environment or use default
+    let db_path = std::env::var("NANOLAMBDA_DB_PATH")
+        .unwrap_or_else(|_| "nanolambda.db".to_string());
+    
+    info!("Database path: {}", db_path);
+    
+    // Initialize API server
     info!("Initializing API server...");
-    info!("Initializing scheduler...");
+    let api_server = ApiServer::new(&db_path).await
+        .map_err(|e| anyhow::anyhow!("Failed to initialize API server: {}", e))?;
     
     info!("NanoLambda server started successfully!");
     info!("API endpoint: http://localhost:8080");
-    info!("Metrics endpoint: http://localhost:9090/metrics");
+    info!("Health check: http://localhost:8080/health");
     
-    // Keep server running
-    tokio::signal::ctrl_c().await?;
-    
-    info!("Shutting down gracefully...");
+    // Start the server (this will block until shutdown)
+    api_server.run().await
+        .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
     
     Ok(())
 }

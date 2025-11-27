@@ -13,27 +13,27 @@ NanoLambda is designed as a distributed serverless platform with three main laye
 ```
 ┌────────────────────────────────────────────────────────────┐
 │                    Control Plane                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │  API Server  │  │  Scheduler   │  │  Registry    │    │
-│  │  (actix-web) │  │  (tokio)     │  │  (sled)      │    │
-│  └──────────────┘  └──────────────┘  └──────────────┘    │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │  API Server  │  │  Scheduler   │  │  Registry    │      │
+│  │  (actix-web) │  │  (tokio)     │  │  (sled)      │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
 └────────────────────────────────────────────────────────────┘
                           ↓ gRPC/Unix Sockets
 ┌────────────────────────────────────────────────────────────┐
 │                    Data Plane                              │
-│  ┌──────────────────────────────────────────────────────┐ │
-│  │          MicroVM Manager (VMM)                       │ │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐             │ │
-│  │  │ MicroVM │  │ MicroVM │  │ MicroVM │  ... × 1000 │ │
-│  │  │  Pool   │  │  Pool   │  │  Pool   │             │ │
-│  │  └─────────┘  └─────────┘  └─────────┘             │ │
-│  └──────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │          MicroVM Manager (VMM)                       │  │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐               │  |
+│  │  │ MicroVM │  │ MicroVM │  │ MicroVM │  ... × 1000   │  |
+│  │  │  Pool   │  │  Pool   │  │  Pool   │               │  |
+│  │  └─────────┘  └─────────┘  └─────────┘               │  |
+│  └──────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────┘
                           ↓ KVM ioctls
 ┌────────────────────────────────────────────────────────────┐
 │                  Infrastructure Layer                      │
-│  • Linux Kernel 5.10+ with KVM                            │
-│  • x86_64 CPU with VT-x/AMD-V                             │
+│  • Linux Kernel 5.10+ with KVM                             │
+│  • x86_64 CPU with VT-x/AMD-V                              │
 │  • 16GB+ RAM                                               │
 │  • NVMe storage                                            │
 └────────────────────────────────────────────────────────────┘
@@ -45,7 +45,7 @@ NanoLambda is designed as a distributed serverless platform with three main laye
 
 ### 1. API Server (Control Plane)
 
-**Technology:** Rust + actix-web (async HTTP framework)
+**Technology:** Rust + actix-web(maybe axum?) (async HTTP framework)
 
 **Responsibilities:**
 - Expose AWS Lambda-compatible REST API

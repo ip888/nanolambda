@@ -1,5 +1,10 @@
-//! Storage layer for functions and metadata
+// Storage layer for functions and metadata
 
+pub mod models;
+pub mod manager;
 pub mod registry;
+pub mod error;
 
-// TODO: Implement storage layer
+pub use models::*;
+pub use manager::StorageManager;
+pub use error::{StorageError, Result};

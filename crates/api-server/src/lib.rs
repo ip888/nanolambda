@@ -12,15 +12,18 @@ pub mod routes;
 pub mod handlers;
 pub mod models;
 pub mod auth;
+pub mod metrics;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::StorageManager;
+use crate::metrics::MetricsCollector;
 
 /// API server state
 pub struct ApiServer {
     storage: Arc<StorageManager>,
     python_executor: Arc<Mutex<PythonExecutor>>,
     nodejs_executor: Arc<Mutex<NodeJSExecutor>>,
+    metrics: Arc<MetricsCollector>,
 }
 
 impl ApiServer {
@@ -34,6 +37,7 @@ impl ApiServer {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
             nodejs_executor: Arc::new(Mutex::new(nodejs_executor)),
+            metrics: Arc::new(MetricsCollector::new()),
         })
     }
     
@@ -47,6 +51,7 @@ impl ApiServer {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
             nodejs_executor: Arc::new(Mutex::new(nodejs_executor)),
+            metrics: Arc::new(MetricsCollector::new()),
         })
     }
 
@@ -63,6 +68,11 @@ impl ApiServer {
     /// Get Node.js executor reference
     pub fn nodejs_executor(&self) -> &Arc<Mutex<NodeJSExecutor>> {
         &self.nodejs_executor
+    }
+    
+    /// Get metrics collector reference
+    pub fn metrics(&self) -> &Arc<MetricsCollector> {
+        &self.metrics
     }
 
     /// Start the API server
@@ -102,6 +112,10 @@ impl ApiServer {
         let public_routes = Router::new()
             // API key creation (must be public to get first key)
             .route("/auth/keys", post(handlers::create_api_key))
+            
+            // Metrics (public for now, could be protected later)
+            .route("/metrics", get(handlers::get_metrics))
+            .route("/dashboard", get(handlers::get_dashboard))
             
             // Health check
             .route("/health", get(handlers::health_check))

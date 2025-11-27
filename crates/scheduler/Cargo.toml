@@ -1,11 +1,16 @@
 [package]
 name = "nanolambda-scheduler"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Function scheduling and orchestration"
 
 [dependencies]
-tokio = { version = "1.40", features = ["full"] }
-anyhow = "1.0"
-thiserror = "1.0"
-tracing = "0.1"
+# Async runtime
+tokio = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }

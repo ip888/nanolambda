@@ -1,7 +1,7 @@
 [package]
 name = "nanolambda"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Your Name <your.email@example.com>"]
 license = "MIT"
 description = "Self-hosted serverless platform with microVM isolation"
@@ -16,7 +16,50 @@ members = [
     "crates/runtime",
     "crates/scheduler",
     "crates/storage",
+    "benchmarks",
 ]
+
+# Centralized dependency versions for consistency across workspace
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.45", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Web framework
+axum = "0.8"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Hashing
+sha2 = "0.10"
+blake3 = "1.5"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# Async traits
+async-trait = "0.1"
 
 [[bin]]
 name = "nanolambda-server"
@@ -26,38 +69,25 @@ path = "src/bin/server.rs"
 name = "nanolambda-cli"
 path = "src/bin/cli.rs"
 
+[[bin]]
+name = "nanolambda-poc"
+path = "src/bin/nanolambda-poc.rs"
+
 [dependencies]
-# Async runtime
-tokio = { version = "1.40", features = ["full"] }
+# Use workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+sha2 = { workspace = true }
+chrono = { workspace = true }
 
-# HTTP server
-actix-web = "4.8"
-actix-rt = "2.10"
-
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# Error handling
-anyhow = "1.0"
-thiserror = "1.0"
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# CLI
-clap = { version = "4.5", features = ["derive"] }
-
-# Storage
-sled = "0.34"
-
-# Cryptography
-sha2 = "0.10"
+# Additional dependencies
 base64 = "0.22"
-
-# Time
-chrono = { version = "0.4", features = ["serde"] }
 
 # Workspace crates
 nanolambda-vmm = { path = "crates/vmm" }

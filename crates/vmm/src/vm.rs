@@ -1,13 +1,24 @@
-//! Virtual Machine management
+//! Virtual Machine management for POC
+//!
+//! Simplified implementation focused on core functionality.
+
+use std::sync::{Arc, Mutex};
+use kvm_ioctls::{Kvm, VmFd};
+use vm_memory::{GuestMemoryMmap, GuestAddress, GuestMemoryRegion};
+use linux_loader::loader::KernelLoader;
+use tracing::{info, debug, error};
+
+use crate::{Result, VmmError}; Machine management
 //!
 //! This module handles the creation, configuration, and lifecycle of microVMs.
 
 use kvm_ioctls::{Kvm, VmFd};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{Result, VmmError};
+use crate::security::{SecurityConfig, setup_security};
 
 /// VM configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +37,10 @@ pub struct VmConfig {
     
     /// Kernel command line parameters
     pub kernel_cmdline: String,
+
+    /// Security configuration
+    #[serde(default)]
+    pub security: SecurityConfig,
 }
 
 impl Default for VmConfig {
@@ -36,6 +51,7 @@ impl Default for VmConfig {
             kernel_path: PathBuf::from("/boot/vmlinux"),
             rootfs_path: None,
             kernel_cmdline: String::from("console=ttyS0 reboot=k panic=1"),
+            security: SecurityConfig::default(),
         }
     }
 }
@@ -61,6 +77,11 @@ impl Vm {
     pub fn new(config: VmConfig) -> Result<Self> {
         info!("Creating new VM with config: {:?}", config);
         
+        // Set up security features first
+        setup_security(&config.security).map_err(|e| {
+            VmmError::InvalidConfig(format!("Failed to set up security features: {}", e))
+        })?;
+        
         // Open /dev/kvm
         let kvm = Kvm::new().map_err(|e| {
             VmmError::InvalidConfig(format!("Failed to open /dev/kvm: {}. Is KVM available?", e))
@@ -71,7 +92,7 @@ impl Vm {
             VmmError::Kvm(e)
         })?;
         
-        debug!("VM file descriptor created");
+        debug!("VM file descriptor created with security features enabled");
         
         Ok(Self {
             config,

@@ -4,6 +4,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     Json,
+    response::Html,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -494,6 +495,20 @@ pub async fn invoke_function(
                 // Continue anyway - execution succeeded
             }
             
+            // Record metrics
+            let metrics_point = crate::metrics::MetricPoint {
+                timestamp: completed_at,
+                function_name: name.clone(),
+                cold_start: exec_result.metrics.is_cold_start,
+                execution_time_ms: exec_result.metrics.execution_ms as i64,
+                status: if exec_result.success {
+                    crate::metrics::MetricStatus::Success
+                } else {
+                    crate::metrics::MetricStatus::Error
+                },
+            };
+            state.metrics().record(metrics_point).await;
+            
             // Parse result string to JSON
             let result_value = if let Some(ref result_str) = exec_result.result {
                 serde_json::from_str(result_str).unwrap_or(serde_json::Value::String(result_str.clone()))
@@ -886,4 +901,37 @@ pub async fn revoke_api_key(
             ))
         }
     }
+}
+
+// ============================================================================
+// Metrics & Observability Handlers
+// ============================================================================
+
+use crate::metrics::MetricsAggregate;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MetricsResponse {
+    pub last_hour: MetricsAggregate,
+    pub last_24h: MetricsAggregate,
+    pub all_time: MetricsAggregate,
+}
+
+/// GET /metrics - Get metrics data
+pub async fn get_metrics(
+    State(state): State<Arc<ApiServer>>,
+) -> Result<Json<MetricsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let last_hour = state.metrics().get_metrics(3600).await;
+    let last_24h = state.metrics().get_metrics(86400).await;
+    let all_time = state.metrics().get_all_time_metrics().await;
+    
+    Ok(Json(MetricsResponse {
+        last_hour,
+        last_24h,
+        all_time,
+    }))
+}
+
+/// GET /dashboard - Serve metrics dashboard
+pub async fn get_dashboard() -> Html<&'static str> {
+    Html(include_str!("../dashboard.html"))
 }

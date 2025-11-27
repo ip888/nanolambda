@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NanoLambda Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            margin-bottom: 40px;
+            border-bottom: 2px solid #1e293b;
+            padding-bottom: 20px;
+        }
+        
+        h1 {
+            font-size: 32px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        
+        .subtitle {
+            color: #94a3b8;
+            font-size: 16px;
+        }
+        
+        .last-update {
+            float: right;
+            color: #64748b;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
+        .time-windows {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .time-window {
+            padding: 8px 16px;
+            background: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        
+        .time-window:hover {
+            background: #334155;
+        }
+        
+        .time-window.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .metric-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .metric-label {
+            font-size: 14px;
+            color: #94a3b8;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .metric-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .metric-unit {
+            font-size: 18px;
+            color: #64748b;
+            margin-left: 4px;
+        }
+        
+        .metric-secondary {
+            font-size: 14px;
+            color: #64748b;
+            margin-top: 8px;
+        }
+        
+        .status-good { color: #10b981; }
+        .status-warning { color: #f59e0b; }
+        .status-error { color: #ef4444; }
+        
+        .latency-breakdown {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .latency-breakdown h2 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #fff;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-container {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 20px;
+            height: 300px;
+        }
+        
+        .chart-container h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 240px;
+        }
+        
+        .percentile-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .percentile-label {
+            width: 60px;
+            font-size: 14px;
+            color: #94a3b8;
+        }
+        
+        .percentile-bar {
+            flex: 1;
+            height: 24px;
+            background: #0f172a;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .percentile-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            transition: width 0.3s;
+        }
+        
+        .percentile-value {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 60px 20px;
+            color: #64748b;
+            font-size: 18px;
+        }
+        
+        .refresh-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            margin-left: 8px;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚡ NanoLambda Dashboard</h1>
+            <p class="subtitle">Real-time serverless function metrics</p>
+            <div class="last-update">
+                Last updated: <span id="lastUpdate">--</span>
+                <span class="refresh-indicator"></span>
+            </div>
+        </header>
+        
+        <div class="time-windows">
+            <button class="time-window active" data-window="last_hour">Last Hour</button>
+            <button class="time-window" data-window="last_24h">Last 24 Hours</button>
+            <button class="time-window" data-window="all_time">All Time</button>
+        </div>
+        
+        <div id="dashboard-content">
+            <div class="no-data">Loading metrics...</div>
+        </div>
+    </div>
+    
+    <script>
+        let currentWindow = 'last_hour';
+        let charts = {};
+        
+        // Initialize charts
+        function initCharts() {
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#e2e8f0' }
+                    }
+                },
+                scales: {
+                    x: { 
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#334155' }
+                    },
+                    y: { 
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#334155' }
+                    }
+                }
+            };
+            
+            // Invocations timeline (line chart)
+            charts.invocations = new Chart(
+                document.getElementById('invocationsChart'),
+                {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Invocations',
+                            data: [],
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: chartOptions
+                }
+            );
+            
+            // Latency percentiles (bar chart)
+            charts.latency = new Chart(
+                document.getElementById('latencyChart'),
+                {
+                    type: 'bar',
+                    data: {
+                        labels: ['P50', 'P95', 'P99', 'Average'],
+                        datasets: [{
+                            label: 'Latency (ms)',
+                            data: [0, 0, 0, 0],
+                            backgroundColor: [
+                                'rgba(16, 185, 129, 0.8)',
+                                'rgba(245, 158, 11, 0.8)',
+                                'rgba(239, 68, 68, 0.8)',
+                                'rgba(59, 130, 246, 0.8)'
+                            ],
+                            borderColor: [
+                                '#10b981',
+                                '#f59e0b',
+                                '#ef4444',
+                                '#3b82f6'
+                            ],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        ...chartOptions,
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                }
+            );
+            
+            // Status distribution (doughnut chart)
+            charts.status = new Chart(
+                document.getElementById('statusChart'),
+                {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Success', 'Errors', 'Timeouts'],
+                        datasets: [{
+                            data: [0, 0, 0],
+                            backgroundColor: [
+                                'rgba(16, 185, 129, 0.8)',
+                                'rgba(239, 68, 68, 0.8)',
+                                'rgba(245, 158, 11, 0.8)'
+                            ],
+                            borderColor: [
+                                '#10b981',
+                                '#ef4444',
+                                '#f59e0b'
+                            ],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { color: '#e2e8f0' }
+                            }
+                        }
+                    }
+                }
+            );
+            
+            // Cold start percentage (doughnut gauge)
+            charts.coldStart = new Chart(
+                document.getElementById('coldStartChart'),
+                {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Cold Starts', 'Warm Starts'],
+                        datasets: [{
+                            data: [0, 100],
+                            backgroundColor: [
+                                'rgba(139, 92, 246, 0.8)',
+                                'rgba(51, 65, 85, 0.3)'
+                            ],
+                            borderColor: [
+                                '#8b5cf6',
+                                '#334155'
+                            ],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        circumference: 180,
+                        rotation: -90,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { color: '#e2e8f0' }
+                            }
+                        }
+                    }
+                }
+            );
+        }
+        
+        function updateCharts(metrics) {
+            // Update invocations timeline (show last 20 data points)
+            const invocationsData = generateTimelineData(metrics);
+            charts.invocations.data.labels = invocationsData.labels;
+            charts.invocations.data.datasets[0].data = invocationsData.values;
+            charts.invocations.update();
+            
+            // Update latency chart
+            charts.latency.data.datasets[0].data = [
+                metrics.p50_latency_ms || 0,
+                metrics.p95_latency_ms || 0,
+                metrics.p99_latency_ms || 0,
+                metrics.avg_latency_ms || 0
+            ];
+            charts.latency.update();
+            
+            // Update status distribution
+            const successCount = metrics.total_invocations - metrics.errors - metrics.timeouts;
+            charts.status.data.datasets[0].data = [
+                successCount,
+                metrics.errors || 0,
+                metrics.timeouts || 0
+            ];
+            charts.status.update();
+            
+            // Update cold start gauge
+            const coldStartRate = metrics.cold_start_rate || 0;
+            charts.coldStart.data.datasets[0].data = [
+                coldStartRate * 100,
+                (1 - coldStartRate) * 100
+            ];
+            charts.coldStart.update();
+        }
+        
+        function generateTimelineData(metrics) {
+            // Generate sample timeline data (in production, this would come from time-series data)
+            const points = 20;
+            const labels = [];
+            const values = [];
+            const now = Date.now();
+            const interval = currentWindow === 'last_hour' ? 3 * 60 * 1000 : 
+                           currentWindow === 'last_24h' ? 72 * 60 * 1000 : 
+                           24 * 60 * 60 * 1000;
+            
+            for (let i = points - 1; i >= 0; i--) {
+                const time = new Date(now - (i * interval));
+                labels.push(time.toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                }));
+                // Approximate distribution (in production, use actual time-series data)
+                values.push(Math.max(0, Math.floor(metrics.total_invocations / points + (Math.random() - 0.5) * 10)));
+            }
+            
+            return { labels, values };
+        }
+
+        
+        // Fetch and display metrics
+        async function fetchMetrics() {
+            try {
+                const response = await fetch('/metrics');
+                const data = await response.json();
+                
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+                renderMetrics(data[currentWindow]);
+            } catch (error) {
+                console.error('Failed to fetch metrics:', error);
+                document.getElementById('dashboard-content').innerHTML = 
+                    '<div class="no-data">Failed to load metrics. Is the server running?</div>';
+            }
+        }
+        
+        // Render metrics UI
+        function renderMetrics(metrics) {
+            if (metrics.total_invocations === 0) {
+                document.getElementById('dashboard-content').innerHTML = 
+                    '<div class="no-data">No invocations yet. Create and invoke a function to see metrics!</div>';
+                return;
+            }
+            
+            const html = `
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Total Invocations</div>
+                        <div class="metric-value">${metrics.total_invocations.toLocaleString()}</div>
+                        <div class="metric-secondary">
+                            ${metrics.invocations_per_second.toFixed(2)} invocations/sec
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-label">Average Latency</div>
+                        <div class="metric-value">
+                            ${metrics.avg_latency_ms.toFixed(1)}
+                            <span class="metric-unit">ms</span>
+                        </div>
+                        <div class="metric-secondary ${getLatencyClass(metrics.avg_latency_ms)}">
+                            ${getLatencyText(metrics.avg_latency_ms)}
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-label">Cold Starts</div>
+                        <div class="metric-value">
+                            ${metrics.cold_starts}
+                            <span class="metric-unit">(${(metrics.cold_start_rate * 100).toFixed(1)}%)</span>
+                        </div>
+                        <div class="metric-secondary ${getColdStartClass(metrics.cold_start_rate)}">
+                            ${getColdStartText(metrics.cold_start_rate)}
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-label">Error Rate</div>
+                        <div class="metric-value ${getErrorClass(metrics.error_rate)}">
+                            ${(metrics.error_rate * 100).toFixed(1)}
+                            <span class="metric-unit">%</span>
+                        </div>
+                        <div class="metric-secondary">
+                            ${metrics.errors} errors / ${metrics.timeouts} timeouts
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h2>📈 Invocations Over Time</h2>
+                        <div class="chart-wrapper">
+                            <canvas id="invocationsChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h2>⚡ Latency Distribution</h2>
+                        <div class="chart-wrapper">
+                            <canvas id="latencyChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h2>🎯 Success vs Errors</h2>
+                        <div class="chart-wrapper">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h2>🔥 Cold Start Rate</h2>
+                        <div class="chart-wrapper">
+                            <canvas id="coldStartChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="latency-breakdown">
+                    <h2>📊 Latency Distribution</h2>
+                    
+                    <div class="percentile-row">
+                        <div class="percentile-label">P50</div>
+                        <div class="percentile-bar">
+                            <div class="percentile-fill" style="width: ${getPercentileWidth(metrics.p50_latency_ms, metrics.p99_latency_ms)}%"></div>
+                            <div class="percentile-value">${metrics.p50_latency_ms}ms</div>
+                        </div>
+                    </div>
+                    
+                    <div class="percentile-row">
+                        <div class="percentile-label">P95</div>
+                        <div class="percentile-bar">
+                            <div class="percentile-fill" style="width: ${getPercentileWidth(metrics.p95_latency_ms, metrics.p99_latency_ms)}%"></div>
+                            <div class="percentile-value">${metrics.p95_latency_ms}ms</div>
+                        </div>
+                    </div>
+                    
+                    <div class="percentile-row">
+                        <div class="percentile-label">P99</div>
+                        <div class="percentile-bar">
+                            <div class="percentile-fill" style="width: 100%"></div>
+                            <div class="percentile-value">${metrics.p99_latency_ms}ms</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('dashboard-content').innerHTML = html;
+            
+            // Initialize charts if needed (first render)
+            if (!charts.invocations) {
+                initCharts();
+            }
+            
+            // Update charts with new data
+            updateCharts(metrics);
+        }
+        
+        // Helper functions
+        function getLatencyClass(latency) {
+            if (latency < 100) return 'status-good';
+            if (latency < 500) return 'status-warning';
+            return 'status-error';
+        }
+        
+        function getLatencyText(latency) {
+            if (latency < 100) return '⚡ Excellent';
+            if (latency < 500) return '⚠️ Acceptable';
+            return '❌ Slow';
+        }
+        
+        function getColdStartClass(rate) {
+            if (rate < 0.1) return 'status-good';
+            if (rate < 0.5) return 'status-warning';
+            return 'status-error';
+        }
+        
+        function getColdStartText(rate) {
+            if (rate < 0.1) return '✅ Very low';
+            if (rate < 0.5) return '⚠️ Moderate';
+            return '❌ High';
+        }
+        
+        function getErrorClass(rate) {
+            if (rate < 0.01) return 'status-good';
+            if (rate < 0.05) return 'status-warning';
+            return 'status-error';
+        }
+        
+        function getPercentileWidth(value, max) {
+            if (max === 0) return 0;
+            return Math.min(100, (value / max) * 100);
+        }
+        
+        // Time window switching
+        document.querySelectorAll('.time-window').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.time-window').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentWindow = btn.dataset.window;
+                fetchMetrics();
+            });
+        });
+        
+        // Auto-refresh every 5 seconds
+        fetchMetrics();
+        setInterval(fetchMetrics, 5000);
+    </script>
+</body>
+</html>

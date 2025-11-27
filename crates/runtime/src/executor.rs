@@ -169,7 +169,7 @@ impl PythonExecutor {
             base_dir,
             keep_dirs: false,
             pool: Some(pool),
-            enable_warm_starts: true, // Enabled by default
+            enable_warm_starts: false, // Disabled for now - pool doesn't support dynamic handler names
         })
     }
     
@@ -356,16 +356,20 @@ impl PythonExecutor {
         let event_json = serde_json::to_string(event)
             .map_err(|e| ExecutorError::InvalidCode(format!("Invalid event JSON: {}", e)))?;
         
+        // Escape the JSON string for Python (replace backslashes and quotes)
+        let event_json_escaped = event_json.replace("\\", "\\\\").replace("\"", "\\\"");
+        
         let wrapper = format!(r#"#!/usr/bin/env python3
 import json
 import sys
 import traceback
 from function import {handler}
 
-def main():
+def __wrapper_main__():
     try:
-        # Parse event
-        event = {event_json}
+        # Parse event from JSON string
+        event_str = "{event_json}"
+        event = json.loads(event_str)
         
         # Execute handler
         result = {handler}(event, {{}})
@@ -389,10 +393,10 @@ def main():
         sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    __wrapper_main__()
 "#, 
             handler = config.handler,
-            event_json = event_json
+            event_json = event_json_escaped
         );
         
         Ok(wrapper)

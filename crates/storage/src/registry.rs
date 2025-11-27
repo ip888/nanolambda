@@ -1,19 +1,22 @@
-//! Function registry
+//! Function registry (DEPRECATED - use StorageManager instead)
+//!
+//! This module is kept for backward compatibility but is superseded
+//! by the StorageManager which uses SQLite for better querying.
 
 use serde::{Deserialize, Serialize};
-use sled::Db;
 
-pub struct FunctionRegistry {
-    db: Db,
-}
+#[deprecated(since = "0.1.0", note = "Use StorageManager instead")]
+pub struct FunctionRegistry;
 
+#[deprecated(since = "0.1.0", note = "Use StorageManager::create_function instead")]
 impl FunctionRegistry {
-    pub fn new(path: &str) -> Result<Self, sled::Error> {
-        let db = sled::open(path)?;
-        Ok(Self { db })
+    #[allow(dead_code)]
+    pub fn new(_path: &str) -> Result<Self, std::io::Error> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "FunctionRegistry is deprecated, use StorageManager",
+        ))
     }
-    
-    // TODO: Implement registry methods
 }
 
 #[derive(Debug, Serialize, Deserialize)]
