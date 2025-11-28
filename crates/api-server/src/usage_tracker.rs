@@ -159,14 +159,19 @@ impl UsageTracker {
     }
 
     /// Calculate billing amount based on usage
-    /// Pricing model: $0.0001 per invocation + $0.00001 per GB-second
+    /// Pricing model: $0.00000016 per invocation + $0.000015 per GB-second (20% cheaper than AWS)
     pub fn calculate_bill(stats: &UsageStats) -> BillingInfo {
-        // Base price per invocation
-        let invocation_cost = stats.total_invocations as f64 * 0.0001;
+        // Pricing: 20% cheaper than AWS Lambda
+        // AWS: $0.20 per 1M invocations, $0.0000166667 per GB-second
+        // NanoLambda: $0.16 per 1M invocations, $0.000015 per GB-second
         
-        // Memory cost (convert MB-seconds to GB-seconds)
+        // Invocation cost (millisecond-granular billing)
+        let invocation_cost = stats.total_invocations as f64 * 0.00000016;
+        
+        // Memory cost: Convert MB-seconds to GB-seconds (millisecond-granular)
+        // Calculated from: (memory_mb / 1024) * (execution_time_ms / 1000)
         let gb_seconds = stats.total_memory_mb_seconds / 1024.0;
-        let memory_cost = gb_seconds * 0.00001;
+        let memory_cost = gb_seconds * 0.000015;
         
         // Total cost
         let total_cost = invocation_cost + memory_cost;
@@ -244,26 +249,27 @@ mod tests {
     fn test_billing_calculation() {
         let stats = UsageStats {
             api_key: "test".to_string(),
-            total_invocations: 10000,
-            successful_invocations: 9900,
-            failed_invocations: 100,
-            total_execution_time_ms: 100000,
-            total_memory_mb_seconds: 128000.0, // 125 GB-seconds
-            cold_starts: 100,
+            total_invocations: 1000000, // 1M invocations
+            successful_invocations: 999000,
+            failed_invocations: 1000,
+            total_execution_time_ms: 100000000, // 100k seconds
+            total_memory_mb_seconds: 128000000.0, // 125,000 GB-seconds
+            cold_starts: 10000,
             functions_used: vec!["test_fn".to_string()],
             first_use: 0,
-            last_use: 1000,
+            last_use: 1000000,
         };
         
         let bill = UsageTracker::calculate_bill(&stats);
         
-        // 10000 invocations * $0.0001 = $1.00
-        assert!((bill.invocation_cost - 1.0).abs() < 0.01);
+        // 1M invocations * $0.00000016 = $0.16
+        assert!((bill.invocation_cost - 0.16).abs() < 0.01);
         
-        // 125 GB-seconds * $0.00001 = $0.00125
-        assert!((bill.memory_cost - 0.00125).abs() < 0.0001);
+        // 125,000 GB-seconds * $0.000015 = $1.875
+        let expected_memory = 125000.0 * 0.000015;
+        assert!((bill.memory_cost - expected_memory).abs() < 0.01);
         
-        // Total: ~$1.00
-        assert!((bill.total_cost - 1.00125).abs() < 0.01);
+        // Total: $0.16 + $1.875 = $2.035
+        assert!((bill.total_cost - (0.16 + expected_memory)).abs() < 0.01);
     }
 }

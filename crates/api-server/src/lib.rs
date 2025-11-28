@@ -18,7 +18,7 @@ pub mod rate_limiter;
 pub mod usage_tracker;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
-use nanolambda_storage::{StorageManager, usage_db::UsageDb};
+use nanolambda_storage::{StorageManager, usage_db::UsageDb, pricing::PricingManager};
 use crate::metrics::MetricsCollector;
 use crate::concurrency::{ConcurrencyController, ConcurrencyConfig};
 use crate::rate_limiter::{RateLimiter, RateLimitTier};
@@ -34,6 +34,7 @@ pub struct ApiServer {
     rate_limiter: Arc<RateLimiter>,
     usage_tracker: Arc<UsageTracker>,
     usage_db: Option<Arc<UsageDb>>, // Persistent usage tracking
+    pricing: Option<Arc<PricingManager>>, // Dynamic pricing configuration
 }
 
 impl ApiServer {
@@ -50,7 +51,8 @@ impl ApiServer {
             .max_connections(5)
             .connect(&format!("sqlite://{}?mode=rwc", usage_db_path))
             .await?;
-        let usage_db = UsageDb::new(pool).await?;
+        let usage_db = UsageDb::new(pool.clone()).await?;
+        let pricing = PricingManager::new(pool.clone()).await?;
         
         Ok(Self {
             storage: Arc::new(storage),
@@ -61,6 +63,7 @@ impl ApiServer {
             rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
             usage_tracker: Arc::new(UsageTracker::new(10000)),
             usage_db: Some(Arc::new(usage_db)),
+            pricing: Some(Arc::new(pricing)),
         })
     }
     
@@ -80,6 +83,7 @@ impl ApiServer {
             rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
             usage_tracker: Arc::new(UsageTracker::new(10000)),
             usage_db: None, // No persistent tracking for in-memory mode
+            pricing: None, // No dynamic pricing for in-memory mode
         })
     }
 
@@ -122,6 +126,11 @@ impl ApiServer {
     pub fn usage_db(&self) -> Option<&Arc<UsageDb>> {
         self.usage_db.as_ref()
     }
+    
+    /// Get pricing manager reference (dynamic pricing)
+    pub fn pricing(&self) -> Option<&Arc<PricingManager>> {
+        self.pricing.as_ref()
+    }
 
     /// Start the API server
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -158,6 +167,9 @@ impl ApiServer {
             .route("/usage/stats", get(handlers::get_usage_stats))
             .route("/usage/billing", get(handlers::get_billing_info))
             
+            // Pricing updates (admin only)
+            .route("/pricing", put(handlers::update_pricing))
+            
             .layer(axum::middleware::from_fn_with_state(
                 storage_for_auth,
                 auth::auth_middleware
@@ -180,6 +192,10 @@ impl ApiServer {
             
             // Usage tracking admin endpoints (public for now, should be protected)
             .route("/usage/all", get(handlers::get_all_usage_stats))
+            
+            // Pricing (public - anyone can view current rates)
+            .route("/pricing", get(handlers::get_pricing))
+            .route("/pricing/history", get(handlers::get_pricing_history))
             
             // Health check
             .route("/health", get(handlers::health_check))

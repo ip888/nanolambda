@@ -572,11 +572,20 @@ pub async fn invoke_function(
             
             // Also record to persistent database (async, non-blocking)
             if let Some(usage_db) = state.usage_db() {
-                // Calculate costs
-                let invocation_cost = 0.00000016; // $0.16 per 1M invocations
-                let gb_seconds = (exec_result.metrics.memory_peak_mb as f64 / 1024.0) 
-                    * (exec_result.metrics.execution_ms as f64 / 1000.0);
-                let compute_cost = gb_seconds * 0.000015; // $0.000015 per GB-second
+                // Get current pricing (dynamic, from database)
+                let pricing = if let Some(pricing_mgr) = state.pricing() {
+                    pricing_mgr.get_pricing().await
+                } else {
+                    // Fallback to default pricing if manager not available
+                    nanolambda_storage::pricing::PricingConfig::default()
+                };
+                
+                // Calculate costs using current pricing
+                let invocation_cost = pricing.calculate_invocation_cost(1);
+                let compute_cost = pricing.calculate_compute_cost(
+                    exec_result.metrics.memory_peak_mb as u32,
+                    exec_result.metrics.execution_ms as i64
+                );
                 let total_cost = invocation_cost + compute_cost;
                 
                 let event = nanolambda_storage::usage_db::UsageEvent {
@@ -1193,3 +1202,126 @@ pub async fn get_all_usage_stats(
         "total_customers": all_stats.len(),
     }))
 }
+
+// ============================================================================
+// Pricing Management Handlers
+// ============================================================================
+
+/// GET /pricing - Get current pricing configuration
+pub async fn get_pricing(
+    State(state): State<Arc<ApiServer>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if let Some(pricing_mgr) = state.pricing() {
+        let pricing = pricing_mgr.get_pricing().await;
+        Ok(Json(serde_json::json!({
+            "version": pricing.version,
+            "price_per_invocation": pricing.price_per_invocation,
+            "price_per_1m_invocations": pricing.price_per_invocation * 1_000_000.0,
+            "price_per_gb_second": pricing.price_per_gb_second,
+            "effective_date": pricing.effective_date,
+            "notes": pricing.notes,
+            "is_active": pricing.is_active,
+        })))
+    } else {
+        // Fallback for in-memory mode
+        let default = nanolambda_storage::pricing::PricingConfig::default();
+        Ok(Json(serde_json::json!({
+            "version": default.version,
+            "price_per_invocation": default.price_per_invocation,
+            "price_per_1m_invocations": default.price_per_invocation * 1_000_000.0,
+            "price_per_gb_second": default.price_per_gb_second,
+            "notes": "In-memory mode: using default pricing",
+        })))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePricingRequest {
+    price_per_invocation: Option<f64>,
+    price_per_gb_second: Option<f64>,
+    notes: String,
+}
+
+/// PUT /pricing - Update pricing configuration (admin only)
+pub async fn update_pricing(
+    State(state): State<Arc<ApiServer>>,
+    Json(request): Json<UpdatePricingRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if let Some(pricing_mgr) = state.pricing() {
+        let current = pricing_mgr.get_pricing().await;
+        
+        let new_invocation_price = request.price_per_invocation.unwrap_or(current.price_per_invocation);
+        let new_gb_second_price = request.price_per_gb_second.unwrap_or(current.price_per_gb_second);
+        
+        match pricing_mgr.update_pricing(new_invocation_price, new_gb_second_price, request.notes).await {
+            Ok(pricing) => Ok(Json(serde_json::json!({
+                "success": true,
+                "message": "Pricing updated successfully",
+                "version": pricing.version,
+                "price_per_invocation": pricing.price_per_invocation,
+                "price_per_1m_invocations": pricing.price_per_invocation * 1_000_000.0,
+                "price_per_gb_second": pricing.price_per_gb_second,
+                "effective_date": pricing.effective_date,
+            }))),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "PricingUpdateFailed".to_string(),
+                    message: format!("Failed to update pricing: {}", e),
+                }),
+            )),
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PricingUnavailable".to_string(),
+                message: "Pricing management not available in in-memory mode".to_string(),
+            }),
+        ))
+    }
+}
+
+/// GET /pricing/history - Get pricing history
+pub async fn get_pricing_history(
+    State(state): State<Arc<ApiServer>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if let Some(pricing_mgr) = state.pricing() {
+        match pricing_mgr.get_pricing_history().await {
+            Ok(history) => {
+                let formatted: Vec<_> = history.iter().map(|p| {
+                    serde_json::json!({
+                        "version": p.version,
+                        "price_per_invocation": p.price_per_invocation,
+                        "price_per_1m_invocations": p.price_per_invocation * 1_000_000.0,
+                        "price_per_gb_second": p.price_per_gb_second,
+                        "effective_date": p.effective_date,
+                        "notes": p.notes,
+                        "is_active": p.is_active,
+                    })
+                }).collect();
+                
+                Ok(Json(serde_json::json!({
+                    "history": formatted,
+                    "count": history.len(),
+                })))
+            },
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "HistoryFetchFailed".to_string(),
+                    message: format!("Failed to fetch pricing history: {}", e),
+                }),
+            )),
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PricingUnavailable".to_string(),
+                message: "Pricing management not available in in-memory mode".to_string(),
+            }),
+        ))
+    }
+}
+
