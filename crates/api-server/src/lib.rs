@@ -18,7 +18,7 @@ pub mod rate_limiter;
 pub mod usage_tracker;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
-use nanolambda_storage::StorageManager;
+use nanolambda_storage::{StorageManager, usage_db::UsageDb};
 use crate::metrics::MetricsCollector;
 use crate::concurrency::{ConcurrencyController, ConcurrencyConfig};
 use crate::rate_limiter::{RateLimiter, RateLimitTier};
@@ -33,6 +33,7 @@ pub struct ApiServer {
     concurrency: Arc<ConcurrencyController>,
     rate_limiter: Arc<RateLimiter>,
     usage_tracker: Arc<UsageTracker>,
+    usage_db: Option<Arc<UsageDb>>, // Persistent usage tracking
 }
 
 impl ApiServer {
@@ -43,6 +44,14 @@ impl ApiServer {
         let nodejs_executor = NodeJSExecutor::new()?;
         let concurrency_config = ConcurrencyConfig::default();
         
+        // Create separate usage database
+        let usage_db_path = format!("{}.usage.db", db_path);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect(&format!("sqlite://{}?mode=rwc", usage_db_path))
+            .await?;
+        let usage_db = UsageDb::new(pool).await?;
+        
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
@@ -51,6 +60,7 @@ impl ApiServer {
             concurrency: Arc::new(ConcurrencyController::new(concurrency_config)),
             rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
             usage_tracker: Arc::new(UsageTracker::new(10000)),
+            usage_db: Some(Arc::new(usage_db)),
         })
     }
     
@@ -69,6 +79,7 @@ impl ApiServer {
             concurrency: Arc::new(ConcurrencyController::new(concurrency_config)),
             rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
             usage_tracker: Arc::new(UsageTracker::new(10000)),
+            usage_db: None, // No persistent tracking for in-memory mode
         })
     }
 
@@ -105,6 +116,11 @@ impl ApiServer {
     /// Get usage tracker reference
     pub fn usage_tracker(&self) -> &Arc<UsageTracker> {
         &self.usage_tracker
+    }
+    
+    /// Get usage database reference (persistent tracking)
+    pub fn usage_db(&self) -> Option<&Arc<UsageDb>> {
+        self.usage_db.as_ref()
     }
 
     /// Start the API server

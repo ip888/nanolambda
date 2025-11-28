@@ -558,7 +558,7 @@ pub async fn invoke_function(
             };
             state.metrics().record(metrics_point).await;
             
-            // Record usage for billing
+            // Record usage for billing (in-memory tracker)
             let usage_record = crate::usage_tracker::UsageRecord {
                 timestamp: completed_at,
                 api_key: api_key.clone(),
@@ -569,6 +569,32 @@ pub async fn invoke_function(
                 success: exec_result.success,
             };
             state.usage_tracker().record(usage_record).await;
+            
+            // Also record to persistent database (async, non-blocking)
+            if let Some(usage_db) = state.usage_db() {
+                // Calculate costs
+                let invocation_cost = 0.00000016; // $0.16 per 1M invocations
+                let gb_seconds = (exec_result.metrics.memory_peak_mb as f64 / 1024.0) 
+                    * (exec_result.metrics.execution_ms as f64 / 1000.0);
+                let compute_cost = gb_seconds * 0.000015; // $0.000015 per GB-second
+                let total_cost = invocation_cost + compute_cost;
+                
+                let event = nanolambda_storage::usage_db::UsageEvent {
+                    id: None,
+                    timestamp: completed_at,
+                    api_key: api_key.clone(),
+                    function_name: name.clone(),
+                    request_id: request_id.clone(),
+                    execution_time_ms: exec_result.metrics.execution_ms as i64,
+                    memory_mb: exec_result.metrics.memory_peak_mb as u32,
+                    cold_start: exec_result.metrics.is_cold_start,
+                    success: exec_result.success,
+                    invocation_cost,
+                    compute_cost,
+                    total_cost,
+                };
+                usage_db.record_event(event);
+            }
             
             // Parse result string to JSON
             let result_value = if let Some(ref result_str) = exec_result.result {
