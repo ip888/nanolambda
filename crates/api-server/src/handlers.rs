@@ -355,6 +355,29 @@ pub async fn invoke_function(
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
     let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
     
+    // Check trial status (block if expired)
+    if !api_key.is_empty() {
+        if let Some(trial_mgr) = state.trial_manager() {
+            match trial_mgr.get_trial_status(&api_key).await {
+                Ok(trial) => {
+                    if !trial.is_valid() {
+                        let reason = trial.expiration_reason().unwrap_or_else(|| "Trial expired".to_string());
+                        return Err((
+                            StatusCode::PAYMENT_REQUIRED,
+                            Json(ErrorResponse {
+                                error: "TrialExpired".to_string(),
+                                message: format!("{} - Please upgrade to continue using the service", reason),
+                            }),
+                        ));
+                    }
+                }
+                Err(_) => {
+                    // No trial found - could be paid user or legacy key, allow through
+                }
+            }
+        }
+    }
+    
     // Parse request body
     let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
@@ -603,6 +626,19 @@ pub async fn invoke_function(
                     total_cost,
                 };
                 usage_db.record_event(event);
+            }
+            
+            // Increment trial invocation counter (async, non-blocking)
+            if !api_key.is_empty() {
+                if let Some(trial_mgr) = state.trial_manager() {
+                    let trial_mgr_clone = trial_mgr.clone();
+                    let api_key_clone = api_key.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = trial_mgr_clone.increment_invocation(&api_key_clone).await {
+                            error!("Failed to increment trial counter: {}", e);
+                        }
+                    });
+                }
             }
             
             // Parse result string to JSON
@@ -928,6 +964,21 @@ pub async fn create_api_key(
     match state.storage().create_api_key(request) {
         Ok(key) => {
             info!("Created API key '{}' with id {}", key.name, key.id);
+            
+            // Auto-start trial for new API keys
+            if let Some(trial_mgr) = state.trial_manager() {
+                match trial_mgr.start_trial(&key.key).await {
+                    Ok(trial) => {
+                        info!("Started 14-day trial for API key {}: {} days, {} invocations remaining", 
+                            key.id, trial.days_remaining, trial.invocations_remaining);
+                    }
+                    Err(e) => {
+                        // Log error but don't fail key creation
+                        error!("Failed to start trial for API key {}: {}", key.id, e);
+                    }
+                }
+            }
+            
             Ok(Json(CreateKeyResponse {
                 id: key.id,
                 key: key.key,
@@ -1320,6 +1371,108 @@ pub async fn get_pricing_history(
             Json(ErrorResponse {
                 error: "PricingUnavailable".to_string(),
                 message: "Pricing management not available in in-memory mode".to_string(),
+            }),
+        ))
+    }
+}
+
+
+// ============================================================================
+// Trial Period Management
+// ============================================================================
+
+/// GET /trial/status - Get trial status for authenticated user
+pub async fn get_trial_status(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    if let Some(trial_mgr) = state.trial_manager() {
+        match trial_mgr.get_trial_status(&api_key).await {
+            Ok(trial) => {
+                Ok(Json(serde_json::json!({
+                    "trial_active": trial.trial_active,
+                    "trial_valid": trial.is_valid(),
+                    "trial_start": trial.trial_start,
+                    "trial_end": trial.trial_end,
+                    "days_remaining": trial.days_remaining,
+                    "invocations_used": trial.invocations_used,
+                    "invocations_remaining": trial.invocations_remaining,
+                    "invocation_limit": 100_000,
+                    "expiration_reason": trial.expiration_reason(),
+                })))
+            }
+            Err(_) => {
+                Ok(Json(serde_json::json!({
+                    "trial_active": false,
+                    "trial_valid": false,
+                    "message": "No trial period found for this API key",
+                })))
+            }
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "TrialUnavailable".to_string(),
+                message: "Trial management not available in in-memory mode".to_string(),
+            }),
+        ))
+    }
+}
+
+/// GET /trial/all - Get all active trials (admin)
+pub async fn get_all_trials(
+    State(state): State<Arc<ApiServer>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if let Some(trial_mgr) = state.trial_manager() {
+        match trial_mgr.get_all_active_trials().await {
+            Ok(trials) => {
+                let formatted: Vec<_> = trials.iter().map(|t| {
+                    serde_json::json!({
+                        "api_key": t.api_key,
+                        "trial_active": t.trial_active,
+                        "trial_valid": t.is_valid(),
+                        "trial_start": t.trial_start,
+                        "trial_end": t.trial_end,
+                        "days_remaining": t.days_remaining,
+                        "invocations_used": t.invocations_used,
+                        "invocations_remaining": t.invocations_remaining,
+                        "expiration_reason": t.expiration_reason(),
+                    })
+                }).collect();
+                
+                Ok(Json(serde_json::json!({
+                    "trials": formatted,
+                    "count": trials.len(),
+                })))
+            }
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "TrialFetchFailed".to_string(),
+                    message: format!("Failed to fetch trials: {}", e),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "TrialUnavailable".to_string(),
+                message: "Trial management not available in in-memory mode".to_string(),
             }),
         ))
     }
