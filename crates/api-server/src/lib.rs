@@ -21,6 +21,7 @@ pub mod referral_handlers;
 pub mod annual_handlers;
 pub mod analytics_handlers;
 pub mod clv_handlers;
+pub mod churn_handlers;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::{
@@ -52,6 +53,7 @@ pub struct ApiServer {
     annual_billing_manager: Option<Arc<nanolambda_storage::annual::AnnualBillingManager>>, // Annual billing management
     analytics_manager: Option<Arc<nanolambda_storage::analytics::UsageAnalyticsManager>>, // Usage analytics and insights
     clv_manager: Option<Arc<nanolambda_storage::clv::CLVManager>>, // Customer Lifetime Value tracking
+    churn_analyzer: Option<Arc<nanolambda_storage::churn::ChurnAnalyzer>>, // Churn analysis and prevention
 }
 
 impl ApiServer {
@@ -114,6 +116,11 @@ impl ApiServer {
             nanolambda_storage::clv::CLVManager::new(pool.clone()).await?
         );
         
+        // Initialize churn analyzer (always available)
+        let churn_analyzer = Arc::new(
+            nanolambda_storage::churn::ChurnAnalyzer::new(pool.clone()).await?
+        );
+        
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
@@ -133,6 +140,7 @@ impl ApiServer {
             annual_billing_manager: Some(annual_billing_manager),
             analytics_manager: Some(analytics_manager),
             clv_manager: Some(clv_manager),
+            churn_analyzer: Some(churn_analyzer),
         })
     }
     
@@ -164,7 +172,10 @@ impl ApiServer {
             nanolambda_storage::analytics::UsageAnalyticsManager::new(pool.clone()).await?
         );
         let clv_manager = Arc::new(
-            nanolambda_storage::clv::CLVManager::new(pool).await?
+            nanolambda_storage::clv::CLVManager::new(pool.clone()).await?
+        );
+        let churn_analyzer = Arc::new(
+            nanolambda_storage::churn::ChurnAnalyzer::new(pool).await?
         );
         
         Ok(Self {
@@ -186,6 +197,7 @@ impl ApiServer {
             annual_billing_manager: Some(annual_billing_manager),
             analytics_manager: Some(analytics_manager),
             clv_manager: Some(clv_manager),
+            churn_analyzer: Some(churn_analyzer),
         })
     }
 
@@ -272,6 +284,11 @@ impl ApiServer {
     /// Get CLV manager reference (customer lifetime value tracking)
     pub fn clv_manager(&self) -> Option<&Arc<nanolambda_storage::clv::CLVManager>> {
         self.clv_manager.as_ref()
+    }
+
+    /// Get churn analyzer reference (churn analysis and prevention)
+    pub fn churn_analyzer(&self) -> Option<&Arc<nanolambda_storage::churn::ChurnAnalyzer>> {
+        self.churn_analyzer.as_ref()
     }
 
     /// Start the API server
@@ -374,6 +391,13 @@ impl ApiServer {
             .route("/clv/predict", post(clv_handlers::get_revenue_prediction))
             .route("/clv/cohorts", get(clv_handlers::get_cohort_analysis))
             
+            // Churn analysis and prevention (requires auth)
+            .route("/churn/analyze", post(churn_handlers::analyze_churn_risk))
+            .route("/churn/risk", get(churn_handlers::get_risk_profile))
+            .route("/churn/record", post(churn_handlers::record_churn))
+            .route("/churn/intervention", post(churn_handlers::record_intervention))
+            .route("/churn/interventions", get(churn_handlers::get_interventions))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
@@ -430,6 +454,10 @@ impl ApiServer {
             // CLV segments and summary (public - admin view)
             .route("/clv/segments", get(clv_handlers::get_clv_segments))
             .route("/clv/summary", get(clv_handlers::get_platform_clv_summary))
+            
+            // Churn predictions and platform metrics (public - admin view)
+            .route("/churn/predict", get(churn_handlers::predict_churn))
+            .route("/churn/metrics", get(churn_handlers::get_platform_metrics))
             
             // Health check
             .route("/health", get(handlers::health_check))
