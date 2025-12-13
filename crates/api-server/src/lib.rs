@@ -17,6 +17,7 @@ pub mod concurrency;
 pub mod rate_limiter;
 pub mod usage_tracker;
 pub mod discount_handlers;
+pub mod referral_handlers;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::{
@@ -44,6 +45,7 @@ pub struct ApiServer {
     payment_manager: Option<Arc<PaymentManager>>, // Stripe payment integration
     invoice_manager: Arc<nanolambda_storage::invoice::InvoiceManager>, // Invoice generation and storage
     discount_manager: Option<Arc<nanolambda_storage::discount::DiscountManager>>, // Discount code management
+    referral_manager: Option<Arc<nanolambda_storage::referral::ReferralManager>>, // Referral program management
 }
 
 impl ApiServer {
@@ -83,7 +85,12 @@ impl ApiServer {
         
         // Initialize discount manager (always available)
         let discount_manager = Arc::new(
-            nanolambda_storage::discount::DiscountManager::new(stripe_key, pool.clone()).await?
+            nanolambda_storage::discount::DiscountManager::new(stripe_key.clone(), pool.clone()).await?
+        );
+        
+        // Initialize referral manager (always available)
+        let referral_manager = Arc::new(
+            nanolambda_storage::referral::ReferralManager::new(pool.clone()).await?
         );
         
         Ok(Self {
@@ -101,6 +108,7 @@ impl ApiServer {
             payment_manager,
             invoice_manager,
             discount_manager: Some(discount_manager),
+            referral_manager: Some(referral_manager),
         })
     }
     
@@ -120,7 +128,10 @@ impl ApiServer {
             nanolambda_storage::invoice::InvoiceManager::new("sk_test_dummy".to_string(), pool.clone()).await?
         );
         let discount_manager = Arc::new(
-            nanolambda_storage::discount::DiscountManager::new("sk_test_dummy".to_string(), pool).await?
+            nanolambda_storage::discount::DiscountManager::new("sk_test_dummy".to_string(), pool.clone()).await?
+        );
+        let referral_manager = Arc::new(
+            nanolambda_storage::referral::ReferralManager::new(pool).await?
         );
         
         Ok(Self {
@@ -138,6 +149,7 @@ impl ApiServer {
             payment_manager: None, // No payment processing for in-memory mode
             invoice_manager,
             discount_manager: Some(discount_manager),
+            referral_manager: Some(referral_manager),
         })
     }
 
@@ -204,6 +216,11 @@ impl ApiServer {
     /// Get discount manager reference (discount code management)
     pub fn discount_manager(&self) -> Option<&Arc<nanolambda_storage::discount::DiscountManager>> {
         self.discount_manager.as_ref()
+    }
+    
+    /// Get referral manager reference (referral program management)
+    pub fn referral_manager(&self) -> Option<&Arc<nanolambda_storage::referral::ReferralManager>> {
+        self.referral_manager.as_ref()
     }
 
     /// Start the API server
@@ -283,6 +300,11 @@ impl ApiServer {
             .route("/discounts", get(discount_handlers::list_discounts))
             .route("/discounts/:discount_id/usage", get(discount_handlers::get_discount_usage))
             
+            // Referral program management (requires auth)
+            .route("/referrals/generate", post(referral_handlers::generate_referral_code))
+            .route("/referrals/my-code", get(referral_handlers::get_my_referral_code))
+            .route("/referrals/my-rewards", get(referral_handlers::get_my_referral_rewards))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
@@ -324,6 +346,11 @@ impl ApiServer {
             
             // Discount validation (public - no auth required for validation)
             .route("/discounts/validate", post(discount_handlers::validate_discount))
+            
+            // Referral tracking and details (public)
+            .route("/referrals/track", post(referral_handlers::track_referral_click))
+            .route("/referrals/leaderboard", get(referral_handlers::get_leaderboard))
+            .route("/referrals/:code", get(referral_handlers::get_referral_details))
             
             // Health check
             .route("/health", get(handlers::health_check))

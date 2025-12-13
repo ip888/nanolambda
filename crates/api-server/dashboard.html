@@ -878,6 +878,9 @@
                         <button onclick="showDiscountDialog()" style="margin-top: 8px; width: 100%; padding: 8px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
                             💸 Apply Discount Code
                         </button>
+                        <button onclick="showReferralDialog()" style="margin-top: 8px; width: 100%; padding: 8px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
+                            🎁 Share & Earn
+                        </button>
                         ` : `
                         <div class="metric-secondary">
                             Trial Period Active
@@ -890,6 +893,9 @@
                         </button>
                         <button onclick="showDiscountDialog()" style="margin-top: 8px; width: 100%; padding: 8px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
                             💸 Apply Discount Code
+                        </button>
+                        <button onclick="showReferralDialog()" style="margin-top: 8px; width: 100%; padding: 8px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
+                            🎁 Share & Earn
                         </button>
                         `}
                     </div>
@@ -1733,6 +1739,180 @@
                 
                 // Refresh data
                 fetchUsageData();
+            }
+        }
+
+        // Referral Functions
+        async function showReferralDialog() {
+            const apiKey = localStorage.getItem('apiKey');
+            if (!apiKey) {
+                alert('Please enter your API key first');
+                return;
+            }
+
+            try {
+                // Check if user has a referral code
+                const response = await fetch('/referrals/my-code', {
+                    headers: { 'x-api-key': apiKey }
+                });
+
+                let referralCode = null;
+                let referralStats = null;
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.referral) {
+                        referralCode = data.referral;
+                        referralStats = data.stats;
+                    }
+                } else if (response.status !== 404) {
+                    throw new Error('Failed to fetch referral code');
+                }
+
+                // Show referral dialog
+                const shareUrl = `${window.location.origin}/referrals/${referralCode ? referralCode.code : 'none'}`;
+
+                const modalHtml = `
+                    <div id="referral-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px;">
+                        <div style="background: #1e293b; border-radius: 12px; padding: 28px; max-width: 500px; width: 100%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h2 style="margin: 0; font-size: 24px; color: #fff;">🎁 Share & Earn</h2>
+                                <button onclick="closeReferralDialog()" style="background: #f1f5f9; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 20px; line-height: 1; color: #64748b;">×</button>
+                            </div>
+
+                            ${referralCode ? `
+                                <div style="margin-bottom: 20px; padding: 16px; background: #0f172a; border-radius: 8px; border: 1px solid #334155;">
+                                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase;">Your Referral Code</div>
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        <input type="text" value="${referralCode.code}" readonly style="flex: 1; padding: 10px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; font-family: monospace;">
+                                        <button onclick="copyToClipboard('${referralCode.code}')" style="padding: 10px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Copy</button>
+                                    </div>
+                                </div>
+
+                                <div style="margin-bottom: 20px; padding: 16px; background: #0f172a; border-radius: 8px; border: 1px solid #334155;">
+                                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase;">Referral Statistics</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                        <div>
+                                            <div style="font-size: 14px; color: #94a3b8;">Total Referrals</div>
+                                            <div style="font-size: 24px; font-weight: 700; color: #3b82f6;">${referralStats.total_referrals}</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 14px; color: #94a3b8;">Active</div>
+                                            <div style="font-size: 24px; font-weight: 700; color: #10b981;">${referralStats.active_referrals}</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 14px; color: #94a3b8;">Pending</div>
+                                            <div style="font-size: 24px; font-weight: 700; color: #f59e0b;">${referralStats.pending_referrals}</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 14px; color: #94a3b8;">Earnings</div>
+                                            <div style="font-size: 24px; font-weight: 700; color: #8b5cf6;">$${(referralStats.total_rewards_earned / 100).toFixed(2)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style="margin-bottom: 16px; padding: 16px; background: #0f172a; border-radius: 8px; border: 1px solid #334155;">
+                                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase;">Share Your Link</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <button onclick="shareVia('email', '${referralCode.code}')" style="padding: 10px; background: #334155; border: none; color: #e2e8f0; border-radius: 6px; cursor: pointer; font-weight: 600;">✉️ Email</button>
+                                        <button onclick="shareVia('twitter', '${referralCode.code}')" style="padding: 10px; background: #334155; border: none; color: #e2e8f0; border-radius: 6px; cursor: pointer; font-weight: 600;">𝕏 Twitter</button>
+                                        <button onclick="shareVia('linkedin', '${referralCode.code}')" style="padding: 10px; background: #334155; border: none; color: #e2e8f0; border-radius: 6px; cursor: pointer; font-weight: 600;">💼 LinkedIn</button>
+                                        <button onclick="copyToClipboard('${shareUrl}')" style="padding: 10px; background: #334155; border: none; color: #e2e8f0; border-radius: 6px; cursor: pointer; font-weight: 600;">🔗 Copy Link</button>
+                                    </div>
+                                </div>
+                            ` : `
+                                <div style="padding: 20px; background: #334155; border-radius: 8px; text-align: center;">
+                                    <p style="margin: 0 0 12px 0; color: #94a3b8;">You don't have a referral code yet.</p>
+                                    <button onclick="generateReferralCode()" style="padding: 12px 24px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Generate Code</button>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                `;
+
+                const modalDiv = document.createElement('div');
+                modalDiv.innerHTML = modalHtml;
+                document.body.appendChild(modalDiv.firstChild);
+            } catch (error) {
+                console.error('Error showing referral dialog:', error);
+                alert('Failed to load referral information. Please try again.');
+            }
+        }
+
+        function closeReferralDialog() {
+            const modal = document.getElementById('referral-modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        async function generateReferralCode() {
+            const apiKey = localStorage.getItem('apiKey');
+            if (!apiKey) {
+                alert('Please enter your API key first');
+                return;
+            }
+
+            try {
+                const response = await fetch('/referrals/generate', {
+                    method: 'POST',
+                    headers: {
+                        'x-api-key': apiKey,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        display_name: 'My Referral',
+                        reward_type: 'percentage',
+                        reward_amount: 10,
+                        max_referrals: null
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        closeReferralDialog();
+                        setTimeout(() => showReferralDialog(), 500);
+                    }
+                } else {
+                    alert('Failed to generate referral code');
+                }
+            } catch (error) {
+                console.error('Error generating referral code:', error);
+                alert('Error generating referral code');
+            }
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            });
+        }
+
+        function shareVia(platform, code) {
+            const shareUrl = `${window.location.origin}/referrals/${code}`;
+            const message = `Join me on NanoLambda and get 10% off! Use my referral code: ${code}`;
+
+            let url = '';
+            switch (platform) {
+                case 'email':
+                    url = `mailto:?subject=Check out NanoLambda&body=${encodeURIComponent(message + '\n\n' + shareUrl)}`;
+                    break;
+                case 'twitter':
+                    url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}&url=${encodeURIComponent(shareUrl)}`;
+                    break;
+                case 'linkedin':
+                    url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
+                    break;
+            }
+
+            if (url) {
+                window.open(url, '_blank');
             }
         }
 
