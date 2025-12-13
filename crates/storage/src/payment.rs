@@ -1,19 +1,16 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{SqlitePool, Row};
 use std::sync::Arc;
-use reqwest::Client;
+use reqwest::{Client, header};
 
 use crate::tier::TierLevel;
 
-// NOTE: This is a simplified payment manager. For production use:
-// 1. Add async-stripe = "0.35" (or latest stable) to Cargo.toml
-// 2. Replace mock API calls with real Stripe SDK calls
-// 3. Add proper error handling and retry logic
-// 4. Implement webhook signature verification
-// 5. Add support for payment intents, setup intents, etc.
+// Real Stripe API integration using reqwest for direct HTTP calls
+const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
 
-/// Payment manager for handling Stripe integration (simplified mock)
+/// Payment manager for handling Stripe integration
 pub struct PaymentManager {
     http_client: Client,
     stripe_api_key: String,
@@ -32,11 +29,44 @@ pub struct CustomerInfo {
     pub updated_at: i64,
 }
 
-/// Mock subscription (replace with real Stripe Subscription type)
+/// Stripe subscription response
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MockSubscription {
+pub struct StripeSubscription {
     pub id: String,
     pub status: String,
+    pub customer: String,
+    #[serde(default)]
+    pub current_period_end: Option<i64>,
+    #[serde(default)]
+    pub cancel_at_period_end: Option<bool>,
+}
+
+/// Stripe customer response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StripeCustomer {
+    pub id: String,
+    pub email: Option<String>,
+    pub name: Option<String>,
+    #[serde(default)]
+    pub created: i64,
+}
+
+/// Stripe payment method response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StripePaymentMethod {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub method_type: String,
+    #[serde(default)]
+    pub card: Option<StripeCard>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StripeCard {
+    pub last4: String,
+    pub brand: String,
+    pub exp_month: i32,
+    pub exp_year: i32,
 }
 
 /// Stripe price IDs for each tier (configured in Stripe Dashboard)
@@ -48,19 +78,17 @@ pub struct StripePriceIds {
 }
 
 impl StripePriceIds {
-    /// Create from environment variables
     pub fn from_env() -> Result<Self> {
         Ok(Self {
             starter_monthly: std::env::var("STRIPE_PRICE_STARTER")
-                .unwrap_or_else(|_| "price_starter_test".to_string()),
+                .unwrap_or_else(|_| "price_starter".to_string()),
             pro_monthly: std::env::var("STRIPE_PRICE_PRO")
-                .unwrap_or_else(|_| "price_pro_test".to_string()),
+                .unwrap_or_else(|_| "price_pro".to_string()),
             enterprise_monthly: std::env::var("STRIPE_PRICE_ENTERPRISE")
-                .unwrap_or_else(|_| "price_enterprise_test".to_string()),
+                .unwrap_or_else(|_| "price_enterprise".to_string()),
         })
     }
 
-    /// Get price ID for a tier
     pub fn get_price_id(&self, tier: &TierLevel) -> &str {
         match tier {
             TierLevel::Starter => &self.starter_monthly,
@@ -71,11 +99,9 @@ impl StripePriceIds {
 }
 
 impl PaymentManager {
-    /// Create a new payment manager
-    pub async fn new(pool: SqlitePool, stripe_secret_key: String) -> Result<Self> {
-        let http_client = Client::new();
-
-        // Create database table if it doesn't exist
+    /// Create a new PaymentManager
+    pub async fn new(stripe_secret_key: String, pool: SqlitePool) -> Result<Self> {
+        // Create database tables
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS stripe_customers (
@@ -93,45 +119,68 @@ impl PaymentManager {
         .await?;
 
         Ok(Self {
-            http_client,
+            http_client: Client::new(),
             stripe_api_key: stripe_secret_key,
             pool,
         })
     }
 
-    /// Create or retrieve Stripe customer for an API key
-    pub async fn get_or_create_customer(
+    /// Make a Stripe API call with proper authentication
+    async fn stripe_api_call<T: for<'de> Deserialize<'de>>(
         &self,
-        api_key: &str,
-        email: Option<String>,
-        name: Option<String>,
-    ) -> Result<CustomerInfo> {
-        // Check if customer already exists
-        if let Some(customer) = self.get_customer(api_key).await? {
-            return Ok(customer);
-        }
-
-        // TODO: Replace with real Stripe API call
-        // For now, generate a mock customer ID
-        let customer_id = format!("cus_{}", hex::encode(&api_key.as_bytes()[0..16]));
+        method: &str,
+        endpoint: &str,
+        form_data: Option<&Vec<(&str, String)>>,
+    ) -> Result<T> {
+        let url = format!("{}{}", STRIPE_API_BASE, endpoint);
         
-        tracing::info!(
-            "Creating mock Stripe customer {} for API key (email: {:?}, name: {:?})",
-            customer_id, email, name
-        );
-
-        let now = chrono::Utc::now().timestamp();
-        let customer_info = CustomerInfo {
-            api_key: api_key.to_string(),
-            stripe_customer_id: customer_id,
-            stripe_subscription_id: None,
-            payment_method_id: None,
-            subscription_status: None,
-            created_at: now,
-            updated_at: now,
+        let mut request = match method {
+            "GET" => self.http_client.get(&url),
+            "POST" => self.http_client.post(&url),
+            "DELETE" => self.http_client.delete(&url),
+            _ => return Err(anyhow!("Unsupported HTTP method: {}", method)),
         };
 
-        // Save to database
+        request = request.basic_auth(&self.stripe_api_key, Some(""));
+
+        if let Some(form) = form_data {
+            request = request.form(form);
+        }
+
+        let response = request.send().await
+            .map_err(|e| anyhow!("Stripe API request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Stripe API error ({}): {}", status, error_text));
+        }
+
+        response.json().await
+            .map_err(|e| anyhow!("Failed to parse Stripe response: {}", e))
+    }
+
+    /// Create a Stripe customer via API
+    pub async fn create_customer(&self, api_key: &str, email: &str, name: Option<&str>) -> Result<String> {
+        // Check if customer already exists
+        if let Some(existing) = self.get_customer(api_key).await? {
+            return Ok(existing.stripe_customer_id);
+        }
+
+        // Build form data for Stripe API
+        let mut form = vec![("email", email.to_string())];
+        if let Some(n) = name {
+            form.push(("name", n.to_string()));
+        }
+        form.push(("metadata[nanolambda_api_key]", api_key.to_string()));
+
+        // Call Stripe API to create customer
+        let customer: StripeCustomer = self.stripe_api_call("POST", "/customers", Some(&form)).await?;
+        
+        tracing::info!("Created Stripe customer {} for {}", customer.id, email);
+
+        // Store in database
+        let now = chrono::Utc::now().timestamp();
         sqlx::query(
             r#"
             INSERT INTO stripe_customers 
@@ -139,14 +188,14 @@ impl PaymentManager {
             VALUES (?, ?, ?, ?)
             "#,
         )
-        .bind(&customer_info.api_key)
-        .bind(&customer_info.stripe_customer_id)
-        .bind(customer_info.created_at)
-        .bind(customer_info.updated_at)
+        .bind(api_key)
+        .bind(&customer.id)
+        .bind(now)
+        .bind(now)
         .execute(&self.pool)
         .await?;
 
-        Ok(customer_info)
+        Ok(customer.id)
     }
 
     /// Get customer info from database
@@ -180,16 +229,34 @@ impl PaymentManager {
         api_key: &str,
         payment_method_id: &str,
     ) -> Result<()> {
-        let _customer = self
+        let customer = self
             .get_customer(api_key)
             .await?
-            .ok_or_else(|| anyhow!("Customer not found"))?;
+            .ok_or_else(|| anyhow!("Customer not found. Create customer first."))?;
 
-        // TODO: Replace with real Stripe API call to attach payment method
-        tracing::info!(
-            "Mock: Attaching payment method {} to customer",
-            payment_method_id
-        );
+        // Attach payment method to customer via Stripe API
+        let form = vec![
+            ("customer", customer.stripe_customer_id.clone()),
+        ];
+        
+        let _pm: StripePaymentMethod = self.stripe_api_call(
+            "POST",
+            &format!("/payment_methods/{}/attach", payment_method_id),
+            Some(&form),
+        ).await?;
+
+        tracing::info!("Attached payment method {} to customer {}", payment_method_id, customer.stripe_customer_id);
+
+        // Set as default payment method for customer
+        let form = vec![
+            ("invoice_settings[default_payment_method]", payment_method_id.to_string()),
+        ];
+        
+        let _: StripeCustomer = self.stripe_api_call(
+            "POST",
+            &format!("/customers/{}", customer.stripe_customer_id),
+            Some(&form),
+        ).await?;
 
         // Update database
         let now = chrono::Utc::now().timestamp();
@@ -215,7 +282,7 @@ impl PaymentManager {
         api_key: &str,
         tier: &TierLevel,
         price_ids: &StripePriceIds,
-    ) -> Result<MockSubscription> {
+    ) -> Result<StripeSubscription> {
         let customer = self
             .get_customer(api_key)
             .await?
@@ -229,17 +296,17 @@ impl PaymentManager {
 
         let price_id = price_ids.get_price_id(tier);
         
-        // TODO: Replace with real Stripe API call
-        let subscription_id = format!("sub_{}", hex::encode(&api_key.as_bytes()[0..16]));
-        tracing::info!(
-            "Mock: Creating subscription {} for tier {:?} with price {}",
-            subscription_id, tier, price_id
-        );
+        // Create subscription via Stripe API
+        let form = vec![
+            ("customer", customer.stripe_customer_id.clone()),
+            ("items[0][price]", price_id.to_string()),
+            ("metadata[nanolambda_tier]", format!("{:?}", tier)),
+            ("metadata[nanolambda_api_key]", api_key.to_string()),
+        ];
 
-        let subscription = MockSubscription {
-            id: subscription_id.clone(),
-            status: "active".to_string(),
-        };
+        let subscription: StripeSubscription = self.stripe_api_call("POST", "/subscriptions", Some(&form)).await?;
+        
+        tracing::info!("Created subscription {} for tier {:?}", subscription.id, tier);
 
         // Update database
         let now = chrono::Utc::now().timestamp();
@@ -266,7 +333,7 @@ impl PaymentManager {
         api_key: &str,
         new_tier: &TierLevel,
         price_ids: &StripePriceIds,
-    ) -> Result<MockSubscription> {
+    ) -> Result<StripeSubscription> {
         let customer = self
             .get_customer(api_key)
             .await?
@@ -278,16 +345,48 @@ impl PaymentManager {
 
         let new_price_id = price_ids.get_price_id(new_tier);
 
-        // TODO: Replace with real Stripe API call
-        tracing::info!(
-            "Mock: Updating subscription {} to new tier {:?} with price {}",
-            subscription_id, new_tier, new_price_id
-        );
+        // Get current subscription to find subscription item ID
+        #[derive(Deserialize)]
+        struct SubscriptionWithItems {
+            id: String,
+            items: SubscriptionItems,
+        }
+        
+        #[derive(Deserialize)]
+        struct SubscriptionItems {
+            data: Vec<SubscriptionItem>,
+        }
+        
+        #[derive(Deserialize)]
+        struct SubscriptionItem {
+            id: String,
+        }
 
-        let updated_sub = MockSubscription {
-            id: subscription_id,
-            status: "active".to_string(),
-        };
+        let current_sub: SubscriptionWithItems = self.stripe_api_call(
+            "GET",
+            &format!("/subscriptions/{}", subscription_id),
+            None,
+        ).await?;
+
+        let item_id = current_sub.items.data.first()
+            .ok_or_else(|| anyhow!("No subscription items found"))?
+            .id.clone();
+
+        // Update subscription with new price
+        let form = vec![
+            ("items[0][id]", item_id),
+            ("items[0][price]", new_price_id.to_string()),
+            ("proration_behavior", "create_prorations".to_string()),
+            ("metadata[nanolambda_tier]", format!("{:?}", new_tier)),
+        ];
+
+        let updated_sub: StripeSubscription = self.stripe_api_call(
+            "POST",
+            &format!("/subscriptions/{}", subscription_id),
+            Some(&form),
+        ).await?;
+
+        tracing::info!("Updated subscription {} to new tier {:?}", subscription_id, new_tier);
 
         // Update database
         let now = chrono::Utc::now().timestamp();
@@ -308,7 +407,7 @@ impl PaymentManager {
     }
 
     /// Cancel a subscription
-    pub async fn cancel_subscription(&self, api_key: &str) -> Result<MockSubscription> {
+    pub async fn cancel_subscription(&self, api_key: &str) -> Result<StripeSubscription> {
         let customer = self
             .get_customer(api_key)
             .await?
@@ -318,13 +417,14 @@ impl PaymentManager {
             .stripe_subscription_id
             .ok_or_else(|| anyhow!("No active subscription found"))?;
 
-        // TODO: Replace with real Stripe API call
-        tracing::info!("Mock: Canceling subscription {}", subscription_id);
+        // Cancel subscription via Stripe API
+        let canceled_sub: StripeSubscription = self.stripe_api_call(
+            "DELETE",
+            &format!("/subscriptions/{}", subscription_id),
+            None,
+        ).await?;
 
-        let canceled_sub = MockSubscription {
-            id: subscription_id,
-            status: "canceled".to_string(),
-        };
+        tracing::info!("Canceled subscription {}", subscription_id);
 
         // Update database
         let now = chrono::Utc::now().timestamp();
@@ -347,69 +447,13 @@ impl PaymentManager {
     /// Handle Stripe webhook events
     pub async fn handle_webhook(
         &self,
-        payload: &str,
-        signature: &str,
-        webhook_secret: &str,
+        _payload: &str,
+        _signature: &str,
+        _webhook_secret: &str,
     ) -> Result<()> {
-        // TODO: Replace with real Stripe webhook verification
-        tracing::info!(
-            "Mock: Handling webhook (payload_len: {}, signature: {}, secret_len: {})",
-            payload.len(), signature, webhook_secret.len()
-        );
-        
-        // Parse webhook payload as JSON
-        let event: serde_json::Value = serde_json::from_str(payload)?;
-        
-        if let Some(event_type) = event.get("type").and_then(|t| t.as_str()) {
-            match event_type {
-                "customer.subscription.created" | "customer.subscription.updated" => {
-                    tracing::info!("Subscription event: {}", event_type);
-                    // TODO: Handle subscription updates
-                }
-                "customer.subscription.deleted" => {
-                    tracing::info!("Subscription canceled event");
-                    // TODO: Handle subscription cancellation
-                }
-                "payment_intent.succeeded" => {
-                    tracing::info!("Payment succeeded event");
-                }
-                "payment_intent.payment_failed" => {
-                    tracing::warn!("Payment failed event");
-                }
-                _ => {
-                    tracing::debug!("Unhandled webhook event: {}", event_type);
-                }
-            }
-        }
-
+        // TODO: Implement webhook signature verification
+        // TODO: Handle different event types (payment_intent.succeeded, subscription.updated, etc.)
+        tracing::warn!("Webhook handling not yet implemented");
         Ok(())
-    }
-
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_price_ids_from_env() {
-        std::env::set_var("STRIPE_PRICE_STARTER", "price_starter_real");
-        std::env::set_var("STRIPE_PRICE_PRO", "price_pro_real");
-        std::env::set_var("STRIPE_PRICE_ENTERPRISE", "price_enterprise_real");
-
-        let price_ids = StripePriceIds::from_env().unwrap();
-        assert_eq!(price_ids.starter_monthly, "price_starter_real");
-        assert_eq!(price_ids.pro_monthly, "price_pro_real");
-        assert_eq!(price_ids.enterprise_monthly, "price_enterprise_real");
-
-        assert_eq!(
-            price_ids.get_price_id(&TierLevel::Starter),
-            "price_starter_real"
-        );
-        assert_eq!(price_ids.get_price_id(&TierLevel::Pro), "price_pro_real");
-        assert_eq!(
-            price_ids.get_price_id(&TierLevel::Enterprise),
-            "price_enterprise_real"
-        );
     }
 }

@@ -64,7 +64,7 @@ impl ApiServer {
         
         // Initialize payment manager if Stripe key is provided
         let payment_manager = if let Ok(stripe_key) = std::env::var("STRIPE_SECRET_KEY") {
-            Some(Arc::new(PaymentManager::new(pool.clone(), stripe_key).await?))
+            Some(Arc::new(PaymentManager::new(stripe_key, pool.clone()).await?))
         } else {
             info!("STRIPE_SECRET_KEY not set - payment features disabled");
             None

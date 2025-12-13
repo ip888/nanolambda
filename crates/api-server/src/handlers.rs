@@ -1819,12 +1819,31 @@ pub async fn create_customer(
         ))?;
     
     if let Some(payment_mgr) = state.payment_manager() {
-        match payment_mgr.get_or_create_customer(&api_key, req.email, req.name).await {
-            Ok(customer) => Ok(Json(serde_json::json!({
-                "success": true,
-                "customer_id": customer.stripe_customer_id,
-                "created_at": customer.created_at,
-            }))),
+        let email = req.email.as_deref().ok_or_else(|| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: "Email is required".to_string(),
+            }),
+        ))?;
+        
+        match payment_mgr.create_customer(&api_key, email, req.name.as_deref()).await {
+            Ok(customer_id) => {
+                // Get customer info from database
+                let customer = payment_mgr.get_customer(&api_key).await.map_err(|e| (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "DatabaseError".to_string(),
+                        message: format!("Failed to retrieve customer: {}", e),
+                    }),
+                ))?;
+                
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "customer_id": customer_id,
+                    "created_at": customer.map(|c| c.created_at).unwrap_or(0),
+                })))
+            },
             Err(e) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
