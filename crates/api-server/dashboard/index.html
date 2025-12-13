@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NanoLambda Dashboard</title>
+    <link rel="stylesheet" href="/dashboard/css/main.css">
+    <link rel="stylesheet" href="/dashboard/css/components.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <h1>⚡ NanoLambda Dashboard</h1>
+                <div class="api-key-section">
+                    <input 
+                        v-model="apiKey" 
+                        @change="saveApiKey"
+                        type="text" 
+                        placeholder="Enter your API key..."
+                        class="api-key-input"
+                    />
+                    <button @click="fetchMetrics" class="refresh-btn">🔄 Refresh</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Loading State -->
+        <div v-if="loading" class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>Loading metrics...</p>
+        </div>
+
+        <!-- Error State -->
+        <div v-if="error" class="error-container">
+            <p>❌ {{ error }}</p>
+        </div>
+
+        <!-- Dashboard Content -->
+        <main v-if="!loading && !error" class="dashboard-main">
+            <!-- Stats Grid -->
+            <stats-grid 
+                :metrics="metrics"
+                :usage="usage"
+                @open-analytics="openAnalyticsModal"
+                @open-clv="openCLVModal"
+                @open-churn="openChurnModal"
+                @open-payment-retry="openPaymentRetryModal"
+            ></stats-grid>
+
+            <!-- Charts Panel -->
+            <charts-panel :metrics="metrics"></charts-panel>
+        </main>
+
+        <!-- Modals -->
+        <analytics-modal 
+            v-if="modals.analytics"
+            :api-key="apiKey"
+            @close="modals.analytics = false"
+        ></analytics-modal>
+
+        <clv-modal 
+            v-if="modals.clv"
+            :api-key="apiKey"
+            @close="modals.clv = false"
+        ></clv-modal>
+
+        <churn-modal 
+            v-if="modals.churn"
+            :api-key="apiKey"
+            @close="modals.churn = false"
+        ></churn-modal>
+
+        <payment-retry-modal 
+            v-if="modals.paymentRetry"
+            :api-key="apiKey"
+            @close="modals.paymentRetry = false"
+        ></payment-retry-modal>
+    </div>
+
+    <!-- Vue 3 from CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- Chart.js for charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- App modules -->
+    <script type="module" src="/dashboard/js/api.js"></script>
+    <script type="module" src="/dashboard/js/store.js"></script>
+    <script type="module" src="/dashboard/js/components/MetricCard.js"></script>
+    <script type="module" src="/dashboard/js/components/StatsGrid.js"></script>
+    <script type="module" src="/dashboard/js/components/ChartsPanel.js"></script>
+    <script type="module" src="/dashboard/js/components/AnalyticsModal.js"></script>
+    <script type="module" src="/dashboard/js/components/CLVModal.js"></script>
+    <script type="module" src="/dashboard/js/components/ChurnModal.js"></script>
+    <script type="module" src="/dashboard/js/components/PaymentRetryModal.js"></script>
+    <script type="module" src="/dashboard/js/app.js"></script>
+</body>
+</html>

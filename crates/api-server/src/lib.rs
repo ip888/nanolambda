@@ -355,8 +355,8 @@ impl ApiServer {
             // Invoice management (requires auth)
             .route("/invoices", get(handlers::list_invoices))
             .route("/invoices/summary", get(handlers::get_invoice_summary))
-            .route("/invoices/:invoice_id", get(handlers::get_invoice))
-            .route("/invoices/sync/:stripe_invoice_id", post(handlers::sync_invoice))
+            .route("/invoices/{invoice_id}", get(handlers::get_invoice))
+            .route("/invoices/sync/{stripe_invoice_id}", post(handlers::sync_invoice))
             
             // Payment management (Stripe integration - requires auth)
             .route("/payment/customer", post(handlers::create_customer))
@@ -383,7 +383,7 @@ impl ApiServer {
             // Admin discount routes (requires ADMIN_API_KEY)
             .route("/discounts", post(discount_handlers::create_discount))
             .route("/discounts", get(discount_handlers::list_discounts))
-            .route("/discounts/:discount_id/usage", get(discount_handlers::get_discount_usage))
+            .route("/discounts/{discount_id}/usage", get(discount_handlers::get_discount_usage))
             
             // Referral program management (requires auth)
             .route("/referrals/generate", post(referral_handlers::generate_referral_code))
@@ -439,6 +439,7 @@ impl ApiServer {
             // Metrics (public for now, could be protected later)
             .route("/metrics", get(handlers::get_metrics))
             .route("/dashboard", get(handlers::get_dashboard))
+            .route("/dashboard/{*file}", get(handlers::get_dashboard_file))
             .route("/concurrency", get(handlers::get_concurrency_stats))
             
             // Rate limiting admin endpoints (public for now, should be protected)
@@ -467,10 +468,10 @@ impl ApiServer {
             // Referral tracking and details (public)
             .route("/referrals/track", post(referral_handlers::track_referral_click))
             .route("/referrals/leaderboard", get(referral_handlers::get_leaderboard))
-            .route("/referrals/:code", get(referral_handlers::get_referral_details))
+            .route("/referrals/{code}", get(referral_handlers::get_referral_details))
             
             // Annual billing pricing (public)
-            .route("/billing/annual/pricing/:tier", get(annual_handlers::get_annual_pricing))
+            .route("/billing/annual/pricing/{tier}", get(annual_handlers::get_annual_pricing))
             
             // Platform analytics (public - admin can view)
             .route("/analytics/platform", get(analytics_handlers::get_platform_analytics))

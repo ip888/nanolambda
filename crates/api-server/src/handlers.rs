@@ -1158,9 +1158,54 @@ pub async fn get_metrics(
     }))
 }
 
-/// GET /dashboard - Serve metrics dashboard
+/// GET /dashboard - Serve metrics dashboard (redirect to new modular dashboard)
 pub async fn get_dashboard() -> Html<&'static str> {
-    Html(include_str!("../dashboard.html"))
+    Html(include_str!("../dashboard/index.html"))
+}
+
+/// GET /dashboard/* - Serve dashboard static files
+pub async fn get_dashboard_file(
+    axum::extract::Path(file_path): axum::extract::Path<String>,
+) -> Result<(StatusCode, axum::http::HeaderMap, Vec<u8>), StatusCode> {
+    // Security: prevent directory traversal
+    if file_path.contains("..") {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let content_type = if file_path.ends_with(".js") {
+        "application/javascript"
+    } else if file_path.ends_with(".css") {
+        "text/css"
+    } else if file_path.ends_with(".html") {
+        "text/html"
+    } else {
+        "application/octet-stream"
+    };
+
+    // Map file paths to included content
+    let content = match file_path.as_str() {
+        "js/api.js" => include_bytes!("../dashboard/js/api.js").to_vec(),
+        "js/store.js" => include_bytes!("../dashboard/js/store.js").to_vec(),
+        "js/app.js" => include_bytes!("../dashboard/js/app.js").to_vec(),
+        "js/components/MetricCard.js" => include_bytes!("../dashboard/js/components/MetricCard.js").to_vec(),
+        "js/components/StatsGrid.js" => include_bytes!("../dashboard/js/components/StatsGrid.js").to_vec(),
+        "js/components/ChartsPanel.js" => include_bytes!("../dashboard/js/components/ChartsPanel.js").to_vec(),
+        "js/components/AnalyticsModal.js" => include_bytes!("../dashboard/js/components/AnalyticsModal.js").to_vec(),
+        "js/components/CLVModal.js" => include_bytes!("../dashboard/js/components/CLVModal.js").to_vec(),
+        "js/components/ChurnModal.js" => include_bytes!("../dashboard/js/components/ChurnModal.js").to_vec(),
+        "js/components/PaymentRetryModal.js" => include_bytes!("../dashboard/js/components/PaymentRetryModal.js").to_vec(),
+        "css/main.css" => include_bytes!("../dashboard/css/main.css").to_vec(),
+        "css/components.css" => include_bytes!("../dashboard/css/components.css").to_vec(),
+        _ => return Err(StatusCode::NOT_FOUND),
+    };
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        content_type.parse().unwrap(),
+    );
+
+    Ok((StatusCode::OK, headers, content))
 }
 
 /// GET /concurrency - Get concurrency statistics
