@@ -69,6 +69,17 @@ pub struct StripeCard {
     pub exp_year: i32,
 }
 
+/// Stripe Customer Portal session response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortalSession {
+    pub id: String,
+    pub url: String,
+    #[serde(default)]
+    pub customer: Option<String>,
+    #[serde(default)]
+    pub created: i64,
+}
+
 /// Stripe price IDs for each tier (configured in Stripe Dashboard)
 #[derive(Debug, Clone)]
 pub struct StripePriceIds {
@@ -471,6 +482,42 @@ impl PaymentManager {
         .await?;
 
         Ok(canceled_sub)
+    }
+
+    /// Create a Stripe Customer Portal session
+    /// This allows customers to manage their subscription, payment methods, and view invoices
+    pub async fn create_portal_session(
+        &self,
+        api_key: &str,
+        return_url: Option<&str>,
+    ) -> Result<PortalSession> {
+        let customer = self
+            .get_customer(api_key)
+            .await?
+            .ok_or_else(|| anyhow!("Customer not found. Create customer first."))?;
+
+        // Create portal session via Stripe API
+        let mut form = vec![
+            ("customer", customer.stripe_customer_id.clone()),
+        ];
+
+        if let Some(url) = return_url {
+            form.push(("return_url", url.to_string()));
+        }
+
+        let session: PortalSession = self.stripe_api_call(
+            "POST",
+            "/billing_portal/sessions",
+            Some(&form),
+        ).await?;
+
+        tracing::info!(
+            "Created portal session {} for customer {}",
+            session.id,
+            customer.stripe_customer_id
+        );
+
+        Ok(session)
     }
 
     /// Verify Stripe webhook signature

@@ -2349,3 +2349,91 @@ pub async fn calculate_overage(
         ))
     }
 }
+/// Create a Stripe Customer Portal session
+/// This returns a URL to redirect the customer to manage their subscription
+pub async fn create_portal_session(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+
+    let api_key = auth_ctx
+        .map(|ctx| ctx.api_key)
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Unauthorized".to_string(),
+                    message: "API key required".to_string(),
+                }),
+            )
+        })?;
+
+    if let Some(payment_mgr) = state.payment_manager() {
+        // Parse optional return URL from request body
+        let body_bytes = axum::body::to_bytes(
+            req.into_body(),
+            usize::MAX,
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidBody".to_string(),
+                    message: format!("Failed to read request body: {}", e),
+                }),
+            )
+        })?;
+
+        let return_url = if !body_bytes.is_empty() {
+            #[derive(Deserialize)]
+            struct PortalRequest {
+                return_url: Option<String>,
+            }
+
+            let portal_req: PortalRequest = serde_json::from_slice(&body_bytes).map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "InvalidJSON".to_string(),
+                        message: format!("Failed to parse JSON: {}", e),
+                    }),
+                )
+            })?;
+
+            portal_req.return_url
+        } else {
+            None
+        };
+
+        match payment_mgr
+            .create_portal_session(&api_key, return_url.as_deref())
+            .await
+        {
+            Ok(session) => Ok(Json(serde_json::json!({
+                "success": true,
+                "portal_url": session.url,
+                "session_id": session.id,
+            }))),
+            Err(e) => {
+                error!("Failed to create portal session: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "PortalSessionFailed".to_string(),
+                        message: format!("Failed to create portal session: {}", e),
+                    }),
+                ))
+            }
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available (Stripe not configured)".to_string(),
+            }),
+        ))
+    }
+}

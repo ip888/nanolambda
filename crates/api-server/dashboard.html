@@ -799,6 +799,9 @@
                             Memory: <strong>${tierInfo.config.limits.max_memory_mb}MB</strong> | 
                             Timeout: <strong>${tierInfo.config.limits.max_timeout_seconds}s</strong>
                         </div>
+                        <button onclick="openCustomerPortal()" style="margin-top: 10px; width: 100%; padding: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
+                            ⚙️ Manage Billing
+                        </button>
                         ` : `
                         <div class="metric-secondary">
                             Trial Period Active
@@ -806,6 +809,9 @@
                         <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 13px;">
                             Upgrade to unlock full features
                         </div>
+                        <button onclick="openCustomerPortal()" style="margin-top: 10px; width: 100%; padding: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
+                            ⚙️ Manage Billing
+                        </button>
                         `}
                     </div>
                     
@@ -979,6 +985,45 @@
                 fetchMetrics();
             });
         });
+        
+        // Open Customer Portal
+        async function openCustomerPortal() {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            
+            if (!apiKey) {
+                alert('Please enter your API key first');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/payment/portal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        return_url: window.location.href
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Failed to create portal session');
+                }
+                
+                const data = await response.json();
+                if (data.success && data.portal_url) {
+                    // Open portal in new tab
+                    window.open(data.portal_url, '_blank');
+                } else {
+                    throw new Error('Invalid portal response');
+                }
+            } catch (error) {
+                console.error('Failed to open portal:', error);
+                alert(`Failed to open billing portal: ${error.message}\n\nMake sure you have an active subscription and payment method.`);
+            }
+        }
         
         // Auto-refresh every 5 seconds
         fetchMetrics();

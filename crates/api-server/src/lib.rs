@@ -222,6 +222,9 @@ impl ApiServer {
             .route("/payment/usage", post(handlers::report_metered_usage))
             .route("/payment/overage", get(handlers::calculate_overage))
             
+            // Customer Portal (requires auth)
+            .route("/payment/portal", post(handlers::create_portal_session))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
