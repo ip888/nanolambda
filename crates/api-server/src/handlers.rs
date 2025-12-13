@@ -2191,3 +2191,161 @@ pub async fn stripe_webhook(
         ))
     }
 }
+
+/// Report metered usage to Stripe
+pub async fn report_metered_usage(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    #[derive(Deserialize)]
+    struct ReportUsageRequest {
+        quantity: i64,
+        #[serde(default)]
+        timestamp: Option<i64>,
+    }
+    
+    let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
+        .await
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Failed to read request body: {}", e),
+            }),
+        ))?;
+    
+    let req: ReportUsageRequest = serde_json::from_slice(&bytes)
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Invalid JSON: {}", e),
+            }),
+        ))?;
+    
+    if let Some(payment_mgr) = state.payment_manager() {
+        match payment_mgr.report_usage(&api_key, req.quantity, req.timestamp).await {
+            Ok(usage_record) => Ok(Json(serde_json::json!({
+                "success": true,
+                "usage_record_id": usage_record.id,
+                "quantity": usage_record.quantity,
+                "timestamp": usage_record.timestamp,
+            }))),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "UsageReportFailed".to_string(),
+                    message: format!("Failed to report usage: {}", e),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available (Stripe not configured)".to_string(),
+            }),
+        ))
+    }
+}
+
+/// Calculate overage costs
+pub async fn calculate_overage(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    if let Some(payment_mgr) = state.payment_manager() {
+        // Get current tier info
+        if let Some(tier_mgr) = state.tier_manager() {
+            match tier_mgr.get_user_tier(&api_key).await {
+                Ok(user_tier) => {
+                    // Get tier config to find limits
+                    let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
+                    let tier_limit = tier_config.max_invocations_per_month;
+                    let current_usage = user_tier.monthly_invocations;
+                    
+                    match payment_mgr.calculate_overage_cost(&api_key, current_usage, tier_limit).await {
+                        Ok(cost) => {
+                            let overage = if let Some(limit) = tier_limit {
+                                std::cmp::max(0, current_usage - limit)
+                            } else {
+                                0
+                            };
+                            
+                            Ok(Json(serde_json::json!({
+                                "success": true,
+                                "current_usage": current_usage,
+                                "tier_limit": tier_limit,
+                                "overage_invocations": overage,
+                                "overage_cost": cost,
+                                "currency": "usd"
+                            })))
+                        },
+                        Err(e) => Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ErrorResponse {
+                                error: "CalculationFailed".to_string(),
+                                message: format!("Failed to calculate overage: {}", e),
+                            }),
+                        ))
+                    }
+                },
+                    Err(_) => {
+                        // No tier assigned, use trial limits or return 0
+                        Ok(Json(serde_json::json!({
+                            "success": true,
+                            "current_usage": 0,
+                            "tier_limit": null,
+                            "overage_invocations": 0,
+                            "overage_cost": 0.0,
+                            "currency": "usd",
+                            "note": "No tier assigned. Currently in trial period."
+                    })))
+                }
+            }
+        } else {
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "TierManagerUnavailable".to_string(),
+                    message: "Tier manager not available".to_string(),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available (Stripe not configured)".to_string(),
+            }),
+        ))
+    }
+}

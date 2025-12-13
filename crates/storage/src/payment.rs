@@ -118,6 +118,35 @@ impl PaymentManager {
         .execute(&pool)
         .await?;
 
+        // Create usage records table for metered billing tracking
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS metered_usage_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                api_key TEXT NOT NULL,
+                stripe_usage_record_id TEXT,
+                quantity INTEGER NOT NULL,
+                timestamp INTEGER NOT NULL,
+                reported_at INTEGER NOT NULL,
+                period_start INTEGER,
+                period_end INTEGER,
+                FOREIGN KEY (api_key) REFERENCES stripe_customers(api_key)
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        // Index for efficient queries
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_metered_usage_api_key_timestamp 
+            ON metered_usage_records(api_key, timestamp)
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
         Ok(Self {
             http_client: Client::new(),
             stripe_api_key: stripe_secret_key,
@@ -694,4 +723,237 @@ pub struct StripeEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StripeEventData {
     pub object: serde_json::Value,
+}
+
+/// Usage record for metered billing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageRecord {
+    pub id: String,
+    pub quantity: i64,
+    pub timestamp: i64,
+}
+
+/// Metered billing configuration
+#[derive(Debug, Clone)]
+pub struct MeteredBillingConfig {
+    /// Price per additional invocation beyond tier limit (in cents)
+    pub overage_price_per_invocation: f64,
+    /// Metered price ID from Stripe (if using Stripe metering)
+    pub stripe_metered_price_id: Option<String>,
+}
+
+impl MeteredBillingConfig {
+    pub fn from_env() -> Self {
+        Self {
+            // Default: $0.20 per 1M additional invocations = $0.0000002 per invocation = 0.00002 cents
+            overage_price_per_invocation: std::env::var("OVERAGE_PRICE_PER_INVOCATION")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.00002),
+            stripe_metered_price_id: std::env::var("STRIPE_METERED_PRICE_ID").ok(),
+        }
+    }
+}
+
+impl PaymentManager {
+    /// Report usage to Stripe for metered billing
+    /// This is called when a customer exceeds their tier's monthly limit
+    pub async fn report_usage(
+        &self,
+        api_key: &str,
+        quantity: i64,
+        timestamp: Option<i64>,
+    ) -> Result<UsageRecord> {
+        let customer = self
+            .get_customer(api_key)
+            .await?
+            .ok_or_else(|| anyhow!("Customer not found"))?;
+
+        let subscription_id = customer
+            .stripe_subscription_id
+            .ok_or_else(|| anyhow!("No active subscription found"))?;
+
+        // Get subscription to find the metered subscription item
+        #[derive(Deserialize)]
+        struct SubscriptionWithItems {
+            items: SubscriptionItems,
+        }
+
+        #[derive(Deserialize)]
+        struct SubscriptionItems {
+            data: Vec<SubscriptionItem>,
+        }
+
+        #[derive(Deserialize)]
+        struct SubscriptionItem {
+            id: String,
+            price: SubscriptionPrice,
+        }
+
+        #[derive(Deserialize)]
+        struct SubscriptionPrice {
+            id: String,
+            #[serde(default)]
+            recurring: Option<RecurringInfo>,
+        }
+
+        #[derive(Deserialize)]
+        struct RecurringInfo {
+            usage_type: Option<String>,
+        }
+
+        let subscription: SubscriptionWithItems = self
+            .stripe_api_call("GET", &format!("/subscriptions/{}", subscription_id), None)
+            .await?;
+
+        // Find metered subscription item (usage_type = "metered")
+        let metered_item = subscription
+            .items
+            .data
+            .iter()
+            .find(|item| {
+                item.price
+                    .recurring
+                    .as_ref()
+                    .and_then(|r| r.usage_type.as_deref())
+                    == Some("metered")
+            })
+            .ok_or_else(|| {
+                anyhow!("No metered subscription item found. Add a metered price to the subscription.")
+            })?;
+
+        // Create usage record
+        let ts = timestamp.unwrap_or_else(|| chrono::Utc::now().timestamp());
+        let form = vec![
+            ("quantity", quantity.to_string()),
+            ("timestamp", ts.to_string()),
+            ("action", "increment".to_string()),
+        ];
+
+        let usage_record: UsageRecord = self
+            .stripe_api_call(
+                "POST",
+                &format!("/subscription_items/{}/usage_records", metered_item.id),
+                Some(&form),
+            )
+            .await?;
+
+        tracing::info!(
+            "Reported {} usage units for subscription item {}",
+            quantity,
+            metered_item.id
+        );
+
+        // Store usage record in database for tracking
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO metered_usage_records 
+            (api_key, stripe_usage_record_id, quantity, timestamp, reported_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(api_key)
+        .bind(&usage_record.id)
+        .bind(quantity)
+        .bind(ts)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(usage_record)
+    }
+
+    /// Calculate overage charges for usage beyond tier limits
+    pub async fn calculate_overage_cost(
+        &self,
+        api_key: &str,
+        usage_count: i64,
+        tier_limit: Option<i64>,
+    ) -> Result<f64> {
+        let overage = match tier_limit {
+            Some(limit) if usage_count > limit => usage_count - limit,
+            _ => 0,
+        };
+
+        if overage <= 0 {
+            return Ok(0.0);
+        }
+
+        let config = MeteredBillingConfig::from_env();
+        let cost = overage as f64 * config.overage_price_per_invocation;
+
+        tracing::info!(
+            "Calculated overage cost for {}: {} invocations over limit = ${:.4}",
+            api_key,
+            overage,
+            cost
+        );
+
+        Ok(cost)
+    }
+
+    /// Create a subscription with both fixed and metered pricing
+    pub async fn create_subscription_with_metering(
+        &self,
+        api_key: &str,
+        tier: &TierLevel,
+        price_ids: &StripePriceIds,
+        metered_price_id: Option<&str>,
+    ) -> Result<StripeSubscription> {
+        let customer = self
+            .get_customer(api_key)
+            .await?
+            .ok_or_else(|| anyhow!("Customer not found. Please create customer first."))?;
+
+        if customer.payment_method_id.is_none() {
+            return Err(anyhow!(
+                "No payment method attached. Please add a payment method first."
+            ));
+        }
+
+        let base_price_id = price_ids.get_price_id(tier);
+
+        // Build subscription items
+        let mut form = vec![
+            ("customer", customer.stripe_customer_id.clone()),
+            ("items[0][price]", base_price_id.to_string()),
+            ("metadata[nanolambda_tier]", format!("{:?}", tier)),
+            ("metadata[nanolambda_api_key]", api_key.to_string()),
+        ];
+
+        // Add metered price if provided
+        if let Some(metered_price) = metered_price_id {
+            form.push(("items[1][price]", metered_price.to_string()));
+        }
+
+        let subscription: StripeSubscription = self
+            .stripe_api_call("POST", "/subscriptions", Some(&form))
+            .await?;
+
+        tracing::info!(
+            "Created subscription {} for tier {:?} with metering: {}",
+            subscription.id,
+            tier,
+            metered_price_id.is_some()
+        );
+
+        // Update database
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE stripe_customers 
+            SET stripe_subscription_id = ?, subscription_status = ?, updated_at = ?
+            WHERE api_key = ?
+            "#,
+        )
+        .bind(&subscription.id)
+        .bind(&subscription.status)
+        .bind(now)
+        .bind(api_key)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(subscription)
+    }
 }

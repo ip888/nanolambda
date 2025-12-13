@@ -218,6 +218,10 @@ impl ApiServer {
             .route("/payment/subscription", post(handlers::create_subscription))
             .route("/payment/subscription", delete(handlers::cancel_subscription))
             
+            // Metered billing (requires auth)
+            .route("/payment/usage", post(handlers::report_metered_usage))
+            .route("/payment/overage", get(handlers::calculate_overage))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
