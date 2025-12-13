@@ -398,7 +398,30 @@ pub async fn invoke_function(
             }),
         ))?;
     
-    // 0a. Check rate limit
+    // 0a. Check tier limits and monthly quota
+    if !api_key.is_empty() {
+        if let Some(tier_mgr) = state.tier_manager() {
+            // Check monthly invocation limit
+            match tier_mgr.check_monthly_limit(&api_key).await {
+                Ok(within_limit) => {
+                    if !within_limit {
+                        return Err((
+                            StatusCode::PAYMENT_REQUIRED,
+                            Json(ErrorResponse {
+                                error: "MonthlyLimitExceeded".to_string(),
+                                message: "Monthly invocation limit reached for your tier. Please upgrade to continue.".to_string(),
+                            }),
+                        ));
+                    }
+                }
+                Err(_) => {
+                    // No tier assigned yet - will be assigned after trial
+                }
+            }
+        }
+    }
+    
+    // 0b. Check rate limit
     if let Err(e) = state.rate_limiter().check_rate_limit(&api_key).await {
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
@@ -409,7 +432,7 @@ pub async fn invoke_function(
         ));
     }
     
-    // 0b. Acquire concurrency permits (queues if at limit, rejects if queue full)
+    // 0c. Acquire concurrency permits (queues if at limit, rejects if queue full)
     let _concurrency_guard = match state.concurrency().acquire(&name).await {
         Ok(guard) => guard,
         Err(e) => {
@@ -447,7 +470,28 @@ pub async fn invoke_function(
         }
     };
     
-    // 2. Check if function is active
+    // 2. Check tier limits for memory and timeout
+    if !api_key.is_empty() {
+        if let Some(tier_mgr) = state.tier_manager() {
+            if let Ok(user_tier) = tier_mgr.get_user_tier(&api_key).await {
+                let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
+                if let Err(e) = tier_config.check_limits(
+                    function.memory_mb.try_into().unwrap_or(u32::MAX), 
+                    function.timeout_ms.try_into().unwrap_or(i64::MAX)
+                ) {
+                    return Err((
+                        StatusCode::FORBIDDEN,
+                        Json(ErrorResponse {
+                            error: "TierLimitExceeded".to_string(),
+                            message: e,
+                        }),
+                    ));
+                }
+            }
+        }
+    }
+    
+    // 3. Check if function is active
     if function.status != nanolambda_storage::FunctionStatus::Active {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -595,20 +639,45 @@ pub async fn invoke_function(
             
             // Also record to persistent database (async, non-blocking)
             if let Some(usage_db) = state.usage_db() {
-                // Get current pricing (dynamic, from database)
-                let pricing = if let Some(pricing_mgr) = state.pricing() {
-                    pricing_mgr.get_pricing().await
+                // Get tier-specific pricing (if user has a tier), otherwise use dynamic pricing
+                let (invocation_cost, compute_cost) = if let Some(tier_mgr) = state.tier_manager() {
+                    if let Ok(user_tier) = tier_mgr.get_user_tier(&api_key).await {
+                        let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
+                        let inv_cost = tier_config.calculate_invocation_cost(1);
+                        let comp_cost = tier_config.calculate_compute_cost(
+                            exec_result.metrics.memory_peak_mb as u32,
+                            exec_result.metrics.execution_ms as i64
+                        );
+                        (inv_cost, comp_cost)
+                    } else {
+                        // No tier assigned, use dynamic pricing
+                        let pricing = if let Some(pricing_mgr) = state.pricing() {
+                            pricing_mgr.get_pricing().await
+                        } else {
+                            nanolambda_storage::pricing::PricingConfig::default()
+                        };
+                        let inv_cost = pricing.calculate_invocation_cost(1);
+                        let comp_cost = pricing.calculate_compute_cost(
+                            exec_result.metrics.memory_peak_mb as u32,
+                            exec_result.metrics.execution_ms as i64
+                        );
+                        (inv_cost, comp_cost)
+                    }
                 } else {
-                    // Fallback to default pricing if manager not available
-                    nanolambda_storage::pricing::PricingConfig::default()
+                    // No tier manager, use dynamic pricing
+                    let pricing = if let Some(pricing_mgr) = state.pricing() {
+                        pricing_mgr.get_pricing().await
+                    } else {
+                        nanolambda_storage::pricing::PricingConfig::default()
+                    };
+                    let inv_cost = pricing.calculate_invocation_cost(1);
+                    let comp_cost = pricing.calculate_compute_cost(
+                        exec_result.metrics.memory_peak_mb as u32,
+                        exec_result.metrics.execution_ms as i64
+                    );
+                    (inv_cost, comp_cost)
                 };
                 
-                // Calculate costs using current pricing
-                let invocation_cost = pricing.calculate_invocation_cost(1);
-                let compute_cost = pricing.calculate_compute_cost(
-                    exec_result.metrics.memory_peak_mb as u32,
-                    exec_result.metrics.execution_ms as i64
-                );
                 let total_cost = invocation_cost + compute_cost;
                 
                 let event = nanolambda_storage::usage_db::UsageEvent {
@@ -628,7 +697,7 @@ pub async fn invoke_function(
                 usage_db.record_event(event);
             }
             
-            // Increment trial invocation counter (async, non-blocking)
+            // Increment trial and tier counters (async, non-blocking)
             if !api_key.is_empty() {
                 if let Some(trial_mgr) = state.trial_manager() {
                     let trial_mgr_clone = trial_mgr.clone();
@@ -636,6 +705,16 @@ pub async fn invoke_function(
                     tokio::spawn(async move {
                         if let Err(e) = trial_mgr_clone.increment_invocation(&api_key_clone).await {
                             error!("Failed to increment trial counter: {}", e);
+                        }
+                    });
+                }
+                
+                if let Some(tier_mgr) = state.tier_manager() {
+                    let tier_mgr_clone = tier_mgr.clone();
+                    let api_key_clone = api_key.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = tier_mgr_clone.increment_monthly_invocations(&api_key_clone).await {
+                            error!("Failed to increment tier monthly counter: {}", e);
                         }
                     });
                 }
@@ -1478,3 +1557,205 @@ pub async fn get_all_trials(
     }
 }
 
+
+// ============================================================================
+// Tier Management
+// ============================================================================
+
+/// GET /tier/current - Get current tier for authenticated user
+pub async fn get_current_tier(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    if let Some(tier_mgr) = state.tier_manager() {
+        match tier_mgr.get_user_tier(&api_key).await {
+            Ok(user_tier) => {
+                let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
+                Ok(Json(serde_json::json!({
+                    "tier": tier_config.tier,
+                    "name": tier_config.name,
+                    "description": tier_config.description,
+                    "pricing": {
+                        "price_per_invocation": tier_config.price_per_invocation,
+                        "price_per_1m_invocations": tier_config.price_per_invocation * 1_000_000.0,
+                        "price_per_gb_second": tier_config.price_per_gb_second,
+                    },
+                    "limits": {
+                        "max_invocations_per_month": tier_config.max_invocations_per_month,
+                        "max_memory_mb": tier_config.max_memory_mb,
+                        "max_timeout_ms": tier_config.max_timeout_ms,
+                        "max_concurrent_executions": tier_config.max_concurrent_executions,
+                    },
+                    "features": {
+                        "support_level": tier_config.support_level,
+                        "custom_domains": tier_config.custom_domains,
+                        "advanced_monitoring": tier_config.advanced_monitoring,
+                        "priority_execution": tier_config.priority_execution,
+                    },
+                    "usage": {
+                        "monthly_invocations": user_tier.monthly_invocations,
+                        "assigned_at": user_tier.assigned_at,
+                    }
+                })))
+            }
+            Err(_) => {
+                // No tier assigned yet (likely in trial)
+                Ok(Json(serde_json::json!({
+                    "tier": null,
+                    "message": "No tier assigned. Currently in trial period."
+                })))
+            }
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "TierUnavailable".to_string(),
+                message: "Tier management not available in in-memory mode".to_string(),
+            }),
+        ))
+    }
+}
+
+/// GET /tier/plans - Get all available tier plans
+pub async fn get_tier_plans(
+    State(state): State<Arc<ApiServer>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if let Some(tier_mgr) = state.tier_manager() {
+        let tiers = tier_mgr.get_all_tiers().await;
+        
+        let plans: Vec<_> = tiers.iter().map(|t| {
+            serde_json::json!({
+                "tier": t.tier,
+                "name": t.name,
+                "description": t.description,
+                "pricing": {
+                    "price_per_invocation": t.price_per_invocation,
+                    "price_per_1m_invocations": t.price_per_invocation * 1_000_000.0,
+                    "price_per_gb_second": t.price_per_gb_second,
+                },
+                "limits": {
+                    "max_invocations_per_month": t.max_invocations_per_month,
+                    "max_memory_mb": t.max_memory_mb,
+                    "max_timeout_ms": t.max_timeout_ms,
+                    "max_concurrent_executions": t.max_concurrent_executions,
+                },
+                "features": {
+                    "support_level": t.support_level,
+                    "custom_domains": t.custom_domains,
+                    "advanced_monitoring": t.advanced_monitoring,
+                    "priority_execution": t.priority_execution,
+                }
+            })
+        }).collect();
+        
+        Ok(Json(serde_json::json!({
+            "plans": plans,
+            "count": tiers.len(),
+        })))
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "TierUnavailable".to_string(),
+                message: "Tier management not available in in-memory mode".to_string(),
+            }),
+        ))
+    }
+}
+
+/// PUT /tier/upgrade - Upgrade user to a higher tier
+pub async fn upgrade_tier(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    // Parse request body
+    let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
+        .await
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Failed to read request body: {}", e),
+            }),
+        ))?;
+    
+    #[derive(serde::Deserialize)]
+    struct UpgradeRequest {
+        tier: String,
+    }
+    
+    let upgrade_req: UpgradeRequest = serde_json::from_slice(&bytes)
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Invalid JSON: {}", e),
+            }),
+        ))?;
+    
+    if let Some(tier_mgr) = state.tier_manager() {
+        let new_tier = nanolambda_storage::tier::TierLevel::from_str(&upgrade_req.tier)
+            .ok_or_else(|| (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidTier".to_string(),
+                    message: format!("Invalid tier: {}. Must be 'starter', 'pro', or 'enterprise'", upgrade_req.tier),
+                }),
+            ))?;
+        
+        match tier_mgr.upgrade_tier(&api_key, new_tier).await {
+            Ok(user_tier) => {
+                let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "message": format!("Successfully upgraded to {} tier", tier_config.name),
+                    "tier": tier_config.tier,
+                    "name": tier_config.name,
+                    "assigned_at": user_tier.assigned_at,
+                })))
+            }
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "UpgradeFailed".to_string(),
+                    message: format!("Failed to upgrade tier: {}", e),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "TierUnavailable".to_string(),
+                message: "Tier management not available in in-memory mode".to_string(),
+            }),
+        ))
+    }
+}

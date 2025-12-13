@@ -6,6 +6,7 @@ pub mod registry;
 pub mod usage_db;
 pub mod pricing;
 pub mod trial;
+pub mod tier;
 pub mod error;
 
 pub use models::*;

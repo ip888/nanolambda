@@ -18,7 +18,10 @@ pub mod rate_limiter;
 pub mod usage_tracker;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
-use nanolambda_storage::{StorageManager, usage_db::UsageDb, pricing::PricingManager, trial::TrialManager};
+use nanolambda_storage::{
+    StorageManager, usage_db::UsageDb, pricing::PricingManager, 
+    trial::TrialManager, tier::TierManager
+};
 use crate::metrics::MetricsCollector;
 use crate::concurrency::{ConcurrencyController, ConcurrencyConfig};
 use crate::rate_limiter::{RateLimiter, RateLimitTier};
@@ -36,6 +39,7 @@ pub struct ApiServer {
     usage_db: Option<Arc<UsageDb>>, // Persistent usage tracking
     pricing: Option<Arc<PricingManager>>, // Dynamic pricing configuration
     trial_manager: Option<Arc<TrialManager>>, // Trial period tracking
+    tier_manager: Option<Arc<TierManager>>, // Tiered pricing management
 }
 
 impl ApiServer {
@@ -55,6 +59,7 @@ impl ApiServer {
         let usage_db = UsageDb::new(pool.clone()).await?;
         let pricing = PricingManager::new(pool.clone()).await?;
         let trial_manager = TrialManager::new(pool.clone()).await?;
+        let tier_manager = TierManager::new(pool.clone()).await?;
         
         Ok(Self {
             storage: Arc::new(storage),
@@ -67,6 +72,7 @@ impl ApiServer {
             usage_db: Some(Arc::new(usage_db)),
             pricing: Some(Arc::new(pricing)),
             trial_manager: Some(Arc::new(trial_manager)),
+            tier_manager: Some(Arc::new(tier_manager)),
         })
     }
     
@@ -88,6 +94,7 @@ impl ApiServer {
             usage_db: None, // No persistent tracking for in-memory mode
             pricing: None, // No dynamic pricing for in-memory mode
             trial_manager: None, // No trial tracking for in-memory mode
+            tier_manager: None, // No tier management for in-memory mode
         })
     }
 
@@ -140,6 +147,11 @@ impl ApiServer {
     pub fn trial_manager(&self) -> Option<&Arc<TrialManager>> {
         self.trial_manager.as_ref()
     }
+    
+    /// Get tier manager reference (tiered pricing management)
+    pub fn tier_manager(&self) -> Option<&Arc<TierManager>> {
+        self.tier_manager.as_ref()
+    }
 
     /// Start the API server
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -179,6 +191,10 @@ impl ApiServer {
             // Trial status (requires auth to view own trial)
             .route("/trial/status", get(handlers::get_trial_status))
             
+            // Tier management (requires auth to view own tier and upgrade)
+            .route("/tier/current", get(handlers::get_current_tier))
+            .route("/tier/upgrade", put(handlers::upgrade_tier))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
@@ -211,6 +227,9 @@ impl ApiServer {
             
             // Trial admin endpoints (public for now, should be protected)
             .route("/trial/all", get(handlers::get_all_trials))
+            
+            // Tier plans (public - anyone can view available tiers)
+            .route("/tier/plans", get(handlers::get_tier_plans))
             
             // Health check
             .route("/health", get(handlers::health_check))
