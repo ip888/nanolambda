@@ -20,7 +20,7 @@ pub mod usage_tracker;
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::{
     StorageManager, usage_db::UsageDb, pricing::PricingManager, 
-    trial::TrialManager, tier::TierManager
+    trial::TrialManager, tier::TierManager, payment::PaymentManager
 };
 use crate::metrics::MetricsCollector;
 use crate::concurrency::{ConcurrencyController, ConcurrencyConfig};
@@ -40,6 +40,7 @@ pub struct ApiServer {
     pricing: Option<Arc<PricingManager>>, // Dynamic pricing configuration
     trial_manager: Option<Arc<TrialManager>>, // Trial period tracking
     tier_manager: Option<Arc<TierManager>>, // Tiered pricing management
+    payment_manager: Option<Arc<PaymentManager>>, // Stripe payment integration
 }
 
 impl ApiServer {
@@ -61,6 +62,14 @@ impl ApiServer {
         let trial_manager = TrialManager::new(pool.clone()).await?;
         let tier_manager = TierManager::new(pool.clone()).await?;
         
+        // Initialize payment manager if Stripe key is provided
+        let payment_manager = if let Ok(stripe_key) = std::env::var("STRIPE_SECRET_KEY") {
+            Some(Arc::new(PaymentManager::new(pool.clone(), stripe_key).await?))
+        } else {
+            info!("STRIPE_SECRET_KEY not set - payment features disabled");
+            None
+        };
+        
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
@@ -73,6 +82,7 @@ impl ApiServer {
             pricing: Some(Arc::new(pricing)),
             trial_manager: Some(Arc::new(trial_manager)),
             tier_manager: Some(Arc::new(tier_manager)),
+            payment_manager,
         })
     }
     
@@ -95,6 +105,7 @@ impl ApiServer {
             pricing: None, // No dynamic pricing for in-memory mode
             trial_manager: None, // No trial tracking for in-memory mode
             tier_manager: None, // No tier management for in-memory mode
+            payment_manager: None, // No payment processing for in-memory mode
         })
     }
 
@@ -152,6 +163,11 @@ impl ApiServer {
     pub fn tier_manager(&self) -> Option<&Arc<TierManager>> {
         self.tier_manager.as_ref()
     }
+    
+    /// Get payment manager reference (Stripe payment integration)
+    pub fn payment_manager(&self) -> Option<&Arc<PaymentManager>> {
+        self.payment_manager.as_ref()
+    }
 
     /// Start the API server
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -195,6 +211,13 @@ impl ApiServer {
             .route("/tier/current", get(handlers::get_current_tier))
             .route("/tier/upgrade", put(handlers::upgrade_tier))
             
+            // Payment management (Stripe integration - requires auth)
+            .route("/payment/customer", post(handlers::create_customer))
+            .route("/payment/customer", get(handlers::get_customer_info))
+            .route("/payment/method", post(handlers::attach_payment_method))
+            .route("/payment/subscription", post(handlers::create_subscription))
+            .route("/payment/subscription", delete(handlers::cancel_subscription))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
@@ -230,6 +253,9 @@ impl ApiServer {
             
             // Tier plans (public - anyone can view available tiers)
             .route("/tier/plans", get(handlers::get_tier_plans))
+            
+            // Stripe webhooks (public - verified by signature)
+            .route("/webhooks/stripe", post(handlers::stripe_webhook))
             
             // Health check
             .route("/health", get(handlers::health_check))

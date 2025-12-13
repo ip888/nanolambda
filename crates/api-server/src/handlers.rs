@@ -1759,3 +1759,416 @@ pub async fn upgrade_tier(
         ))
     }
 }
+
+// ============================================================================
+// Payment Endpoints (Stripe Integration)
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateCustomerRequest {
+    pub email: Option<String>,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AttachPaymentMethodRequest {
+    pub payment_method_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateSubscriptionRequest {
+    pub tier: String,
+}
+
+/// Create Stripe customer for authenticated user
+pub async fn create_customer(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    // Parse request body
+    let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
+        .await
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Failed to read request body: {}", e),
+            }),
+        ))?;
+    
+    let req: CreateCustomerRequest = serde_json::from_slice(&bytes)
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Invalid JSON: {}", e),
+            }),
+        ))?;
+    
+    if let Some(payment_mgr) = state.payment_manager() {
+        match payment_mgr.get_or_create_customer(&api_key, req.email, req.name).await {
+            Ok(customer) => Ok(Json(serde_json::json!({
+                "success": true,
+                "customer_id": customer.stripe_customer_id,
+                "created_at": customer.created_at,
+            }))),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "CustomerCreationFailed".to_string(),
+                    message: format!("Failed to create customer: {}", e),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available (Stripe not configured)".to_string(),
+            }),
+        ))
+    }
+}
+
+/// Get customer payment info
+pub async fn get_customer_info(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    if let Some(payment_mgr) = state.payment_manager() {
+        match payment_mgr.get_customer(&api_key).await {
+            Ok(Some(customer)) => Ok(Json(serde_json::json!({
+                "customer_id": customer.stripe_customer_id,
+                "subscription_id": customer.stripe_subscription_id,
+                "payment_method_id": customer.payment_method_id,
+                "subscription_status": customer.subscription_status,
+                "created_at": customer.created_at,
+                "updated_at": customer.updated_at,
+            }))),
+            Ok(None) => Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "CustomerNotFound".to_string(),
+                    message: "No customer record found. Please create a customer first.".to_string(),
+                }),
+            )),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "DatabaseError".to_string(),
+                    message: format!("Failed to retrieve customer: {}", e),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available (Stripe not configured)".to_string(),
+            }),
+        ))
+    }
+}
+
+/// Attach payment method to customer
+pub async fn attach_payment_method(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    // Parse request body
+    let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
+        .await
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Failed to read request body: {}", e),
+            }),
+        ))?;
+    
+    let req: AttachPaymentMethodRequest = serde_json::from_slice(&bytes)
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Invalid JSON: {}", e),
+            }),
+        ))?;
+    
+    if let Some(payment_mgr) = state.payment_manager() {
+        match payment_mgr.attach_payment_method(&api_key, &req.payment_method_id).await {
+            Ok(_) => Ok(Json(serde_json::json!({
+                "success": true,
+                "message": "Payment method attached successfully",
+                "payment_method_id": req.payment_method_id,
+            }))),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "PaymentMethodFailed".to_string(),
+                    message: format!("Failed to attach payment method: {}", e),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available (Stripe not configured)".to_string(),
+            }),
+        ))
+    }
+}
+
+/// Create subscription for a tier (requires payment method)
+pub async fn create_subscription(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    // Parse request body
+    let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
+        .await
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Failed to read request body: {}", e),
+            }),
+        ))?;
+    
+    let req: CreateSubscriptionRequest = serde_json::from_slice(&bytes)
+        .map_err(|e| (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "InvalidRequest".to_string(),
+                message: format!("Invalid JSON: {}", e),
+            }),
+        ))?;
+    
+    if let Some(payment_mgr) = state.payment_manager() {
+        if let Some(tier_mgr) = state.tier_manager() {
+            // Parse tier level
+            use nanolambda_storage::tier::TierLevel;
+            let tier = match req.tier.to_lowercase().as_str() {
+                "starter" => TierLevel::Starter,
+                "pro" => TierLevel::Pro,
+                "enterprise" => TierLevel::Enterprise,
+                _ => return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "InvalidTier".to_string(),
+                        message: "Invalid tier. Must be 'starter', 'pro', or 'enterprise'".to_string(),
+                    }),
+                )),
+            };
+            
+            // Get Stripe price IDs from environment
+            use nanolambda_storage::payment::StripePriceIds;
+            let price_ids = StripePriceIds::from_env()
+                .map_err(|e| (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "ConfigError".to_string(),
+                        message: format!("Failed to load price configuration: {}", e),
+                    }),
+                ))?;
+            
+            // Create subscription
+            match payment_mgr.create_subscription(&api_key, &tier, &price_ids).await {
+                Ok(subscription) => {
+                    // Assign tier to user
+                    if let Err(e) = tier_mgr.assign_tier(&api_key, tier).await {
+                        error!("Failed to assign tier after subscription: {}", e);
+                    }
+                    
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "subscription_id": subscription.id.to_string(),
+                        "status": subscription.status.to_string(),
+                        "tier": req.tier,
+                    })))
+                }
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "SubscriptionFailed".to_string(),
+                        message: format!("Failed to create subscription: {}", e),
+                    }),
+                ))
+            }
+        } else {
+            Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "TierUnavailable".to_string(),
+                    message: "Tier management not available".to_string(),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available (Stripe not configured)".to_string(),
+            }),
+        ))
+    }
+}
+
+/// Cancel subscription
+pub async fn cancel_subscription(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    if let Some(payment_mgr) = state.payment_manager() {
+        match payment_mgr.cancel_subscription(&api_key).await {
+            Ok(subscription) => Ok(Json(serde_json::json!({
+                "success": true,
+                "message": "Subscription canceled successfully",
+                "subscription_id": subscription.id.to_string(),
+                "status": subscription.status.to_string(),
+            }))),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "CancellationFailed".to_string(),
+                    message: format!("Failed to cancel subscription: {}", e),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available (Stripe not configured)".to_string(),
+            }),
+        ))
+    }
+}
+
+/// Stripe webhook handler
+pub async fn stripe_webhook(
+    State(state): State<Arc<ApiServer>>,
+    headers: axum::http::HeaderMap,
+    body: String,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if let Some(payment_mgr) = state.payment_manager() {
+        // Get Stripe signature from headers
+        let signature = headers
+            .get("stripe-signature")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "MissingSignature".to_string(),
+                    message: "Missing Stripe signature header".to_string(),
+                }),
+            ))?;
+        
+        // Get webhook secret from environment
+        let webhook_secret = std::env::var("STRIPE_WEBHOOK_SECRET")
+            .map_err(|_| (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "ConfigError".to_string(),
+                    message: "Stripe webhook secret not configured".to_string(),
+                }),
+            ))?;
+        
+        // Handle webhook event
+        match payment_mgr.handle_webhook(&body, signature, &webhook_secret).await {
+            Ok(_) => Ok(Json(serde_json::json!({
+                "success": true,
+                "message": "Webhook processed successfully",
+            }))),
+            Err(e) => {
+                error!("Webhook processing failed: {}", e);
+                Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "WebhookFailed".to_string(),
+                        message: format!("Failed to process webhook: {}", e),
+                    }),
+                ))
+            }
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available (Stripe not configured)".to_string(),
+            }),
+        ))
+    }
+}
