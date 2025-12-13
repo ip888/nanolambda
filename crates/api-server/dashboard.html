@@ -738,8 +738,8 @@
             usageSection.style.display = 'block';
             
             try {
-                // Fetch usage stats, billing info, rate limit status, tier info, and pricing in parallel
-                const [usageRes, billingRes, rateLimitRes, tierRes, pricingRes] = await Promise.all([
+                // Fetch usage stats, billing info, rate limit status, tier info, pricing, and invoices in parallel
+                const [usageRes, billingRes, rateLimitRes, tierRes, pricingRes, invoiceSummary] = await Promise.all([
                     fetch('/usage/stats', {
                         headers: { 'Authorization': `Bearer ${apiKey}` }
                     }),
@@ -752,7 +752,8 @@
                     fetch('/tier/current', {
                         headers: { 'Authorization': `Bearer ${apiKey}` }
                     }),
-                    fetch('/pricing')
+                    fetch('/pricing'),
+                    fetchInvoiceSummary()
                 ]);
                 
                 if (!usageRes.ok || !billingRes.ok || !rateLimitRes.ok) {
@@ -768,7 +769,7 @@
                 // Fetch upgrade recommendation
                 const recommendation = await fetchUpgradeRecommendation(apiKey);
                 
-                renderUsageData(usage, billing, rateLimit, tierInfo, pricing, recommendation);
+                renderUsageData(usage, billing, rateLimit, tierInfo, pricing, recommendation, invoiceSummary);
                 
                 // Store API key for future use
                 sessionStorage.setItem('nanolambda_api_key', apiKey);
@@ -835,7 +836,7 @@
             `;
         }
         
-        function renderUsageData(usage, billing, rateLimit, tierInfo, pricing, recommendation) {
+        function renderUsageData(usage, billing, rateLimit, tierInfo, pricing, recommendation, invoiceSummary) {
             const hasUsage = usage.total_invocations > 0;
             const hasTier = tierInfo && tierInfo.tier;
             const currentTier = hasTier ? tierInfo.tier : 'trial';
@@ -1002,6 +1003,8 @@
                     <a href="/tier/plans" style="display: inline-block; padding: 8px 20px; background: white; color: #3b82f6; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">View Plans</a>
                 </div>
                 ` : ''}
+                
+                ${invoiceSummary ? renderInvoicesSummary(invoiceSummary) : ''}
             `;
             
             document.getElementById('usageContent').innerHTML = html;
@@ -1299,6 +1302,245 @@
                 console.error('Upgrade failed:', error);
                 alert(`❌ Upgrade failed: ${error.message}\n\nPlease try again or contact support.`);
             }
+        }
+        
+        // ============================================================================
+        // Invoice Functions
+        // ============================================================================
+        
+        async function fetchInvoices() {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            
+            try {
+                const response = await fetch('/invoices', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.invoices || [];
+                }
+                return [];
+            } catch (error) {
+                console.error('Failed to fetch invoices:', error);
+                return [];
+            }
+        }
+        
+        async function fetchInvoiceSummary() {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            
+            try {
+                const response = await fetch('/invoices/summary', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.summary;
+                }
+                return null;
+            } catch (error) {
+                console.error('Failed to fetch invoice summary:', error);
+                return null;
+            }
+        }
+        
+        async function viewInvoiceDetails(invoiceId) {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            
+            try {
+                const response = await fetch(`/invoices/${invoiceId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showInvoiceModal(data.invoice, data.line_items);
+                } else {
+                    alert('Failed to load invoice details');
+                }
+            } catch (error) {
+                console.error('Failed to fetch invoice details:', error);
+                alert('Failed to load invoice details');
+            }
+        }
+        
+        function showInvoiceModal(invoice, lineItems) {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.onclick = (e) => {
+                if (e.target === modal) closeInvoiceModal();
+            };
+            
+            const statusBadge = getInvoiceStatusBadge(invoice.status);
+            const formattedDate = new Date(invoice.created_at * 1000).toLocaleDateString();
+            const dueDate = invoice.due_date ? new Date(invoice.due_date * 1000).toLocaleDateString() : 'N/A';
+            
+            let lineItemsHtml = '';
+            if (lineItems && lineItems.length > 0) {
+                lineItemsHtml = `
+                    <div style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 16px;">
+                        <h3 style="margin-bottom: 12px; font-size: 16px;">Line Items</h3>
+                        ${lineItems.map(item => `
+                            <div style="display: flex; justify-between; padding: 8px 0; border-bottom: 1px solid #1e293b;">
+                                <div>
+                                    <div style="font-weight: 500;">${item.description}</div>
+                                    <div style="font-size: 14px; color: #94a3b8;">Qty: ${item.quantity} × $${(item.unit_amount / 100).toFixed(2)}</div>
+                                </div>
+                                <div style="font-weight: 600;">$${(item.amount / 100).toFixed(2)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
+            const downloadButton = invoice.invoice_pdf_url ? 
+                `<button onclick="window.open('${invoice.invoice_pdf_url}', '_blank')" style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">
+                    Download PDF
+                </button>` : '';
+            
+            const viewOnlineButton = invoice.hosted_invoice_url ? 
+                `<button onclick="window.open('${invoice.hosted_invoice_url}', '_blank')" style="padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 8px;">
+                    View Online
+                </button>` : '';
+            
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+                    <div style="display: flex; justify-between; align-items: center; margin-bottom: 24px;">
+                        <h2 style="font-size: 24px; font-weight: 700;">Invoice ${invoice.invoice_number}</h2>
+                        <button onclick="closeInvoiceModal()" style="background: none; border: none; color: #94a3b8; font-size: 28px; cursor: pointer; line-height: 1;">×</button>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+                        <div>
+                            <div style="font-size: 14px; color: #94a3b8; margin-bottom: 4px;">Status</div>
+                            <div>${statusBadge}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; color: #94a3b8; margin-bottom: 4px;">Invoice Date</div>
+                            <div style="font-weight: 500;">${formattedDate}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; color: #94a3b8; margin-bottom: 4px;">Due Date</div>
+                            <div style="font-weight: 500;">${dueDate}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; color: #94a3b8; margin-bottom: 4px;">Tier</div>
+                            <div style="font-weight: 500; text-transform: capitalize;">${invoice.tier_level}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="background: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                        <div style="font-size: 14px; color: #94a3b8; margin-bottom: 8px;">Description</div>
+                        <div style="font-size: 15px;">${invoice.description}</div>
+                    </div>
+                    
+                    <div style="display: flex; justify-between; align-items: center; background: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                        <div>
+                            <div style="font-size: 14px; color: #94a3b8; margin-bottom: 4px;">Amount Due</div>
+                            <div style="font-size: 28px; font-weight: 700; color: ${invoice.status === 'paid' ? '#10b981' : '#f59e0b'};">
+                                $${(invoice.amount_due / 100).toFixed(2)}
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 14px; color: #94a3b8; margin-bottom: 4px;">Amount Paid</div>
+                            <div style="font-size: 20px; font-weight: 600; color: #10b981;">
+                                $${(invoice.amount_paid / 100).toFixed(2)}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${lineItemsHtml}
+                    
+                    <div style="display: flex; gap: 8px; margin-top: 24px;">
+                        ${downloadButton}
+                        ${viewOnlineButton}
+                        <button onclick="closeInvoiceModal()" style="padding: 10px 20px; background: #334155; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: auto;">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        function closeInvoiceModal() {
+            const modal = document.querySelector('.modal-overlay');
+            if (modal) {
+                modal.remove();
+            }
+        }
+        
+        function getInvoiceStatusBadge(status) {
+            const statusColors = {
+                'paid': { bg: '#10b981', text: 'Paid' },
+                'open': { bg: '#f59e0b', text: 'Open' },
+                'draft': { bg: '#64748b', text: 'Draft' },
+                'void': { bg: '#ef4444', text: 'Void' },
+                'uncollectible': { bg: '#dc2626', text: 'Uncollectible' }
+            };
+            
+            const color = statusColors[status] || statusColors['draft'];
+            return `<span style="display: inline-block; padding: 4px 12px; background: ${color.bg}; color: white; border-radius: 4px; font-size: 14px; font-weight: 600;">${color.text}</span>`;
+        }
+        
+        function renderInvoicesSummary(summary) {
+            if (!summary) return '';
+            
+            return `
+                <div style="margin-bottom: 30px;">
+                    <h2 style="font-size: 24px; margin-bottom: 20px;">💰 Invoices Overview</h2>
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-label">Total Invoices</div>
+                            <div class="metric-value">${summary.total_invoices}</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Total Paid</div>
+                            <div class="metric-value status-good">
+                                $${(summary.total_paid / 100).toFixed(2)}
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Outstanding</div>
+                            <div class="metric-value ${summary.total_outstanding > 0 ? 'status-warning' : 'status-good'}">
+                                $${(summary.total_outstanding / 100).toFixed(2)}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px;">
+                        <h3 style="font-size: 18px; margin-bottom: 16px;">Recent Invoices</h3>
+                        <div style="background: #1e293b; border-radius: 8px; overflow: hidden;">
+                            ${summary.recent_invoices.map((inv, idx) => `
+                                <div style="padding: 16px; border-bottom: ${idx < summary.recent_invoices.length - 1 ? '1px solid #334155' : 'none'}; cursor: pointer;" onclick="viewInvoiceDetails(${inv.id})" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='transparent'">
+                                    <div style="display: flex; justify-between; align-items: center;">
+                                        <div>
+                                            <div style="font-weight: 600; margin-bottom: 4px;">${inv.invoice_number}</div>
+                                            <div style="font-size: 14px; color: #94a3b8;">${new Date(inv.created_at * 1000).toLocaleDateString()}</div>
+                                        </div>
+                                        <div style="text-align: right;">
+                                            <div style="font-weight: 600; font-size: 18px; margin-bottom: 4px;">$${(inv.amount_due / 100).toFixed(2)}</div>
+                                            ${getInvoiceStatusBadge(inv.status)}
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
         }
         
         // Auto-refresh every 5 seconds
