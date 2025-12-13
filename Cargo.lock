@@ -2443,6 +2443,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "hex",
+ "hmac",
  "r2d2",
  "r2d2_sqlite",
  "rand 0.8.5",

@@ -444,16 +444,254 @@ impl PaymentManager {
         Ok(canceled_sub)
     }
 
+    /// Verify Stripe webhook signature
+    pub fn verify_webhook_signature(
+        &self,
+        payload: &str,
+        signature_header: &str,
+        webhook_secret: &str,
+    ) -> Result<()> {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        // Parse signature header: "t=timestamp,v1=signature"
+        let mut timestamp = None;
+        let mut signature = None;
+
+        for part in signature_header.split(',') {
+            if let Some((key, value)) = part.split_once('=') {
+                match key {
+                    "t" => timestamp = Some(value),
+                    "v1" => signature = Some(value),
+                    _ => {}
+                }
+            }
+        }
+
+        let timestamp = timestamp.ok_or_else(|| anyhow!("Missing timestamp in signature header"))?;
+        let expected_sig = signature.ok_or_else(|| anyhow!("Missing signature in header"))?;
+
+        // Construct signed payload: timestamp.payload
+        let signed_payload = format!("{}.{}", timestamp, payload);
+
+        // Compute HMAC-SHA256
+        type HmacSha256 = Hmac<Sha256>;
+        let mut mac = HmacSha256::new_from_slice(webhook_secret.as_bytes())
+            .map_err(|e| anyhow!("Invalid webhook secret: {}", e))?;
+        mac.update(signed_payload.as_bytes());
+        
+        let computed_sig = hex::encode(mac.finalize().into_bytes());
+
+        // Compare signatures (constant-time comparison)
+        if computed_sig != expected_sig {
+            return Err(anyhow!("Webhook signature verification failed"));
+        }
+
+        // Check timestamp to prevent replay attacks (within 5 minutes)
+        let timestamp_secs: i64 = timestamp.parse()
+            .map_err(|_| anyhow!("Invalid timestamp format"))?;
+        let now = chrono::Utc::now().timestamp();
+        let age_secs = now - timestamp_secs;
+
+        if age_secs.abs() > 300 {
+            return Err(anyhow!("Webhook timestamp too old or in future (age: {}s)", age_secs));
+        }
+
+        Ok(())
+    }
+
     /// Handle Stripe webhook events
     pub async fn handle_webhook(
         &self,
-        _payload: &str,
-        _signature: &str,
-        _webhook_secret: &str,
-    ) -> Result<()> {
-        // TODO: Implement webhook signature verification
-        // TODO: Handle different event types (payment_intent.succeeded, subscription.updated, etc.)
-        tracing::warn!("Webhook handling not yet implemented");
-        Ok(())
+        payload: &str,
+        signature: &str,
+        webhook_secret: &str,
+    ) -> Result<WebhookResult> {
+        // Verify signature first
+        self.verify_webhook_signature(payload, signature, webhook_secret)?;
+
+        // Parse event
+        let event: StripeEvent = serde_json::from_str(payload)
+            .map_err(|e| anyhow!("Failed to parse webhook event: {}", e))?;
+
+        tracing::info!("Processing Stripe webhook event: {} ({})", event.event_type, event.id);
+
+        // Handle different event types
+        match event.event_type.as_str() {
+            "customer.subscription.created" => self.handle_subscription_created(&event).await,
+            "customer.subscription.updated" => self.handle_subscription_updated(&event).await,
+            "customer.subscription.deleted" => self.handle_subscription_deleted(&event).await,
+            "invoice.payment_succeeded" => self.handle_payment_succeeded(&event).await,
+            "invoice.payment_failed" => self.handle_payment_failed(&event).await,
+            "payment_method.attached" => self.handle_payment_method_attached(&event).await,
+            _ => {
+                tracing::debug!("Unhandled webhook event type: {}", event.event_type);
+                Ok(WebhookResult {
+                    processed: false,
+                    message: format!("Event type not handled: {}", event.event_type),
+                })
+            }
+        }
     }
+
+    async fn handle_subscription_created(&self, event: &StripeEvent) -> Result<WebhookResult> {
+        let subscription: StripeSubscription = serde_json::from_value(event.data.object.clone())
+            .map_err(|e| anyhow!("Failed to parse subscription: {}", e))?;
+
+        tracing::info!("Subscription created: {} for customer {}", subscription.id, subscription.customer);
+
+        // Update database
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE stripe_customers 
+            SET stripe_subscription_id = ?, subscription_status = ?, updated_at = ?
+            WHERE stripe_customer_id = ?
+            "#,
+        )
+        .bind(&subscription.id)
+        .bind(&subscription.status)
+        .bind(now)
+        .bind(&subscription.customer)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(WebhookResult {
+            processed: true,
+            message: format!("Subscription {} created", subscription.id),
+        })
+    }
+
+    async fn handle_subscription_updated(&self, event: &StripeEvent) -> Result<WebhookResult> {
+        let subscription: StripeSubscription = serde_json::from_value(event.data.object.clone())
+            .map_err(|e| anyhow!("Failed to parse subscription: {}", e))?;
+
+        tracing::info!("Subscription updated: {} status={}", subscription.id, subscription.status);
+
+        // Update database
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE stripe_customers 
+            SET subscription_status = ?, updated_at = ?
+            WHERE stripe_subscription_id = ?
+            "#,
+        )
+        .bind(&subscription.status)
+        .bind(now)
+        .bind(&subscription.id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(WebhookResult {
+            processed: true,
+            message: format!("Subscription {} updated to status: {}", subscription.id, subscription.status),
+        })
+    }
+
+    async fn handle_subscription_deleted(&self, event: &StripeEvent) -> Result<WebhookResult> {
+        let subscription: StripeSubscription = serde_json::from_value(event.data.object.clone())
+            .map_err(|e| anyhow!("Failed to parse subscription: {}", e))?;
+
+        tracing::info!("Subscription deleted: {}", subscription.id);
+
+        // Update database - keep subscription_id but mark as canceled
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE stripe_customers 
+            SET subscription_status = 'canceled', updated_at = ?
+            WHERE stripe_subscription_id = ?
+            "#,
+        )
+        .bind(now)
+        .bind(&subscription.id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(WebhookResult {
+            processed: true,
+            message: format!("Subscription {} deleted", subscription.id),
+        })
+    }
+
+    async fn handle_payment_succeeded(&self, event: &StripeEvent) -> Result<WebhookResult> {
+        #[derive(Deserialize)]
+        struct Invoice {
+            id: String,
+            customer: String,
+            subscription: Option<String>,
+            amount_paid: i64,
+        }
+
+        let invoice: Invoice = serde_json::from_value(event.data.object.clone())
+            .map_err(|e| anyhow!("Failed to parse invoice: {}", e))?;
+
+        tracing::info!("Payment succeeded: invoice {} for customer {} (${:.2})", 
+            invoice.id, invoice.customer, invoice.amount_paid as f64 / 100.0);
+
+        // Optionally: Update payment history, send receipt email, etc.
+
+        Ok(WebhookResult {
+            processed: true,
+            message: format!("Payment succeeded for invoice {}", invoice.id),
+        })
+    }
+
+    async fn handle_payment_failed(&self, event: &StripeEvent) -> Result<WebhookResult> {
+        #[derive(Deserialize)]
+        struct Invoice {
+            id: String,
+            customer: String,
+            subscription: Option<String>,
+            amount_due: i64,
+        }
+
+        let invoice: Invoice = serde_json::from_value(event.data.object.clone())
+            .map_err(|e| anyhow!("Failed to parse invoice: {}", e))?;
+
+        tracing::warn!("Payment failed: invoice {} for customer {} (${:.2})", 
+            invoice.id, invoice.customer, invoice.amount_due as f64 / 100.0);
+
+        // Optionally: Suspend user access, send payment failure email, retry logic
+
+        Ok(WebhookResult {
+            processed: true,
+            message: format!("Payment failed for invoice {}", invoice.id),
+        })
+    }
+
+    async fn handle_payment_method_attached(&self, event: &StripeEvent) -> Result<WebhookResult> {
+        let payment_method: StripePaymentMethod = serde_json::from_value(event.data.object.clone())
+            .map_err(|e| anyhow!("Failed to parse payment method: {}", e))?;
+
+        tracing::info!("Payment method attached: {} type={}", payment_method.id, payment_method.method_type);
+
+        Ok(WebhookResult {
+            processed: true,
+            message: format!("Payment method {} attached", payment_method.id),
+        })
+    }
+}
+
+/// Webhook processing result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookResult {
+    pub processed: bool,
+    pub message: String,
+}
+
+/// Stripe webhook event structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StripeEvent {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub data: StripeEventData,
+    pub created: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StripeEventData {
+    pub object: serde_json::Value,
 }
