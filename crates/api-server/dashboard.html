@@ -765,7 +765,10 @@
                 const tierInfo = tierRes.ok ? await tierRes.json() : null;
                 const pricing = pricingRes.ok ? await pricingRes.json() : null;
                 
-                renderUsageData(usage, billing, rateLimit, tierInfo, pricing);
+                // Fetch upgrade recommendation
+                const recommendation = await fetchUpgradeRecommendation(apiKey);
+                
+                renderUsageData(usage, billing, rateLimit, tierInfo, pricing, recommendation);
                 
                 // Store API key for future use
                 sessionStorage.setItem('nanolambda_api_key', apiKey);
@@ -776,7 +779,63 @@
             }
         }
         
-        function renderUsageData(usage, billing, rateLimit, tierInfo, pricing) {
+        // Fetch upgrade recommendation
+        async function fetchUpgradeRecommendation(apiKey) {
+            try {
+                const response = await fetch('/tier/recommendation', {
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.has_recommendation ? data.recommendation : null;
+                }
+            } catch (error) {
+                console.error('Failed to fetch upgrade recommendation:', error);
+            }
+            return null;
+        }
+        
+        // Render upgrade banner based on recommendation
+        function renderUpgradeBanner(recommendation) {
+            if (!recommendation) return '';
+            
+            const urgencyColor = recommendation.urgency >= 80 ? '#ef4444' : recommendation.urgency >= 60 ? '#f97316' : '#3b82f6';
+            const urgencyLabel = recommendation.urgency >= 80 ? 'URGENT' : recommendation.urgency >= 60 ? 'RECOMMENDED' : 'SUGGESTED';
+            
+            return `
+                <div style="background: linear-gradient(135deg, ${urgencyColor} 0%, ${urgencyColor}dd 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <div style="display: flex; align-items: start; justify-content: space-between; gap: 15px;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 12px; font-weight: 700; letter-spacing: 1px; opacity: 0.9; margin-bottom: 8px;">
+                                ${urgencyLabel} UPGRADE
+                            </div>
+                            <div style="font-size: 20px; font-weight: 700; margin-bottom: 10px;">
+                                Upgrade to ${recommendation.recommended_tier.toUpperCase()}
+                            </div>
+                            <div style="opacity: 0.95; margin-bottom: 15px;">
+                                You're at ${recommendation.usage_percent}% of your monthly limit (${recommendation.current_usage.toLocaleString()} / ${recommendation.current_limit.toLocaleString()} invocations)
+                            </div>
+                            <div style="opacity: 0.9; font-size: 14px;">
+                                ${recommendation.reasons.slice(0, 3).map(reason => `✓ ${reason}`).join('<br>')}
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <button onclick="showUpgradeModal('${recommendation.recommended_tier}')" 
+                                    style="background: rgba(255,255,255,0.95); color: ${urgencyColor}; padding: 12px 24px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 15px; white-space: nowrap; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                View Upgrade →
+                            </button>
+                            <button onclick="document.getElementById('upgrade-banner').style.display='none'" 
+                                    style="background: rgba(255,255,255,0.1); color: white; padding: 8px 16px; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;">
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderUsageData(usage, billing, rateLimit, tierInfo, pricing, recommendation) {
             const hasUsage = usage.total_invocations > 0;
             const hasTier = tierInfo && tierInfo.tier;
             const currentTier = hasTier ? tierInfo.tier : 'trial';
@@ -784,6 +843,11 @@
             const tierColor = currentTier === 'enterprise' ? '#8b5cf6' : currentTier === 'pro' ? '#3b82f6' : currentTier === 'starter' ? '#10b981' : '#f59e0b';
             
             const html = `
+                <!-- Upgrade Banner -->
+                <div id="upgrade-banner">
+                    ${renderUpgradeBanner(recommendation)}
+                </div>
+                
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px;">
                     <!-- Current Tier Card -->
                     <div class="metric-card" style="background: linear-gradient(135deg, ${tierColor} 0%, ${tierColor}dd 100%);">
@@ -1066,6 +1130,174 @@
             } catch (error) {
                 console.error('Failed to open portal:', error);
                 alert(`Failed to open billing portal: ${error.message}\n\nMake sure you have an active subscription and payment method.`);
+            }
+        }
+        
+        // Show upgrade modal with comparison
+        async function showUpgradeModal(targetTier) {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            
+            if (!apiKey) {
+                alert('Please enter your API key first');
+                return;
+            }
+            
+            try {
+                // Fetch upgrade preview
+                const response = await fetch(`/tier/preview?tier=${targetTier}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch upgrade preview');
+                }
+                
+                const preview = await response.json();
+                
+                // Build comparison modal
+                const modalHtml = `
+                    <div id="upgrade-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px;">
+                        <div style="background: white; border-radius: 16px; max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);">
+                            <div style="padding: 30px;">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 25px;">
+                                    <div>
+                                        <h2 style="margin: 0 0 8px 0; font-size: 24px; color: #1e293b;">Upgrade to ${preview.target.name}</h2>
+                                        <p style="margin: 0; color: #64748b; font-size: 14px;">Currently on ${preview.current.name} plan (${preview.current_usage.usage_percent}% used)</p>
+                                    </div>
+                                    <button onclick="closeUpgradeModal()" style="background: #f1f5f9; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 20px; line-height: 1; color: #64748b;">×</button>
+                                </div>
+                                
+                                <div style="background: #f8fafc; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                                    <h3 style="margin: 0 0 15px 0; font-size: 16px; font-weight: 600; color: #1e293b;">What You'll Get</h3>
+                                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                                        <div>
+                                            <div style="color: #64748b; font-size: 13px; margin-bottom: 4px;">Invocations/Month</div>
+                                            <div style="font-size: 20px; font-weight: 700; color: #10b981;">
+                                                ${preview.target.invocations_per_month ? preview.target.invocations_per_month.toLocaleString() : '∞'}
+                                                ${preview.improvements.invocation_increase > 0 ? `<span style="color: #10b981; font-size: 14px; margin-left: 8px;">+${(preview.improvements.invocation_increase / 1000000).toFixed(1)}M</span>` : ''}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style="color: #64748b; font-size: 13px; margin-bottom: 4px;">Memory Limit</div>
+                                            <div style="font-size: 20px; font-weight: 700; color: #3b82f6;">
+                                                ${preview.target.memory_mb}MB
+                                                ${preview.improvements.memory_increase_mb > 0 ? `<span style="color: #10b981; font-size: 14px; margin-left: 8px;">+${preview.improvements.memory_increase_mb}MB</span>` : ''}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style="color: #64748b; font-size: 13px; margin-bottom: 4px;">Timeout</div>
+                                            <div style="font-size: 20px; font-weight: 700; color: #8b5cf6;">
+                                                ${preview.target.timeout_ms / 1000}s
+                                                ${preview.improvements.timeout_increase_ms > 0 ? `<span style="color: #10b981; font-size: 14px; margin-left: 8px;">+${preview.improvements.timeout_increase_ms / 1000}s</span>` : ''}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div style="color: #64748b; font-size: 13px; margin-bottom: 4px;">Concurrent Executions</div>
+                                            <div style="font-size: 20px; font-weight: 700; color: #f59e0b;">
+                                                ${preview.target.concurrent_executions}
+                                                ${preview.improvements.concurrent_increase > 0 ? `<span style="color: #10b981; font-size: 14px; margin-left: 8px;">+${preview.improvements.concurrent_increase}</span>` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    ${preview.improvements.new_features.length > 0 ? `
+                                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
+                                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1e293b;">New Features Unlocked</h4>
+                                        ${preview.improvements.new_features.map(feature => `
+                                            <div style="padding: 8px 12px; background: white; border-radius: 8px; margin-bottom: 6px; font-size: 14px; color: #334155;">
+                                                ✨ ${feature}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                
+                                <div style="display: flex; gap: 12px;">
+                                    <button onclick="performUpgrade('${targetTier}')" style="flex: 1; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; padding: 14px 24px; border-radius: 10px; font-weight: 700; font-size: 16px; cursor: pointer; transition: all 0.2s;">
+                                        Upgrade Now
+                                    </button>
+                                    <button onclick="closeUpgradeModal()" style="flex: 0 0 auto; background: #f1f5f9; color: #64748b; border: none; padding: 14px 24px; border-radius: 10px; font-weight: 600; font-size: 16px; cursor: pointer;">
+                                        Cancel
+                                    </button>
+                                </div>
+                                
+                                <p style="margin: 15px 0 0 0; text-align: center; font-size: 12px; color: #94a3b8;">
+                                    You'll be redirected to complete payment setup
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Add modal to page
+                const modalDiv = document.createElement('div');
+                modalDiv.innerHTML = modalHtml;
+                document.body.appendChild(modalDiv.firstChild);
+                
+            } catch (error) {
+                console.error('Failed to show upgrade modal:', error);
+                alert(`Failed to load upgrade preview: ${error.message}`);
+            }
+        }
+        
+        function closeUpgradeModal() {
+            const modal = document.getElementById('upgrade-modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+        
+        async function performUpgrade(targetTier) {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            
+            try {
+                // First, check if payment method is set up
+                // If not, redirect to customer portal for payment setup
+                const response = await fetch('/payment/customer', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+                
+                if (!response.ok || !(await response.json()).payment_method_id) {
+                    // No payment method - redirect to portal
+                    alert('Please set up a payment method first');
+                    closeUpgradeModal();
+                    openCustomerPortal();
+                    return;
+                }
+                
+                // Perform upgrade
+                const upgradeResponse = await fetch('/tier/upgrade', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({ tier: targetTier })
+                });
+                
+                if (upgradeResponse.ok) {
+                    const result = await upgradeResponse.json();
+                    closeUpgradeModal();
+                    alert(`✅ ${result.message}\n\nYour dashboard will refresh automatically.`);
+                    
+                    // Refresh data
+                    setTimeout(() => {
+                        fetchUsageData();
+                    }, 1000);
+                } else {
+                    const error = await upgradeResponse.json();
+                    throw new Error(error.message || 'Upgrade failed');
+                }
+                
+            } catch (error) {
+                console.error('Upgrade failed:', error);
+                alert(`❌ Upgrade failed: ${error.message}\n\nPlease try again or contact support.`);
             }
         }
         

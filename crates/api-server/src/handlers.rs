@@ -1,7 +1,7 @@
 //! Request handlers - Integrated with storage and runtime
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
     response::Html,
@@ -1755,6 +1755,198 @@ pub async fn upgrade_tier(
             Json(ErrorResponse {
                 error: "TierUnavailable".to_string(),
                 message: "Tier management not available in in-memory mode".to_string(),
+            }),
+        ))
+    }
+}
+
+/// GET /tier/recommendation - Get intelligent upgrade recommendation
+pub async fn get_upgrade_recommendation(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    if let Some(tier_mgr) = state.tier_manager() {
+        match tier_mgr.get_upgrade_recommendation(&api_key).await {
+            Ok(Some(recommendation)) => {
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "has_recommendation": true,
+                    "recommendation": {
+                        "current_tier": recommendation.current_tier.as_str(),
+                        "recommended_tier": recommendation.recommended_tier.as_str(),
+                        "urgency": recommendation.urgency,
+                        "usage_percent": recommendation.usage_percent,
+                        "current_usage": recommendation.current_usage,
+                        "current_limit": recommendation.current_limit,
+                        "reasons": recommendation.reasons,
+                        "estimated_savings": recommendation.estimated_savings,
+                    }
+                })))
+            }
+            Ok(None) => {
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "has_recommendation": false,
+                    "message": "No upgrade recommended at this time"
+                })))
+            }
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "RecommendationFailed".to_string(),
+                    message: format!("Failed to get recommendation: {}", e),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "TierUnavailable".to_string(),
+                message: "Tier management not available".to_string(),
+            }),
+        ))
+    }
+}
+
+/// GET /tier/preview - Preview upgrade benefits and costs
+pub async fn get_upgrade_preview(
+    State(state): State<Arc<ApiServer>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+    
+    let target_tier_str = params.get("tier").ok_or_else(|| (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            error: "MissingParameter".to_string(),
+            message: "Query parameter 'tier' is required".to_string(),
+        }),
+    ))?;
+    
+    if let Some(tier_mgr) = state.tier_manager() {
+        let target_tier = nanolambda_storage::tier::TierLevel::from_str(target_tier_str)
+            .ok_or_else(|| (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidTier".to_string(),
+                    message: format!("Invalid tier: {}", target_tier_str),
+                }),
+            ))?;
+        
+        // Get current and target tier configs
+        match tier_mgr.get_user_tier(&api_key).await {
+            Ok(user_tier) => {
+                let current_config = tier_mgr.get_tier_config(user_tier.tier).await;
+                let target_config = tier_mgr.get_tier_config(target_tier).await;
+                
+                // Calculate differences
+                let invocation_increase = if let (Some(current), Some(target)) = (
+                    current_config.max_invocations_per_month,
+                    target_config.max_invocations_per_month,
+                ) {
+                    target - current
+                } else {
+                    0
+                };
+                
+                let memory_increase = target_config.max_memory_mb as i64 - current_config.max_memory_mb as i64;
+                let timeout_increase = target_config.max_timeout_ms - current_config.max_timeout_ms;
+                let concurrent_increase = target_config.max_concurrent_executions as i64 - current_config.max_concurrent_executions as i64;
+                
+                // Build features comparison
+                let mut new_features = Vec::new();
+                if !current_config.custom_domains && target_config.custom_domains {
+                    new_features.push("Custom domains");
+                }
+                if !current_config.advanced_monitoring && target_config.advanced_monitoring {
+                    new_features.push("Advanced monitoring");
+                }
+                if !current_config.priority_execution && target_config.priority_execution {
+                    new_features.push("Priority execution");
+                }
+                if current_config.support_level != target_config.support_level {
+                    new_features.push("Enhanced support");
+                }
+                
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "current": {
+                        "tier": current_config.tier.as_str(),
+                        "name": current_config.name,
+                        "invocations_per_month": current_config.max_invocations_per_month,
+                        "memory_mb": current_config.max_memory_mb,
+                        "timeout_ms": current_config.max_timeout_ms,
+                        "concurrent_executions": current_config.max_concurrent_executions,
+                    },
+                    "target": {
+                        "tier": target_config.tier.as_str(),
+                        "name": target_config.name,
+                        "invocations_per_month": target_config.max_invocations_per_month,
+                        "memory_mb": target_config.max_memory_mb,
+                        "timeout_ms": target_config.max_timeout_ms,
+                        "concurrent_executions": target_config.max_concurrent_executions,
+                    },
+                    "improvements": {
+                        "invocation_increase": invocation_increase,
+                        "memory_increase_mb": memory_increase,
+                        "timeout_increase_ms": timeout_increase,
+                        "concurrent_increase": concurrent_increase,
+                        "new_features": new_features,
+                    },
+                    "current_usage": {
+                        "monthly_invocations": user_tier.monthly_invocations,
+                        "usage_percent": if let Some(limit) = current_config.max_invocations_per_month {
+                            if limit > 0 {
+                                ((user_tier.monthly_invocations as f64 / limit as f64) * 100.0) as u32
+                            } else {
+                                0
+                            }
+                        } else {
+                            0
+                        }
+                    }
+                })))
+            }
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "PreviewFailed".to_string(),
+                    message: format!("Failed to generate preview: {}", e),
+                }),
+            ))
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "TierUnavailable".to_string(),
+                message: "Tier management not available".to_string(),
             }),
         ))
     }

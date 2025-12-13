@@ -210,6 +210,8 @@ impl ApiServer {
             // Tier management (requires auth to view own tier and upgrade)
             .route("/tier/current", get(handlers::get_current_tier))
             .route("/tier/upgrade", put(handlers::upgrade_tier))
+            .route("/tier/recommendation", get(handlers::get_upgrade_recommendation))
+            .route("/tier/preview", get(handlers::get_upgrade_preview))
             
             // Payment management (Stripe integration - requires auth)
             .route("/payment/customer", post(handlers::create_customer))

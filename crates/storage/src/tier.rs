@@ -314,6 +314,120 @@ impl TierManager {
     pub async fn upgrade_tier(&self, api_key: &str, new_tier: TierLevel) -> Result<UserTier, sqlx::Error> {
         self.assign_tier(api_key, new_tier).await
     }
+    
+    /// Get intelligent upgrade recommendation based on usage patterns
+    pub async fn get_upgrade_recommendation(&self, api_key: &str) -> Result<Option<UpgradeRecommendation>, sqlx::Error> {
+        let user_tier = self.get_user_tier(api_key).await?;
+        let current_config = self.get_tier_config(user_tier.tier).await;
+        
+        // Don't recommend upgrades for Enterprise tier
+        if user_tier.tier == TierLevel::Enterprise {
+            return Ok(None);
+        }
+        
+        // Calculate usage percentage
+        let usage_percent = if let Some(limit) = current_config.max_invocations_per_month {
+            if limit > 0 {
+                (user_tier.monthly_invocations as f64 / limit as f64) * 100.0
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+        
+        // Determine next tier
+        let recommended_tier = match user_tier.tier {
+            TierLevel::Starter => TierLevel::Pro,
+            TierLevel::Pro => TierLevel::Enterprise,
+            TierLevel::Enterprise => return Ok(None),
+        };
+        
+        let recommended_config = self.get_tier_config(recommended_tier).await;
+        
+        // Calculate urgency score (0-100)
+        let urgency = if usage_percent >= 95.0 {
+            100
+        } else if usage_percent >= 85.0 {
+            80
+        } else if usage_percent >= 70.0 {
+            60
+        } else if usage_percent >= 50.0 {
+            40
+        } else {
+            20
+        };
+        
+        // Only recommend if usage is at least 50% or approaching limits
+        if usage_percent < 50.0 && urgency < 60 {
+            return Ok(None);
+        }
+        
+        // Build reasons list
+        let mut reasons = Vec::new();
+        
+        if usage_percent >= 70.0 {
+            reasons.push(format!(
+                "You've used {:.0}% of your monthly invocation limit",
+                usage_percent
+            ));
+        }
+        
+        if usage_percent >= 85.0 {
+            reasons.push("You're at risk of hitting your monthly limit".to_string());
+        }
+        
+        // Compare benefits
+        let invocation_increase = if let (Some(current), Some(next)) = (
+            current_config.max_invocations_per_month,
+            recommended_config.max_invocations_per_month,
+        ) {
+            ((next - current) as f64 / current as f64 * 100.0) as i32
+        } else {
+            0
+        };
+        
+        if invocation_increase > 0 {
+            reasons.push(format!("Get {}x more invocations", invocation_increase / 100 + 1));
+        }
+        
+        let memory_increase = recommended_config.max_memory_mb as i32 - current_config.max_memory_mb as i32;
+        if memory_increase > 0 {
+            reasons.push(format!("Unlock {}MB more memory", memory_increase));
+        }
+        
+        if !current_config.advanced_monitoring && recommended_config.advanced_monitoring {
+            reasons.push("Access advanced monitoring features".to_string());
+        }
+        
+        if !current_config.custom_domains && recommended_config.custom_domains {
+            reasons.push("Enable custom domains".to_string());
+        }
+        
+        Ok(Some(UpgradeRecommendation {
+            current_tier: user_tier.tier,
+            recommended_tier,
+            urgency,
+            usage_percent: usage_percent as u32,
+            current_usage: user_tier.monthly_invocations,
+            current_limit: current_config.max_invocations_per_month.unwrap_or(0),
+            reasons,
+            estimated_savings: None, // Can be calculated if cost data available
+        }))
+    }
+}
+
+/// Upgrade recommendation with intelligent analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpgradeRecommendation {
+    pub current_tier: TierLevel,
+    pub recommended_tier: TierLevel,
+    pub urgency: u32, // 0-100, higher = more urgent
+    pub usage_percent: u32,
+    pub current_usage: i64,
+    pub current_limit: i64,
+    pub reasons: Vec<String>,
+    pub estimated_savings: Option<f64>,
 }
 
 #[cfg(test)]
