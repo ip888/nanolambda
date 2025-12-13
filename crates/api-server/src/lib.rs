@@ -19,6 +19,7 @@ pub mod usage_tracker;
 pub mod discount_handlers;
 pub mod referral_handlers;
 pub mod annual_handlers;
+pub mod analytics_handlers;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::{
@@ -48,6 +49,7 @@ pub struct ApiServer {
     discount_manager: Option<Arc<nanolambda_storage::discount::DiscountManager>>, // Discount code management
     referral_manager: Option<Arc<nanolambda_storage::referral::ReferralManager>>, // Referral program management
     annual_billing_manager: Option<Arc<nanolambda_storage::annual::AnnualBillingManager>>, // Annual billing management
+    analytics_manager: Option<Arc<nanolambda_storage::analytics::UsageAnalyticsManager>>, // Usage analytics and insights
 }
 
 impl ApiServer {
@@ -100,6 +102,11 @@ impl ApiServer {
             nanolambda_storage::annual::AnnualBillingManager::new(pool.clone()).await?
         );
         
+        // Initialize analytics manager (always available)
+        let analytics_manager = Arc::new(
+            nanolambda_storage::analytics::UsageAnalyticsManager::new(pool.clone()).await?
+        );
+        
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
@@ -117,6 +124,7 @@ impl ApiServer {
             discount_manager: Some(discount_manager),
             referral_manager: Some(referral_manager),
             annual_billing_manager: Some(annual_billing_manager),
+            analytics_manager: Some(analytics_manager),
         })
     }
     
@@ -142,7 +150,10 @@ impl ApiServer {
             nanolambda_storage::referral::ReferralManager::new(pool.clone()).await?
         );
         let annual_billing_manager = Arc::new(
-            nanolambda_storage::annual::AnnualBillingManager::new(pool).await?
+            nanolambda_storage::annual::AnnualBillingManager::new(pool.clone()).await?
+        );
+        let analytics_manager = Arc::new(
+            nanolambda_storage::analytics::UsageAnalyticsManager::new(pool).await?
         );
         
         Ok(Self {
@@ -162,6 +173,7 @@ impl ApiServer {
             discount_manager: Some(discount_manager),
             referral_manager: Some(referral_manager),
             annual_billing_manager: Some(annual_billing_manager),
+            analytics_manager: Some(analytics_manager),
         })
     }
 
@@ -238,6 +250,11 @@ impl ApiServer {
     /// Get annual billing manager reference (annual subscription management)
     pub fn annual_billing_manager(&self) -> Option<&Arc<nanolambda_storage::annual::AnnualBillingManager>> {
         self.annual_billing_manager.as_ref()
+    }
+
+    /// Get analytics manager reference (usage analytics and insights)
+    pub fn analytics_manager(&self) -> Option<&Arc<nanolambda_storage::analytics::UsageAnalyticsManager>> {
+        self.analytics_manager.as_ref()
     }
 
     /// Start the API server
@@ -328,6 +345,12 @@ impl ApiServer {
             .route("/billing/annual/usage", get(annual_handlers::get_annual_subscription_usage))
             .route("/billing/annual/downgrade", post(annual_handlers::downgrade_from_annual))
             
+            // Usage analytics (requires auth)
+            .route("/analytics/daily-summaries", get(analytics_handlers::get_daily_summaries))
+            .route("/analytics/profile", get(analytics_handlers::get_usage_profile))
+            .route("/analytics/snapshot", post(analytics_handlers::get_usage_snapshot))
+            .route("/analytics/trends", get(analytics_handlers::get_monthly_trends))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
@@ -377,6 +400,9 @@ impl ApiServer {
             
             // Annual billing pricing (public)
             .route("/billing/annual/pricing/:tier", get(annual_handlers::get_annual_pricing))
+            
+            // Platform analytics (public - admin can view)
+            .route("/analytics/platform", get(analytics_handlers::get_platform_analytics))
             
             // Health check
             .route("/health", get(handlers::health_check))
