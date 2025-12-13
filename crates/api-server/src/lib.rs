@@ -16,6 +16,7 @@ pub mod metrics;
 pub mod concurrency;
 pub mod rate_limiter;
 pub mod usage_tracker;
+pub mod discount_handlers;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::{
@@ -42,6 +43,7 @@ pub struct ApiServer {
     tier_manager: Option<Arc<TierManager>>, // Tiered pricing management
     payment_manager: Option<Arc<PaymentManager>>, // Stripe payment integration
     invoice_manager: Arc<nanolambda_storage::invoice::InvoiceManager>, // Invoice generation and storage
+    discount_manager: Option<Arc<nanolambda_storage::discount::DiscountManager>>, // Discount code management
 }
 
 impl ApiServer {
@@ -76,7 +78,12 @@ impl ApiServer {
         
         // Initialize invoice manager (always available)
         let invoice_manager = Arc::new(
-            nanolambda_storage::invoice::InvoiceManager::new(stripe_key, pool.clone()).await?
+            nanolambda_storage::invoice::InvoiceManager::new(stripe_key.clone(), pool.clone()).await?
+        );
+        
+        // Initialize discount manager (always available)
+        let discount_manager = Arc::new(
+            nanolambda_storage::discount::DiscountManager::new(stripe_key, pool.clone()).await?
         );
         
         Ok(Self {
@@ -93,6 +100,7 @@ impl ApiServer {
             tier_manager: Some(Arc::new(tier_manager)),
             payment_manager,
             invoice_manager,
+            discount_manager: Some(discount_manager),
         })
     }
     
@@ -109,7 +117,10 @@ impl ApiServer {
             .connect("sqlite::memory:")
             .await?;
         let invoice_manager = Arc::new(
-            nanolambda_storage::invoice::InvoiceManager::new("sk_test_dummy".to_string(), pool).await?
+            nanolambda_storage::invoice::InvoiceManager::new("sk_test_dummy".to_string(), pool.clone()).await?
+        );
+        let discount_manager = Arc::new(
+            nanolambda_storage::discount::DiscountManager::new("sk_test_dummy".to_string(), pool).await?
         );
         
         Ok(Self {
@@ -126,6 +137,7 @@ impl ApiServer {
             tier_manager: None, // No tier management for in-memory mode
             payment_manager: None, // No payment processing for in-memory mode
             invoice_manager,
+            discount_manager: Some(discount_manager),
         })
     }
 
@@ -187,6 +199,11 @@ impl ApiServer {
     /// Get payment manager reference (Stripe payment integration)
     pub fn payment_manager(&self) -> Option<&Arc<PaymentManager>> {
         self.payment_manager.as_ref()
+    }
+    
+    /// Get discount manager reference (discount code management)
+    pub fn discount_manager(&self) -> Option<&Arc<nanolambda_storage::discount::DiscountManager>> {
+        self.discount_manager.as_ref()
     }
 
     /// Start the API server
@@ -257,6 +274,15 @@ impl ApiServer {
             .route("/usage/check-alerts", post(handlers::check_usage_alerts))
             .route("/usage/alerts", get(handlers::get_usage_alerts))
             
+            // Discount code management (requires auth)
+            .route("/discounts/apply", post(discount_handlers::apply_discount))
+            .route("/discounts/my-usage", get(discount_handlers::get_user_discount_usage))
+            
+            // Admin discount routes (requires ADMIN_API_KEY)
+            .route("/discounts", post(discount_handlers::create_discount))
+            .route("/discounts", get(discount_handlers::list_discounts))
+            .route("/discounts/:discount_id/usage", get(discount_handlers::get_discount_usage))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
@@ -295,6 +321,9 @@ impl ApiServer {
             
             // Stripe webhooks (public - verified by signature)
             .route("/webhooks/stripe", post(handlers::stripe_webhook))
+            
+            // Discount validation (public - no auth required for validation)
+            .route("/discounts/validate", post(discount_handlers::validate_discount))
             
             // Health check
             .route("/health", get(handlers::health_check))

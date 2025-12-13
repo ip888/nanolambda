@@ -875,6 +875,9 @@
                         <button onclick="openCustomerPortal()" style="margin-top: 10px; width: 100%; padding: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
                             ⚙️ Manage Billing
                         </button>
+                        <button onclick="showDiscountDialog()" style="margin-top: 8px; width: 100%; padding: 8px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
+                            💸 Apply Discount Code
+                        </button>
                         ` : `
                         <div class="metric-secondary">
                             Trial Period Active
@@ -884,6 +887,9 @@
                         </div>
                         <button onclick="openCustomerPortal()" style="margin-top: 10px; width: 100%; padding: 8px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
                             ⚙️ Manage Billing
+                        </button>
+                        <button onclick="showDiscountDialog()" style="margin-top: 8px; width: 100%; padding: 8px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
+                            💸 Apply Discount Code
                         </button>
                         `}
                     </div>
@@ -1543,6 +1549,193 @@
             `;
         }
         
+        // ============================================================================
+        // Discount Code Functions
+        // ============================================================================
+        
+        // Validate discount code
+        async function validateDiscountCode(code, amount) {
+            try {
+                const response = await fetch('/discounts/validate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ code, amount })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Validation request failed');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('Failed to validate discount code:', error);
+                return { valid: false, error_message: 'Failed to validate code' };
+            }
+        }
+        
+        // Apply discount code (when user has a subscription or making payment)
+        async function applyDiscountCode(code, amount) {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            
+            if (!apiKey) {
+                alert('Please enter your API key first');
+                return null;
+            }
+            
+            try {
+                const response = await fetch('/discounts/apply', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({ code, amount })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Failed to apply discount');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('Failed to apply discount code:', error);
+                alert(`❌ ${error.message}`);
+                return null;
+            }
+        }
+        
+        // Show discount code input dialog
+        function showDiscountDialog() {
+            const currentTier = document.getElementById('tierName') ? document.getElementById('tierName').textContent : 'Unknown';
+            
+            const modalHtml = `
+                <div id="discount-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px;">
+                    <div style="background: white; border-radius: 16px; max-width: 500px; width: 100%; padding: 30px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 25px;">
+                            <div>
+                                <h2 style="margin: 0 0 8px 0; font-size: 24px; color: #1e293b;">💸 Apply Discount Code</h2>
+                                <p style="margin: 0; color: #64748b; font-size: 14px;">Enter your promotional code</p>
+                            </div>
+                            <button onclick="closeDiscountDialog()" style="background: #f1f5f9; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 20px; line-height: 1; color: #64748b;">×</button>
+                        </div>
+                        
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1e293b; font-size: 14px;">Discount Code</label>
+                            <input 
+                                type="text" 
+                                id="discount-code-input"
+                                placeholder="e.g., SAVE20"
+                                style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px; text-transform: uppercase;"
+                                onkeyup="event.key === 'Enter' ? validateAndShowDiscount() : null"
+                            />
+                        </div>
+                        
+                        <div id="discount-result" style="margin-bottom: 20px; display: none;">
+                            <!-- Validation result will be shown here -->
+                        </div>
+                        
+                        <div style="display: flex; gap: 12px;">
+                            <button onclick="validateAndShowDiscount()" style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 14px 24px; border-radius: 10px; font-weight: 700; font-size: 16px; cursor: pointer;">
+                                Validate Code
+                            </button>
+                            <button onclick="closeDiscountDialog()" style="flex: 0 0 auto; background: #f1f5f9; color: #64748b; border: none; padding: 14px 24px; border-radius: 10px; font-weight: 600; font-size: 16px; cursor: pointer;">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            const modalDiv = document.createElement('div');
+            modalDiv.innerHTML = modalHtml;
+            document.body.appendChild(modalDiv.firstChild);
+            
+            // Focus input
+            setTimeout(() => {
+                document.getElementById('discount-code-input').focus();
+            }, 100);
+        }
+        
+        function closeDiscountDialog() {
+            const modal = document.getElementById('discount-modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+        
+        async function validateAndShowDiscount() {
+            const codeInput = document.getElementById('discount-code-input');
+            const code = codeInput.value.trim().toUpperCase();
+            const resultDiv = document.getElementById('discount-result');
+            
+            if (!code) {
+                alert('Please enter a discount code');
+                return;
+            }
+            
+            // Assume checking against a $50 subscription (5000 cents)
+            const testAmount = 5000; // $50 in cents
+            
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<div style="padding: 12px; background: #f1f5f9; border-radius: 8px; text-align: center;">Validating...</div>';
+            
+            const validation = await validateDiscountCode(code, testAmount);
+            
+            if (validation.valid) {
+                const discount = validation.calculated_discount;
+                const originalPrice = testAmount / 100;
+                const discountedPrice = (testAmount - discount) / 100;
+                const discountPercent = Math.round((discount / testAmount) * 100);
+                
+                resultDiv.innerHTML = `
+                    <div style="padding: 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 8px; color: white;">
+                        <div style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">✓ Valid Code!</div>
+                        <div style="font-size: 14px; margin-bottom: 12px;">${validation.discount_code.description}</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.2);">
+                            <div>
+                                <div style="font-size: 12px; opacity: 0.9;">Sample Discount</div>
+                                <div style="font-size: 24px; font-weight: 700;">$${discount / 100} OFF</div>
+                                <div style="font-size: 12px; opacity: 0.9;">(${discountPercent}% on $${originalPrice})</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 12px; opacity: 0.9; text-decoration: line-through;">$${originalPrice.toFixed(2)}</div>
+                                <div style="font-size: 28px; font-weight: 700;">$${discountedPrice.toFixed(2)}</div>
+                            </div>
+                        </div>
+                        <button onclick="confirmApplyDiscount('${code}', ${testAmount})" style="width: 100%; margin-top: 16px; background: white; color: #059669; border: none; padding: 12px; border-radius: 8px; font-weight: 700; cursor: pointer;">
+                            Apply to Next Payment
+                        </button>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div style="padding: 16px; background: #fef2f2; border: 2px solid #fecaca; border-radius: 8px; color: #dc2626;">
+                        <div style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">❌ Invalid Code</div>
+                        <div style="font-size: 14px;">${validation.error_message || 'This code is not valid or has expired.'}</div>
+                    </div>
+                `;
+            }
+        }
+        
+        async function confirmApplyDiscount(code, amount) {
+            const result = await applyDiscountCode(code, amount);
+            
+            if (result && result.success) {
+                const usage = result.usage;
+                const savedAmount = (usage.original_amount - usage.final_amount) / 100;
+                
+                alert(`✅ Discount Applied!\n\nYou saved $${savedAmount.toFixed(2)} on your subscription.\n\nOriginal: $${(usage.original_amount / 100).toFixed(2)}\nDiscount: -$${(usage.applied_amount / 100).toFixed(2)}\nFinal: $${(usage.final_amount / 100).toFixed(2)}`);
+                
+                closeDiscountDialog();
+                
+                // Refresh data
+                fetchUsageData();
+            }
+        }
+
         // Auto-refresh every 5 seconds
         fetchMetrics();
         setInterval(fetchMetrics, 5000);
