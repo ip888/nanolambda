@@ -22,6 +22,7 @@ pub mod annual_handlers;
 pub mod analytics_handlers;
 pub mod clv_handlers;
 pub mod churn_handlers;
+pub mod payment_retry_handlers;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::{
@@ -54,6 +55,7 @@ pub struct ApiServer {
     analytics_manager: Option<Arc<nanolambda_storage::analytics::UsageAnalyticsManager>>, // Usage analytics and insights
     clv_manager: Option<Arc<nanolambda_storage::clv::CLVManager>>, // Customer Lifetime Value tracking
     churn_analyzer: Option<Arc<nanolambda_storage::churn::ChurnAnalyzer>>, // Churn analysis and prevention
+    payment_retry_manager: Option<Arc<nanolambda_storage::payment_retry::PaymentRetryManager>>, // Payment retry logic
 }
 
 impl ApiServer {
@@ -121,6 +123,11 @@ impl ApiServer {
             nanolambda_storage::churn::ChurnAnalyzer::new(pool.clone()).await?
         );
         
+        // Initialize payment retry manager (always available)
+        let payment_retry_manager = Arc::new(
+            nanolambda_storage::payment_retry::PaymentRetryManager::new().await?
+        );
+        
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
@@ -141,6 +148,7 @@ impl ApiServer {
             analytics_manager: Some(analytics_manager),
             clv_manager: Some(clv_manager),
             churn_analyzer: Some(churn_analyzer),
+            payment_retry_manager: Some(payment_retry_manager),
         })
     }
     
@@ -177,6 +185,9 @@ impl ApiServer {
         let churn_analyzer = Arc::new(
             nanolambda_storage::churn::ChurnAnalyzer::new(pool).await?
         );
+        let payment_retry_manager = Arc::new(
+            nanolambda_storage::payment_retry::PaymentRetryManager::new().await?
+        );
         
         Ok(Self {
             storage: Arc::new(storage),
@@ -198,6 +209,7 @@ impl ApiServer {
             analytics_manager: Some(analytics_manager),
             clv_manager: Some(clv_manager),
             churn_analyzer: Some(churn_analyzer),
+            payment_retry_manager: Some(payment_retry_manager),
         })
     }
 
@@ -289,6 +301,11 @@ impl ApiServer {
     /// Get churn analyzer reference (churn analysis and prevention)
     pub fn churn_analyzer(&self) -> Option<&Arc<nanolambda_storage::churn::ChurnAnalyzer>> {
         self.churn_analyzer.as_ref()
+    }
+
+    /// Get payment retry manager reference (payment retry logic)
+    pub fn payment_retry_manager(&self) -> Option<&Arc<nanolambda_storage::payment_retry::PaymentRetryManager>> {
+        self.payment_retry_manager.as_ref()
     }
 
     /// Start the API server
@@ -398,6 +415,13 @@ impl ApiServer {
             .route("/churn/intervention", post(churn_handlers::record_intervention))
             .route("/churn/interventions", get(churn_handlers::get_interventions))
             
+            // Payment retry logic (requires auth)
+            .route("/payment-retry/record-failure", post(payment_retry_handlers::record_payment_failure))
+            .route("/payment-retry/process", post(payment_retry_handlers::process_retry))
+            .route("/payment-retry/status", get(payment_retry_handlers::get_retry_status))
+            .route("/payment-retry/clear", post(payment_retry_handlers::clear_retry_status))
+            .route("/payment-retry/send-dunning", post(payment_retry_handlers::send_dunning_notification))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
@@ -458,6 +482,10 @@ impl ApiServer {
             // Churn predictions and platform metrics (public - admin view)
             .route("/churn/predict", get(churn_handlers::predict_churn))
             .route("/churn/metrics", get(churn_handlers::get_platform_metrics))
+            
+            // Payment retry metrics and past-due customers (public - admin view)
+            .route("/payment-retry/metrics", get(payment_retry_handlers::get_platform_metrics))
+            .route("/payment-retry/past-due", get(payment_retry_handlers::get_past_due_customers))
             
             // Health check
             .route("/health", get(handlers::health_check))

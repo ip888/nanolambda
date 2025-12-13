@@ -15,6 +15,7 @@ pub mod annual;
 pub mod analytics;
 pub mod clv;
 pub mod churn;
+pub mod payment_retry;
 pub mod error;
 
 pub use models::*;
