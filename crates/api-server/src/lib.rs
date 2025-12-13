@@ -18,6 +18,7 @@ pub mod rate_limiter;
 pub mod usage_tracker;
 pub mod discount_handlers;
 pub mod referral_handlers;
+pub mod annual_handlers;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::{
@@ -46,6 +47,7 @@ pub struct ApiServer {
     invoice_manager: Arc<nanolambda_storage::invoice::InvoiceManager>, // Invoice generation and storage
     discount_manager: Option<Arc<nanolambda_storage::discount::DiscountManager>>, // Discount code management
     referral_manager: Option<Arc<nanolambda_storage::referral::ReferralManager>>, // Referral program management
+    annual_billing_manager: Option<Arc<nanolambda_storage::annual::AnnualBillingManager>>, // Annual billing management
 }
 
 impl ApiServer {
@@ -93,6 +95,11 @@ impl ApiServer {
             nanolambda_storage::referral::ReferralManager::new(pool.clone()).await?
         );
         
+        // Initialize annual billing manager (always available)
+        let annual_billing_manager = Arc::new(
+            nanolambda_storage::annual::AnnualBillingManager::new(pool.clone()).await?
+        );
+        
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
@@ -109,6 +116,7 @@ impl ApiServer {
             invoice_manager,
             discount_manager: Some(discount_manager),
             referral_manager: Some(referral_manager),
+            annual_billing_manager: Some(annual_billing_manager),
         })
     }
     
@@ -131,7 +139,10 @@ impl ApiServer {
             nanolambda_storage::discount::DiscountManager::new("sk_test_dummy".to_string(), pool.clone()).await?
         );
         let referral_manager = Arc::new(
-            nanolambda_storage::referral::ReferralManager::new(pool).await?
+            nanolambda_storage::referral::ReferralManager::new(pool.clone()).await?
+        );
+        let annual_billing_manager = Arc::new(
+            nanolambda_storage::annual::AnnualBillingManager::new(pool).await?
         );
         
         Ok(Self {
@@ -150,6 +161,7 @@ impl ApiServer {
             invoice_manager,
             discount_manager: Some(discount_manager),
             referral_manager: Some(referral_manager),
+            annual_billing_manager: Some(annual_billing_manager),
         })
     }
 
@@ -221,6 +233,11 @@ impl ApiServer {
     /// Get referral manager reference (referral program management)
     pub fn referral_manager(&self) -> Option<&Arc<nanolambda_storage::referral::ReferralManager>> {
         self.referral_manager.as_ref()
+    }
+    
+    /// Get annual billing manager reference (annual subscription management)
+    pub fn annual_billing_manager(&self) -> Option<&Arc<nanolambda_storage::annual::AnnualBillingManager>> {
+        self.annual_billing_manager.as_ref()
     }
 
     /// Start the API server
@@ -305,6 +322,12 @@ impl ApiServer {
             .route("/referrals/my-code", get(referral_handlers::get_my_referral_code))
             .route("/referrals/my-rewards", get(referral_handlers::get_my_referral_rewards))
             
+            // Annual billing management (requires auth)
+            .route("/billing/annual/plan", get(annual_handlers::get_annual_plan))
+            .route("/billing/annual/upgrade", post(annual_handlers::upgrade_to_annual))
+            .route("/billing/annual/usage", get(annual_handlers::get_annual_subscription_usage))
+            .route("/billing/annual/downgrade", post(annual_handlers::downgrade_from_annual))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
@@ -351,6 +374,9 @@ impl ApiServer {
             .route("/referrals/track", post(referral_handlers::track_referral_click))
             .route("/referrals/leaderboard", get(referral_handlers::get_leaderboard))
             .route("/referrals/:code", get(referral_handlers::get_referral_details))
+            
+            // Annual billing pricing (public)
+            .route("/billing/annual/pricing/:tier", get(annual_handlers::get_annual_pricing))
             
             // Health check
             .route("/health", get(handlers::health_check))

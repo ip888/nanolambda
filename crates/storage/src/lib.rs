@@ -11,6 +11,7 @@ pub mod payment;
 pub mod invoice;
 pub mod discount;
 pub mod referral;
+pub mod annual;
 pub mod error;
 
 pub use models::*;
