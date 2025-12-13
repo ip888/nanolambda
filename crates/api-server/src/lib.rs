@@ -20,6 +20,7 @@ pub mod discount_handlers;
 pub mod referral_handlers;
 pub mod annual_handlers;
 pub mod analytics_handlers;
+pub mod clv_handlers;
 
 use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
 use nanolambda_storage::{
@@ -50,6 +51,7 @@ pub struct ApiServer {
     referral_manager: Option<Arc<nanolambda_storage::referral::ReferralManager>>, // Referral program management
     annual_billing_manager: Option<Arc<nanolambda_storage::annual::AnnualBillingManager>>, // Annual billing management
     analytics_manager: Option<Arc<nanolambda_storage::analytics::UsageAnalyticsManager>>, // Usage analytics and insights
+    clv_manager: Option<Arc<nanolambda_storage::clv::CLVManager>>, // Customer Lifetime Value tracking
 }
 
 impl ApiServer {
@@ -107,6 +109,11 @@ impl ApiServer {
             nanolambda_storage::analytics::UsageAnalyticsManager::new(pool.clone()).await?
         );
         
+        // Initialize CLV manager (always available)
+        let clv_manager = Arc::new(
+            nanolambda_storage::clv::CLVManager::new(pool.clone()).await?
+        );
+        
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
@@ -125,6 +132,7 @@ impl ApiServer {
             referral_manager: Some(referral_manager),
             annual_billing_manager: Some(annual_billing_manager),
             analytics_manager: Some(analytics_manager),
+            clv_manager: Some(clv_manager),
         })
     }
     
@@ -153,7 +161,10 @@ impl ApiServer {
             nanolambda_storage::annual::AnnualBillingManager::new(pool.clone()).await?
         );
         let analytics_manager = Arc::new(
-            nanolambda_storage::analytics::UsageAnalyticsManager::new(pool).await?
+            nanolambda_storage::analytics::UsageAnalyticsManager::new(pool.clone()).await?
+        );
+        let clv_manager = Arc::new(
+            nanolambda_storage::clv::CLVManager::new(pool).await?
         );
         
         Ok(Self {
@@ -174,6 +185,7 @@ impl ApiServer {
             referral_manager: Some(referral_manager),
             annual_billing_manager: Some(annual_billing_manager),
             analytics_manager: Some(analytics_manager),
+            clv_manager: Some(clv_manager),
         })
     }
 
@@ -255,6 +267,11 @@ impl ApiServer {
     /// Get analytics manager reference (usage analytics and insights)
     pub fn analytics_manager(&self) -> Option<&Arc<nanolambda_storage::analytics::UsageAnalyticsManager>> {
         self.analytics_manager.as_ref()
+    }
+
+    /// Get CLV manager reference (customer lifetime value tracking)
+    pub fn clv_manager(&self) -> Option<&Arc<nanolambda_storage::clv::CLVManager>> {
+        self.clv_manager.as_ref()
     }
 
     /// Start the API server
@@ -351,6 +368,12 @@ impl ApiServer {
             .route("/analytics/snapshot", post(analytics_handlers::get_usage_snapshot))
             .route("/analytics/trends", get(analytics_handlers::get_monthly_trends))
             
+            // Customer Lifetime Value (requires auth)
+            .route("/clv", get(clv_handlers::get_customer_clv))
+            .route("/clv/calculate", post(clv_handlers::calculate_clv))
+            .route("/clv/predict", post(clv_handlers::get_revenue_prediction))
+            .route("/clv/cohorts", get(clv_handlers::get_cohort_analysis))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
@@ -403,6 +426,10 @@ impl ApiServer {
             
             // Platform analytics (public - admin can view)
             .route("/analytics/platform", get(analytics_handlers::get_platform_analytics))
+            
+            // CLV segments and summary (public - admin view)
+            .route("/clv/segments", get(clv_handlers::get_clv_segments))
+            .route("/clv/summary", get(clv_handlers::get_platform_clv_summary))
             
             // Health check
             .route("/health", get(handlers::health_check))

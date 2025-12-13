@@ -13,6 +13,7 @@ pub mod discount;
 pub mod referral;
 pub mod annual;
 pub mod analytics;
+pub mod clv;
 pub mod error;
 
 pub use models::*;
