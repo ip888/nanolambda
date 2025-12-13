@@ -80,6 +80,29 @@ pub struct PortalSession {
     pub created: i64,
 }
 
+/// Usage alert information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageAlert {
+    pub id: Option<i64>,
+    pub api_key: String,
+    pub alert_type: UsageAlertType,
+    pub threshold_percent: u32,
+    pub current_usage: u64,
+    pub usage_limit: u64,
+    pub sent_at: i64,
+    pub period_start: i64,
+    pub period_end: i64,
+}
+
+/// Types of usage alerts
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum UsageAlertType {
+    Warning80,  // 80% of limit reached
+    Warning90,  // 90% of limit reached
+    Critical100, // 100% of limit reached
+}
+
 /// Stripe price IDs for each tier (configured in Stripe Dashboard)
 #[derive(Debug, Clone)]
 pub struct StripePriceIds {
@@ -518,6 +541,248 @@ impl PaymentManager {
         );
 
         Ok(session)
+    }
+
+    /// Check usage and send alerts if thresholds are reached
+    /// Returns list of alerts that were sent
+    pub async fn check_usage_alerts(&self, api_key: &str) -> Result<Vec<UsageAlert>> {
+        use crate::tier::TierManager;
+        use crate::trial::TrialManager;
+        
+        let tier_mgr = TierManager::new(self.pool.clone()).await?;
+        let trial_mgr = TrialManager::new(self.pool.clone()).await?;
+        
+        // Get current tier and usage limit
+        let user_tier = tier_mgr.get_user_tier(api_key).await?;
+        let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
+        let usage_limit = tier_config.max_invocations_per_month.unwrap_or(0) as u64;
+        let current_usage = user_tier.monthly_invocations as u64;
+        
+        // Calculate percentage used
+        let percent_used = if usage_limit > 0 {
+            ((current_usage as f64 / usage_limit as f64) * 100.0) as u32
+        } else {
+            0
+        };
+        
+        let now = chrono::Utc::now();
+        let period_start = now.date_naive().and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+        let period_end = (now + chrono::Duration::days(30)).timestamp();
+        
+        let mut sent_alerts = Vec::new();
+        
+        // Check 80% threshold
+        if percent_used >= 80 && !self.was_alert_sent(api_key, &UsageAlertType::Warning80, period_start).await? {
+            let alert = self.send_usage_alert(
+                api_key,
+                UsageAlertType::Warning80,
+                80,
+                current_usage,
+                usage_limit,
+                period_start,
+                period_end,
+            ).await?;
+            sent_alerts.push(alert);
+        }
+        
+        // Check 90% threshold
+        if percent_used >= 90 && !self.was_alert_sent(api_key, &UsageAlertType::Warning90, period_start).await? {
+            let alert = self.send_usage_alert(
+                api_key,
+                UsageAlertType::Warning90,
+                90,
+                current_usage,
+                usage_limit,
+                period_start,
+                period_end,
+            ).await?;
+            sent_alerts.push(alert);
+        }
+        
+        // Check 100% threshold
+        if percent_used >= 100 && !self.was_alert_sent(api_key, &UsageAlertType::Critical100, period_start).await? {
+            let alert = self.send_usage_alert(
+                api_key,
+                UsageAlertType::Critical100,
+                100,
+                current_usage,
+                usage_limit,
+                period_start,
+                period_end,
+            ).await?;
+            sent_alerts.push(alert);
+        }
+        
+        Ok(sent_alerts)
+    }
+    
+    /// Check if alert was already sent for this period
+    async fn was_alert_sent(
+        &self,
+        api_key: &str,
+        alert_type: &UsageAlertType,
+        period_start: i64,
+    ) -> Result<bool> {
+        let alert_type_str = match alert_type {
+            UsageAlertType::Warning80 => "warning80",
+            UsageAlertType::Warning90 => "warning90",
+            UsageAlertType::Critical100 => "critical100",
+        };
+        
+        let row = sqlx::query(
+            r#"
+            SELECT COUNT(*) as count FROM usage_alerts
+            WHERE api_key = ? AND alert_type = ? AND period_start = ?
+            "#,
+        )
+        .bind(api_key)
+        .bind(alert_type_str)
+        .bind(period_start)
+        .fetch_one(&self.pool)
+        .await?;
+        
+        let count: i64 = row.get("count");
+        Ok(count > 0)
+    }
+    
+    /// Send usage alert email and record it in database
+    async fn send_usage_alert(
+        &self,
+        api_key: &str,
+        alert_type: UsageAlertType,
+        threshold_percent: u32,
+        current_usage: u64,
+        usage_limit: u64,
+        period_start: i64,
+        period_end: i64,
+    ) -> Result<UsageAlert> {
+        let now = chrono::Utc::now().timestamp();
+        
+        // Get customer email from database
+        let email_addr = if let Ok(Some(row)) = sqlx::query(
+            "SELECT stripe_customer_id FROM stripe_customers WHERE api_key = ?"
+        )
+        .bind(api_key)
+        .fetch_optional(&self.pool)
+        .await {
+            let stripe_customer_id: String = row.get(0);
+            self.get_customer_email(&stripe_customer_id).await.ok()
+        } else {
+            None
+        };
+        
+        // Send email notification if email is available
+        if let Some(email) = email_addr {
+            self.send_email_notification(
+                &email,
+                EmailEventType::UsageAlert,
+                EmailEventData {
+                    amount: None,
+                    invoice_id: None,
+                    subscription_id: None,
+                    tier: None,
+                    status: None,
+                    failure_reason: None,
+                    payment_method_brand: None,
+                    payment_method_last4: None,
+                    period_end: Some(period_end),
+                    days_remaining: None,
+                    usage_percent: Some(threshold_percent),
+                    current_usage: Some(current_usage),
+                    usage_limit: Some(usage_limit),
+                },
+            ).await?;
+            
+            tracing::info!(
+                "Sent usage alert for {} ({}% used: {}/{})",
+                api_key,
+                threshold_percent,
+                current_usage,
+                usage_limit
+            );
+        }
+        
+        // Record alert in database
+        let alert_type_str = match alert_type {
+            UsageAlertType::Warning80 => "warning80",
+            UsageAlertType::Warning90 => "warning90",
+            UsageAlertType::Critical100 => "critical100",
+        };
+        
+        sqlx::query(
+            r#"
+            INSERT INTO usage_alerts 
+            (api_key, alert_type, threshold_percent, current_usage, usage_limit, sent_at, period_start, period_end)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(api_key)
+        .bind(alert_type_str)
+        .bind(threshold_percent as i64)
+        .bind(current_usage as i64)
+        .bind(usage_limit as i64)
+        .bind(now)
+        .bind(period_start)
+        .bind(period_end)
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(UsageAlert {
+            id: None,
+            api_key: api_key.to_string(),
+            alert_type,
+            threshold_percent,
+            current_usage,
+            usage_limit,
+            sent_at: now,
+            period_start,
+            period_end,
+        })
+    }
+    
+    /// Get all alerts sent for an API key
+    pub async fn get_usage_alerts(&self, api_key: &str) -> Result<Vec<UsageAlert>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, api_key, alert_type, threshold_percent, current_usage, usage_limit, 
+                   sent_at, period_start, period_end
+            FROM usage_alerts
+            WHERE api_key = ?
+            ORDER BY sent_at DESC
+            LIMIT 50
+            "#,
+        )
+        .bind(api_key)
+        .fetch_all(&self.pool)
+        .await?;
+        
+        let mut alerts = Vec::new();
+        for row in rows {
+            let alert_type_str: String = row.get("alert_type");
+            let alert_type = match alert_type_str.as_str() {
+                "warning80" => UsageAlertType::Warning80,
+                "warning90" => UsageAlertType::Warning90,
+                "critical100" => UsageAlertType::Critical100,
+                _ => continue,
+            };
+            
+            alerts.push(UsageAlert {
+                id: Some(row.get("id")),
+                api_key: row.get("api_key"),
+                alert_type,
+                threshold_percent: row.get::<i64, _>("threshold_percent") as u32,
+                current_usage: row.get::<i64, _>("current_usage") as u64,
+                usage_limit: row.get::<i64, _>("usage_limit") as u64,
+                sent_at: row.get("sent_at"),
+                period_start: row.get("period_start"),
+                period_end: row.get("period_end"),
+            });
+        }
+        
+        Ok(alerts)
     }
 
     /// Verify Stripe webhook signature
@@ -1420,6 +1685,78 @@ impl PaymentManager {
                     ),
                 )
             }
+            EmailEventType::UsageAlert => {
+                let usage_percent = data.usage_percent.unwrap_or(0);
+                let current_usage = data.current_usage.unwrap_or(0);
+                let usage_limit = data.usage_limit.unwrap_or(0);
+                
+                let (color, emoji, level) = if usage_percent >= 100 {
+                    ("#D32F2F", "🚨", "CRITICAL")
+                } else if usage_percent >= 90 {
+                    ("#F57C00", "⚠️", "WARNING")
+                } else {
+                    ("#FFA726", "⚡", "NOTICE")
+                };
+                
+                (
+                    format!("{} Usage Alert: {}% of Limit Reached - NanoLambda", emoji, usage_percent),
+                    format!(
+                        r#"
+                        <html>
+                        <body style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2 style="color: {};">{} {} Usage Alert</h2>
+                            <p>Your NanoLambda account has reached <strong>{}%</strong> of your monthly invocation limit.</p>
+                            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 4px; margin: 20px 0;">
+                                <p><strong>Current Usage:</strong> {} / {} invocations</p>
+                                <div style="background-color: #e0e0e0; height: 20px; border-radius: 10px; overflow: hidden;">
+                                    <div style="background-color: {}; height: 100%; width: {}%;"></div>
+                                </div>
+                            </div>
+                            {}
+                            <div style="margin: 30px 0;">
+                                <a href="https://nanolambda.com/billing" 
+                                   style="background-color: #2196F3; color: white; padding: 12px 24px; 
+                                          text-decoration: none; border-radius: 4px; display: inline-block;">
+                                    View Usage Details
+                                </a>
+                            </div>
+                            <p>Need more capacity? Consider upgrading to a higher tier or purchasing additional invocations.</p>
+                            <hr style="border: 1px solid #e0e0e0; margin: 20px 0;">
+                            <p>Questions? Contact support at support@nanolambda.com</p>
+                        </body>
+                        </html>
+                        "#,
+                        color, emoji, level, usage_percent, current_usage, usage_limit,
+                        color, usage_percent,
+                        if usage_percent >= 100 {
+                            "<p style=\"color: #D32F2F;\"><strong>Your account has exceeded the monthly limit. \
+                             New invocations may be throttled or billed at overage rates.</strong></p>"
+                        } else if usage_percent >= 90 {
+                            "<p style=\"color: #F57C00;\"><strong>You're approaching your monthly limit. \
+                             Consider upgrading to avoid service interruption.</strong></p>"
+                        } else {
+                            "<p>You're on track to reach your limit soon. Monitor your usage to avoid unexpected charges.</p>"
+                        }
+                    ),
+                    format!(
+                        "{} Usage Alert\n\n\
+                         Your NanoLambda account has reached {}% of your monthly invocation limit.\n\n\
+                         Current Usage: {} / {} invocations\n\n\
+                         {}\n\n\
+                         Need more capacity? Consider upgrading to a higher tier.\n\n\
+                         View details: https://nanolambda.com/billing\n\
+                         Contact support: support@nanolambda.com",
+                        emoji, usage_percent, current_usage, usage_limit,
+                        if usage_percent >= 100 {
+                            "CRITICAL: Your account has exceeded the monthly limit. New invocations may be throttled or billed at overage rates."
+                        } else if usage_percent >= 90 {
+                            "WARNING: You're approaching your monthly limit. Consider upgrading to avoid service interruption."
+                        } else {
+                            "NOTICE: You're on track to reach your limit soon. Monitor your usage to avoid unexpected charges."
+                        }
+                    ),
+                )
+            }
         };
 
         // Send email
@@ -1441,6 +1778,7 @@ pub enum EmailEventType {
     SubscriptionCanceled,
     PaymentMethodAttached,
     TrialEnding,
+    UsageAlert,
 }
 
 impl EmailEventType {
@@ -1453,6 +1791,7 @@ impl EmailEventType {
             Self::SubscriptionCanceled => "subscription_canceled",
             Self::PaymentMethodAttached => "payment_method_attached",
             Self::TrialEnding => "trial_ending",
+            Self::UsageAlert => "usage_alert",
         }
     }
 }
@@ -1470,6 +1809,9 @@ pub struct EmailEventData {
     pub payment_method_brand: Option<String>,
     pub period_end: Option<i64>,
     pub days_remaining: Option<i64>,
+    pub usage_percent: Option<u32>,
+    pub current_usage: Option<u64>,
+    pub usage_limit: Option<u64>,
 }
 
 /// Email service configuration

@@ -139,6 +139,33 @@ impl UsageDb {
         .execute(&self.pool)
         .await?;
         
+        // Usage alerts tracking table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS usage_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                api_key TEXT NOT NULL,
+                alert_type TEXT NOT NULL,
+                threshold_percent INTEGER NOT NULL,
+                current_usage INTEGER NOT NULL,
+                usage_limit INTEGER NOT NULL,
+                sent_at INTEGER NOT NULL,
+                period_start INTEGER NOT NULL,
+                period_end INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+        
+        // Index for checking if alert was already sent for this period
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_usage_alerts_api_key_type_period 
+             ON usage_alerts(api_key, alert_type, period_start)"
+        )
+        .execute(&self.pool)
+        .await?;
+        
         Ok(())
     }
     

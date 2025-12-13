@@ -2437,3 +2437,130 @@ pub async fn create_portal_session(
         ))
     }
 }
+
+/// Check usage and send alerts if thresholds are reached
+/// POST /usage/check-alerts
+pub async fn check_usage_alerts(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+
+    let api_key = auth_ctx
+        .map(|ctx| ctx.api_key)
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Unauthorized".to_string(),
+                    message: "API key required".to_string(),
+                }),
+            )
+        })?;
+
+    if let Some(payment_mgr) = state.payment_manager() {
+        match payment_mgr.check_usage_alerts(&api_key).await {
+            Ok(alerts) => {
+                let alert_count = alerts.len();
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "alerts_sent": alert_count,
+                    "alerts": alerts.iter().map(|a| {
+                        serde_json::json!({
+                            "type": match a.alert_type {
+                                nanolambda_storage::payment::UsageAlertType::Warning80 => "warning80",
+                                nanolambda_storage::payment::UsageAlertType::Warning90 => "warning90",
+                                nanolambda_storage::payment::UsageAlertType::Critical100 => "critical100",
+                            },
+                            "threshold_percent": a.threshold_percent,
+                            "current_usage": a.current_usage,
+                            "usage_limit": a.usage_limit,
+                            "sent_at": a.sent_at,
+                        })
+                    }).collect::<Vec<_>>(),
+                })))
+            }
+            Err(e) => {
+                error!("Failed to check usage alerts: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "AlertCheckFailed".to_string(),
+                        message: format!("Failed to check usage alerts: {}", e),
+                    }),
+                ))
+            }
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available".to_string(),
+            }),
+        ))
+    }
+}
+
+/// Get usage alert history
+/// GET /usage/alerts
+pub async fn get_usage_alerts(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+
+    let api_key = auth_ctx
+        .map(|ctx| ctx.api_key)
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Unauthorized".to_string(),
+                    message: "API key required".to_string(),
+                }),
+            )
+        })?;
+
+    if let Some(payment_mgr) = state.payment_manager() {
+        match payment_mgr.get_usage_alerts(&api_key).await {
+            Ok(alerts) => Ok(Json(serde_json::json!({
+                "success": true,
+                "alerts": alerts.iter().map(|a| {
+                    serde_json::json!({
+                        "id": a.id,
+                        "type": match a.alert_type {
+                            nanolambda_storage::payment::UsageAlertType::Warning80 => "warning80",
+                            nanolambda_storage::payment::UsageAlertType::Warning90 => "warning90",
+                            nanolambda_storage::payment::UsageAlertType::Critical100 => "critical100",
+                        },
+                        "threshold_percent": a.threshold_percent,
+                        "current_usage": a.current_usage,
+                        "usage_limit": a.usage_limit,
+                        "sent_at": a.sent_at,
+                        "period_start": a.period_start,
+                        "period_end": a.period_end,
+                    })
+                }).collect::<Vec<_>>(),
+            }))),
+            Err(e) => {
+                error!("Failed to get usage alerts: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "AlertFetchFailed".to_string(),
+                        message: format!("Failed to fetch usage alerts: {}", e),
+                    }),
+                ))
+            }
+        }
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "PaymentUnavailable".to_string(),
+                message: "Payment processing not available".to_string(),
+            }),
+        ))
+    }
+}

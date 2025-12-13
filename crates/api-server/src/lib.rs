@@ -225,6 +225,10 @@ impl ApiServer {
             // Customer Portal (requires auth)
             .route("/payment/portal", post(handlers::create_portal_session))
             
+            // Usage alerts (requires auth)
+            .route("/usage/check-alerts", post(handlers::check_usage_alerts))
+            .route("/usage/alerts", get(handlers::get_usage_alerts))
+            
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
             
