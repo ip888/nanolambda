@@ -41,6 +41,7 @@ pub struct ApiServer {
     trial_manager: Option<Arc<TrialManager>>, // Trial period tracking
     tier_manager: Option<Arc<TierManager>>, // Tiered pricing management
     payment_manager: Option<Arc<PaymentManager>>, // Stripe payment integration
+    invoice_manager: Arc<nanolambda_storage::invoice::InvoiceManager>, // Invoice generation and storage
 }
 
 impl ApiServer {
@@ -63,12 +64,20 @@ impl ApiServer {
         let tier_manager = TierManager::new(pool.clone()).await?;
         
         // Initialize payment manager if Stripe key is provided
-        let payment_manager = if let Ok(stripe_key) = std::env::var("STRIPE_SECRET_KEY") {
-            Some(Arc::new(PaymentManager::new(stripe_key, pool.clone()).await?))
+        let stripe_key = std::env::var("STRIPE_SECRET_KEY")
+            .unwrap_or_else(|_| "sk_test_dummy".to_string());
+        
+        let payment_manager = if stripe_key != "sk_test_dummy" {
+            Some(Arc::new(PaymentManager::new(stripe_key.clone(), pool.clone()).await?))
         } else {
             info!("STRIPE_SECRET_KEY not set - payment features disabled");
             None
         };
+        
+        // Initialize invoice manager (always available)
+        let invoice_manager = Arc::new(
+            nanolambda_storage::invoice::InvoiceManager::new(stripe_key, pool.clone()).await?
+        );
         
         Ok(Self {
             storage: Arc::new(storage),
@@ -83,6 +92,7 @@ impl ApiServer {
             trial_manager: Some(Arc::new(trial_manager)),
             tier_manager: Some(Arc::new(tier_manager)),
             payment_manager,
+            invoice_manager,
         })
     }
     
@@ -92,6 +102,15 @@ impl ApiServer {
         let python_executor = PythonExecutor::new()?;
         let nodejs_executor = NodeJSExecutor::new()?;
         let concurrency_config = ConcurrencyConfig::default();
+        
+        // Create in-memory invoice manager for testing
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
+        let invoice_manager = Arc::new(
+            nanolambda_storage::invoice::InvoiceManager::new("sk_test_dummy".to_string(), pool).await?
+        );
         
         Ok(Self {
             storage: Arc::new(storage),
@@ -106,6 +125,7 @@ impl ApiServer {
             trial_manager: None, // No trial tracking for in-memory mode
             tier_manager: None, // No tier management for in-memory mode
             payment_manager: None, // No payment processing for in-memory mode
+            invoice_manager,
         })
     }
 
@@ -212,6 +232,12 @@ impl ApiServer {
             .route("/tier/upgrade", put(handlers::upgrade_tier))
             .route("/tier/recommendation", get(handlers::get_upgrade_recommendation))
             .route("/tier/preview", get(handlers::get_upgrade_preview))
+            
+            // Invoice management (requires auth)
+            .route("/invoices", get(handlers::list_invoices))
+            .route("/invoices/summary", get(handlers::get_invoice_summary))
+            .route("/invoices/:invoice_id", get(handlers::get_invoice))
+            .route("/invoices/sync/:stripe_invoice_id", post(handlers::sync_invoice))
             
             // Payment management (Stripe integration - requires auth)
             .route("/payment/customer", post(handlers::create_customer))

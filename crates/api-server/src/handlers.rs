@@ -9,6 +9,7 @@ use axum::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tracing::{info, error};
 use uuid::Uuid;
 
@@ -1949,6 +1950,195 @@ pub async fn get_upgrade_preview(
                 message: "Tier management not available".to_string(),
             }),
         ))
+    }
+}
+
+// ============================================================================
+// Invoice Endpoints
+// ============================================================================
+
+/// Get all invoices for the authenticated user
+pub async fn list_invoices(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+
+    // Get invoices from database
+    match state.invoice_manager.list_invoices(&api_key, Some(100), None).await {
+        Ok(invoices) => Ok(Json(json!({
+            "success": true,
+            "invoices": invoices,
+            "count": invoices.len(),
+        }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "InvoiceRetrievalFailed".to_string(),
+                message: format!("Failed to retrieve invoices: {}", e),
+            }),
+        )),
+    }
+}
+
+/// Get a specific invoice by ID
+pub async fn get_invoice(
+    State(state): State<Arc<ApiServer>>,
+    Path(invoice_id): Path<i64>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+
+    // Get invoice from database
+    match state.invoice_manager.get_invoice(invoice_id).await {
+        Ok(Some(invoice)) => {
+            // Verify the invoice belongs to this user
+            if invoice.api_key != api_key {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(ErrorResponse {
+                        error: "Forbidden".to_string(),
+                        message: "This invoice does not belong to you".to_string(),
+                    }),
+                ));
+            }
+
+            // Get line items
+            let line_items = state.invoice_manager.get_line_items(invoice_id).await
+                .unwrap_or_default();
+
+            Ok(Json(json!({
+                "success": true,
+                "invoice": invoice,
+                "line_items": line_items,
+            })))
+        },
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "NotFound".to_string(),
+                message: "Invoice not found".to_string(),
+            }),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "InvoiceRetrievalFailed".to_string(),
+                message: format!("Failed to retrieve invoice: {}", e),
+            }),
+        )),
+    }
+}
+
+/// Get invoice summary for the authenticated user
+pub async fn get_invoice_summary(
+    State(state): State<Arc<ApiServer>>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+
+    // Get summary from database
+    match state.invoice_manager.get_invoice_summary(&api_key).await {
+        Ok(summary) => Ok(Json(json!({
+            "success": true,
+            "summary": summary,
+        }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "SummaryRetrievalFailed".to_string(),
+                message: format!("Failed to retrieve invoice summary: {}", e),
+            }),
+        )),
+    }
+}
+
+/// Sync invoice from Stripe (refresh status and URLs)
+pub async fn sync_invoice(
+    State(state): State<Arc<ApiServer>>,
+    Path(stripe_invoice_id): Path<String>,
+    req: axum::extract::Request,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
+    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
+    
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "Missing API key".to_string(),
+            }),
+        ));
+    }
+
+    // Sync invoice from Stripe
+    match state.invoice_manager.sync_stripe_invoice(&stripe_invoice_id).await {
+        Ok(Some(invoice)) => {
+            // Verify the invoice belongs to this user
+            if invoice.api_key != api_key {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(ErrorResponse {
+                        error: "Forbidden".to_string(),
+                        message: "This invoice does not belong to you".to_string(),
+                    }),
+                ));
+            }
+
+            Ok(Json(json!({
+                "success": true,
+                "invoice": invoice,
+                "message": "Invoice synced successfully",
+            })))
+        },
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "NotFound".to_string(),
+                message: "Invoice not found".to_string(),
+            }),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "SyncFailed".to_string(),
+                message: format!("Failed to sync invoice: {}", e),
+            }),
+        )),
     }
 }
 

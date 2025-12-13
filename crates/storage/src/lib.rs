@@ -8,6 +8,7 @@ pub mod pricing;
 pub mod trial;
 pub mod tier;
 pub mod payment;
+pub mod invoice;
 pub mod error;
 
 pub use models::*;
