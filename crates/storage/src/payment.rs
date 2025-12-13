@@ -585,6 +585,23 @@ impl PaymentManager {
         .execute(&self.pool)
         .await?;
 
+        // Send email notification
+        if let Ok(customer_email) = self.get_customer_email(&subscription.customer).await {
+            let email_data = EmailEventData {
+                subscription_id: Some(subscription.id.clone()),
+                status: Some(subscription.status.clone()),
+                ..Default::default()
+            };
+            
+            if let Err(e) = self.send_email_notification(
+                &customer_email,
+                EmailEventType::SubscriptionCreated,
+                email_data,
+            ).await {
+                tracing::warn!("Failed to send subscription created email: {}", e);
+            }
+        }
+
         Ok(WebhookResult {
             processed: true,
             message: format!("Subscription {} created", subscription.id),
@@ -638,6 +655,23 @@ impl PaymentManager {
         .execute(&self.pool)
         .await?;
 
+        // Get customer email for notification
+        if let Ok(customer_email) = self.get_customer_email(&subscription.customer).await {
+            let email_data = EmailEventData {
+                subscription_id: Some(subscription.id.clone()),
+                period_end: subscription.current_period_end,
+                ..Default::default()
+            };
+            
+            if let Err(e) = self.send_email_notification(
+                &customer_email,
+                EmailEventType::SubscriptionCanceled,
+                email_data,
+            ).await {
+                tracing::warn!("Failed to send subscription canceled email: {}", e);
+            }
+        }
+
         Ok(WebhookResult {
             processed: true,
             message: format!("Subscription {} deleted", subscription.id),
@@ -659,7 +693,22 @@ impl PaymentManager {
         tracing::info!("Payment succeeded: invoice {} for customer {} (${:.2})", 
             invoice.id, invoice.customer, invoice.amount_paid as f64 / 100.0);
 
-        // Optionally: Update payment history, send receipt email, etc.
+        // Send payment success email
+        if let Ok(customer_email) = self.get_customer_email(&invoice.customer).await {
+            let email_data = EmailEventData {
+                amount: Some(invoice.amount_paid),
+                invoice_id: Some(invoice.id.clone()),
+                ..Default::default()
+            };
+            
+            if let Err(e) = self.send_email_notification(
+                &customer_email,
+                EmailEventType::PaymentSucceeded,
+                email_data,
+            ).await {
+                tracing::warn!("Failed to send payment success email: {}", e);
+            }
+        }
 
         Ok(WebhookResult {
             processed: true,
@@ -682,7 +731,23 @@ impl PaymentManager {
         tracing::warn!("Payment failed: invoice {} for customer {} (${:.2})", 
             invoice.id, invoice.customer, invoice.amount_due as f64 / 100.0);
 
-        // Optionally: Suspend user access, send payment failure email, retry logic
+        // Send payment failed email
+        if let Ok(customer_email) = self.get_customer_email(&invoice.customer).await {
+            let email_data = EmailEventData {
+                amount: Some(invoice.amount_due),
+                invoice_id: Some(invoice.id.clone()),
+                failure_reason: Some("Payment declined by card issuer".to_string()),
+                ..Default::default()
+            };
+            
+            if let Err(e) = self.send_email_notification(
+                &customer_email,
+                EmailEventType::PaymentFailed,
+                email_data,
+            ).await {
+                tracing::warn!("Failed to send payment failed email: {}", e);
+            }
+        }
 
         Ok(WebhookResult {
             processed: true,
@@ -695,6 +760,27 @@ impl PaymentManager {
             .map_err(|e| anyhow!("Failed to parse payment method: {}", e))?;
 
         tracing::info!("Payment method attached: {} type={}", payment_method.id, payment_method.method_type);
+
+        // Get customer from payment method and send notification
+        // Note: Payment method events don't always include customer, may need additional API call
+        if let Some(ref card) = payment_method.card {
+            // Try to find customer by payment method ID
+            if let Ok(Some(customer_email)) = self.get_customer_email_by_payment_method(&payment_method.id).await {
+                let email_data = EmailEventData {
+                    payment_method_last4: Some(card.last4.clone()),
+                    payment_method_brand: Some(card.brand.clone()),
+                    ..Default::default()
+                };
+                
+                if let Err(e) = self.send_email_notification(
+                    &customer_email,
+                    EmailEventType::PaymentMethodAttached,
+                    email_data,
+                ).await {
+                    tracing::warn!("Failed to send payment method attached email: {}", e);
+                }
+            }
+        }
 
         Ok(WebhookResult {
             processed: true,
@@ -955,5 +1041,468 @@ impl PaymentManager {
         .await?;
 
         Ok(subscription)
+    }
+
+    /// Get customer email from Stripe customer ID
+    async fn get_customer_email(&self, stripe_customer_id: &str) -> Result<String> {
+        // Try from database first (faster)
+        if let Ok(Some(row)) = sqlx::query(
+            "SELECT api_key FROM stripe_customers WHERE stripe_customer_id = ?"
+        )
+        .bind(stripe_customer_id)
+        .fetch_optional(&self.pool)
+        .await {
+            let api_key: String = row.get(0);
+            // For now, use api_key as identifier; in production, store email separately
+            return Ok(format!("{}@example.com", api_key)); // Placeholder
+        }
+
+        // Fallback: fetch from Stripe API
+        let customer: StripeCustomer = self
+            .stripe_api_call("GET", &format!("/customers/{}", stripe_customer_id), None)
+            .await?;
+
+        customer.email.ok_or_else(|| anyhow!("Customer has no email"))
+    }
+
+    /// Get customer email by payment method ID
+    async fn get_customer_email_by_payment_method(&self, payment_method_id: &str) -> Result<Option<String>> {
+        // Try to find in database
+        if let Ok(Some(row)) = sqlx::query(
+            "SELECT api_key FROM stripe_customers WHERE payment_method_id = ?"
+        )
+        .bind(payment_method_id)
+        .fetch_optional(&self.pool)
+        .await {
+            let api_key: String = row.get(0);
+            return Ok(Some(format!("{}@example.com", api_key))); // Placeholder
+        }
+
+        Ok(None)
+    }
+
+    /// Send email notification for payment events
+    pub async fn send_email_notification(
+        &self,
+        to_email: &str,
+        event_type: EmailEventType,
+        data: EmailEventData,
+    ) -> Result<()> {
+        // Get email service configuration
+        let email_service = match EmailService::from_env() {
+            Ok(service) => service,
+            Err(e) => {
+                tracing::warn!("Email service not configured: {}", e);
+                return Ok(()); // Don't fail if email not configured
+            }
+        };
+
+        // Build email based on event type
+        let (subject, body_html, body_text) = match event_type {
+            EmailEventType::PaymentSucceeded => {
+                let amount = data.amount.unwrap_or(0) as f64 / 100.0;
+                (
+                    "Payment Successful - NanoLambda".to_string(),
+                    format!(
+                        r#"
+                        <html>
+                        <body style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2 style="color: #4CAF50;">✅ Payment Successful</h2>
+                            <p>Your payment of <strong>${:.2}</strong> has been processed successfully.</p>
+                            <p><strong>Invoice Number:</strong> {}</p>
+                            <p><strong>Date:</strong> {}</p>
+                            <hr style="border: 1px solid #e0e0e0; margin: 20px 0;">
+                            <p>Thank you for using NanoLambda!</p>
+                            <p style="color: #666; font-size: 12px;">
+                                Questions? Reply to this email or visit our support portal.
+                            </p>
+                        </body>
+                        </html>
+                        "#,
+                        amount,
+                        data.invoice_id.as_deref().unwrap_or("N/A"),
+                        chrono::Utc::now().format("%B %d, %Y")
+                    ),
+                    format!(
+                        "Payment Successful\n\n\
+                         Your payment of ${:.2} has been processed successfully.\n\n\
+                         Invoice Number: {}\n\
+                         Date: {}\n\n\
+                         Thank you for using NanoLambda!",
+                        amount,
+                        data.invoice_id.as_deref().unwrap_or("N/A"),
+                        chrono::Utc::now().format("%B %d, %Y")
+                    ),
+                )
+            }
+            EmailEventType::PaymentFailed => {
+                let amount = data.amount.unwrap_or(0) as f64 / 100.0;
+                (
+                    "Payment Failed - Action Required".to_string(),
+                    format!(
+                        r#"
+                        <html>
+                        <body style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2 style="color: #f44336;">⚠️ Payment Failed</h2>
+                            <p>We were unable to process your payment of <strong>${:.2}</strong>.</p>
+                            <p><strong>Reason:</strong> {}</p>
+                            <p>Please update your payment method to continue using NanoLambda.</p>
+                            <div style="margin: 30px 0;">
+                                <a href="https://nanolambda.com/billing" 
+                                   style="background-color: #4CAF50; color: white; padding: 12px 24px; 
+                                          text-decoration: none; border-radius: 4px; display: inline-block;">
+                                    Update Payment Method
+                                </a>
+                            </div>
+                            <hr style="border: 1px solid #e0e0e0; margin: 20px 0;">
+                            <p style="color: #666; font-size: 12px;">
+                                Need help? Contact our support team.
+                            </p>
+                        </body>
+                        </html>
+                        "#,
+                        amount,
+                        data.failure_reason.as_deref().unwrap_or("Payment declined")
+                    ),
+                    format!(
+                        "Payment Failed - Action Required\n\n\
+                         We were unable to process your payment of ${:.2}.\n\n\
+                         Reason: {}\n\n\
+                         Please update your payment method to continue using NanoLambda.\n\
+                         Visit: https://nanolambda.com/billing",
+                        amount,
+                        data.failure_reason.as_deref().unwrap_or("Payment declined")
+                    ),
+                )
+            }
+            EmailEventType::SubscriptionCreated => {
+                let tier = data.tier.as_deref().unwrap_or("Unknown");
+                (
+                    format!("Welcome to NanoLambda {} Plan!", tier),
+                    format!(
+                        r#"
+                        <html>
+                        <body style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2 style="color: #4CAF50;">🎉 Subscription Activated!</h2>
+                            <p>Welcome to NanoLambda <strong>{}</strong> plan!</p>
+                            <p><strong>Subscription ID:</strong> {}</p>
+                            <p><strong>Status:</strong> {}</p>
+                            <h3>What's Next?</h3>
+                            <ul>
+                                <li>Deploy your first serverless function</li>
+                                <li>Check out our documentation</li>
+                                <li>Join our community Discord</li>
+                            </ul>
+                            <div style="margin: 30px 0;">
+                                <a href="https://nanolambda.com/dashboard" 
+                                   style="background-color: #4CAF50; color: white; padding: 12px 24px; 
+                                          text-decoration: none; border-radius: 4px; display: inline-block;">
+                                    Go to Dashboard
+                                </a>
+                            </div>
+                            <hr style="border: 1px solid #e0e0e0; margin: 20px 0;">
+                            <p>Happy deploying! 🚀</p>
+                        </body>
+                        </html>
+                        "#,
+                        tier,
+                        data.subscription_id.as_deref().unwrap_or("N/A"),
+                        data.status.as_deref().unwrap_or("active")
+                    ),
+                    format!(
+                        "Subscription Activated!\n\n\
+                         Welcome to NanoLambda {} plan!\n\n\
+                         Subscription ID: {}\n\
+                         Status: {}\n\n\
+                         What's Next?\n\
+                         - Deploy your first serverless function\n\
+                         - Check out our documentation\n\
+                         - Join our community Discord\n\n\
+                         Visit your dashboard: https://nanolambda.com/dashboard\n\n\
+                         Happy deploying!",
+                        tier,
+                        data.subscription_id.as_deref().unwrap_or("N/A"),
+                        data.status.as_deref().unwrap_or("active")
+                    ),
+                )
+            }
+            EmailEventType::SubscriptionUpdated => {
+                let tier = data.tier.as_deref().unwrap_or("Unknown");
+                (
+                    "Subscription Updated - NanoLambda".to_string(),
+                    format!(
+                        r#"
+                        <html>
+                        <body style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2>📝 Subscription Updated</h2>
+                            <p>Your NanoLambda subscription has been updated.</p>
+                            <p><strong>Plan:</strong> {}</p>
+                            <p><strong>Status:</strong> {}</p>
+                            <hr style="border: 1px solid #e0e0e0; margin: 20px 0;">
+                            <p>View your subscription details in the dashboard.</p>
+                        </body>
+                        </html>
+                        "#,
+                        tier,
+                        data.status.as_deref().unwrap_or("active")
+                    ),
+                    format!(
+                        "Subscription Updated\n\n\
+                         Your NanoLambda subscription has been updated.\n\n\
+                         Plan: {}\n\
+                         Status: {}\n\n\
+                         View your subscription details in the dashboard.",
+                        tier,
+                        data.status.as_deref().unwrap_or("active")
+                    ),
+                )
+            }
+            EmailEventType::SubscriptionCanceled => {
+                (
+                    "Subscription Canceled - NanoLambda".to_string(),
+                    format!(
+                        r#"
+                        <html>
+                        <body style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2>😢 Subscription Canceled</h2>
+                            <p>Your NanoLambda subscription has been canceled.</p>
+                            <p><strong>Subscription ID:</strong> {}</p>
+                            <p>You'll continue to have access until the end of your current billing period.</p>
+                            <p><strong>Access Until:</strong> {}</p>
+                            <hr style="border: 1px solid #e0e0e0; margin: 20px 0;">
+                            <p>We're sorry to see you go! If you change your mind, you can reactivate anytime.</p>
+                            <p style="color: #666; font-size: 12px;">
+                                Feedback? Let us know what we could improve: support@nanolambda.com
+                            </p>
+                        </body>
+                        </html>
+                        "#,
+                        data.subscription_id.as_deref().unwrap_or("N/A"),
+                        data.period_end
+                            .map(|ts| chrono::DateTime::from_timestamp(ts, 0)
+                                .unwrap()
+                                .format("%B %d, %Y")
+                                .to_string())
+                            .unwrap_or_else(|| "N/A".to_string())
+                    ),
+                    format!(
+                        "Subscription Canceled\n\n\
+                         Your NanoLambda subscription has been canceled.\n\n\
+                         Subscription ID: {}\n\
+                         Access Until: {}\n\n\
+                         We're sorry to see you go! If you change your mind, you can reactivate anytime.",
+                        data.subscription_id.as_deref().unwrap_or("N/A"),
+                        data.period_end
+                            .map(|ts| chrono::DateTime::from_timestamp(ts, 0)
+                                .unwrap()
+                                .format("%B %d, %Y")
+                                .to_string())
+                            .unwrap_or_else(|| "N/A".to_string())
+                    ),
+                )
+            }
+            EmailEventType::PaymentMethodAttached => {
+                let last4 = data.payment_method_last4.as_deref().unwrap_or("****");
+                let brand = data.payment_method_brand.as_deref().unwrap_or("card");
+                (
+                    "Payment Method Updated - NanoLambda".to_string(),
+                    format!(
+                        r#"
+                        <html>
+                        <body style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2>💳 Payment Method Updated</h2>
+                            <p>Your payment method has been successfully updated.</p>
+                            <p><strong>Card:</strong> {} ending in {}</p>
+                            <hr style="border: 1px solid #e0e0e0; margin: 20px 0;">
+                            <p>This card will be used for future payments.</p>
+                        </body>
+                        </html>
+                        "#,
+                        brand, last4
+                    ),
+                    format!(
+                        "Payment Method Updated\n\n\
+                         Your payment method has been successfully updated.\n\n\
+                         Card: {} ending in {}\n\n\
+                         This card will be used for future payments.",
+                        brand, last4
+                    ),
+                )
+            }
+            EmailEventType::TrialEnding => {
+                let days_remaining = data.days_remaining.unwrap_or(0);
+                (
+                    format!("Trial Ending in {} Days - NanoLambda", days_remaining),
+                    format!(
+                        r#"
+                        <html>
+                        <body style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2 style="color: #FF9800;">⏰ Trial Ending Soon</h2>
+                            <p>Your NanoLambda trial will end in <strong>{} days</strong>.</p>
+                            <p>To continue using NanoLambda, please add a payment method and choose a plan.</p>
+                            <div style="margin: 30px 0;">
+                                <a href="https://nanolambda.com/billing" 
+                                   style="background-color: #4CAF50; color: white; padding: 12px 24px; 
+                                          text-decoration: none; border-radius: 4px; display: inline-block;">
+                                    Choose a Plan
+                                </a>
+                            </div>
+                            <h3>Our Plans:</h3>
+                            <ul>
+                                <li><strong>Starter:</strong> $10/month - 1M invocations</li>
+                                <li><strong>Pro:</strong> $50/month - 10M invocations</li>
+                                <li><strong>Enterprise:</strong> Custom pricing</li>
+                            </ul>
+                            <hr style="border: 1px solid #e0e0e0; margin: 20px 0;">
+                            <p>Questions? Contact our sales team.</p>
+                        </body>
+                        </html>
+                        "#,
+                        days_remaining
+                    ),
+                    format!(
+                        "Trial Ending Soon\n\n\
+                         Your NanoLambda trial will end in {} days.\n\n\
+                         To continue using NanoLambda, please add a payment method and choose a plan.\n\n\
+                         Our Plans:\n\
+                         - Starter: $10/month - 1M invocations\n\
+                         - Pro: $50/month - 10M invocations\n\
+                         - Enterprise: Custom pricing\n\n\
+                         Visit: https://nanolambda.com/billing",
+                        days_remaining
+                    ),
+                )
+            }
+        };
+
+        // Send email
+        email_service.send_email(to_email, &subject, &body_html, &body_text).await?;
+
+        tracing::info!("Sent {} email to {}", event_type.as_str(), to_email);
+
+        Ok(())
+    }
+}
+
+/// Email event types
+#[derive(Debug, Clone, Copy)]
+pub enum EmailEventType {
+    PaymentSucceeded,
+    PaymentFailed,
+    SubscriptionCreated,
+    SubscriptionUpdated,
+    SubscriptionCanceled,
+    PaymentMethodAttached,
+    TrialEnding,
+}
+
+impl EmailEventType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::PaymentSucceeded => "payment_succeeded",
+            Self::PaymentFailed => "payment_failed",
+            Self::SubscriptionCreated => "subscription_created",
+            Self::SubscriptionUpdated => "subscription_updated",
+            Self::SubscriptionCanceled => "subscription_canceled",
+            Self::PaymentMethodAttached => "payment_method_attached",
+            Self::TrialEnding => "trial_ending",
+        }
+    }
+}
+
+/// Email event data
+#[derive(Debug, Clone, Default)]
+pub struct EmailEventData {
+    pub amount: Option<i64>,
+    pub invoice_id: Option<String>,
+    pub subscription_id: Option<String>,
+    pub tier: Option<String>,
+    pub status: Option<String>,
+    pub failure_reason: Option<String>,
+    pub payment_method_last4: Option<String>,
+    pub payment_method_brand: Option<String>,
+    pub period_end: Option<i64>,
+    pub days_remaining: Option<i64>,
+}
+
+/// Email service configuration
+pub struct EmailService {
+    smtp_host: String,
+    smtp_port: u16,
+    smtp_username: String,
+    smtp_password: String,
+    from_email: String,
+    from_name: String,
+}
+
+impl EmailService {
+    /// Create email service from environment variables
+    pub fn from_env() -> Result<Self> {
+        Ok(Self {
+            smtp_host: std::env::var("SMTP_HOST")
+                .map_err(|_| anyhow!("SMTP_HOST not set"))?,
+            smtp_port: std::env::var("SMTP_PORT")
+                .unwrap_or_else(|_| "587".to_string())
+                .parse()
+                .map_err(|_| anyhow!("Invalid SMTP_PORT"))?,
+            smtp_username: std::env::var("SMTP_USERNAME")
+                .map_err(|_| anyhow!("SMTP_USERNAME not set"))?,
+            smtp_password: std::env::var("SMTP_PASSWORD")
+                .map_err(|_| anyhow!("SMTP_PASSWORD not set"))?,
+            from_email: std::env::var("FROM_EMAIL")
+                .unwrap_or_else(|_| "noreply@nanolambda.com".to_string()),
+            from_name: std::env::var("FROM_NAME")
+                .unwrap_or_else(|_| "NanoLambda".to_string()),
+        })
+    }
+
+    /// Send an email using SMTP
+    pub async fn send_email(
+        &self,
+        to: &str,
+        subject: &str,
+        body_html: &str,
+        body_text: &str,
+    ) -> Result<()> {
+        use lettre::{
+            message::{header, MultiPart, SinglePart},
+            transport::smtp::authentication::Credentials,
+            AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+        };
+
+        // Build email message
+        let email = Message::builder()
+            .from(format!("{} <{}>", self.from_name, self.from_email).parse()?)
+            .to(to.parse()?)
+            .subject(subject)
+            .multipart(
+                MultiPart::alternative()
+                    .singlepart(
+                        SinglePart::builder()
+                            .header(header::ContentType::TEXT_PLAIN)
+                            .body(body_text.to_string()),
+                    )
+                    .singlepart(
+                        SinglePart::builder()
+                            .header(header::ContentType::TEXT_HTML)
+                            .body(body_html.to_string()),
+                    ),
+            )?;
+
+        // Create SMTP client
+        let creds = Credentials::new(
+            self.smtp_username.clone(),
+            self.smtp_password.clone(),
+        );
+
+        let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&self.smtp_host)?
+            .port(self.smtp_port)
+            .credentials(creds)
+            .build();
+
+        // Send email
+        mailer.send(email).await.map_err(|e| anyhow!("Failed to send email: {}", e))?;
+
+        Ok(())
     }
 }

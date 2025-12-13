@@ -33,6 +33,9 @@ chrono = { workspace = true }
 async-trait = "0.1"
 reqwest = { version = "0.11", features = ["json"] }
 
+# Email notifications
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-native-tls", "smtp-transport", "builder"] }
+
 # UUID
 uuid = { workspace = true }
 
