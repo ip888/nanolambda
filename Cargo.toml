@@ -11,7 +11,6 @@ categories = ["virtualization", "web-programming"]
 
 [workspace]
 members = [
-    "crates/vmm",
     "crates/api-server",
     "crates/runtime",
     "crates/scheduler",
@@ -70,10 +69,6 @@ path = "src/bin/server.rs"
 name = "nanolambda-cli"
 path = "src/bin/cli.rs"
 
-[[bin]]
-name = "nanolambda-poc"
-path = "src/bin/nanolambda-poc.rs"
-
 [dependencies]
 # Use workspace dependencies
 tokio = { workspace = true }
@@ -91,7 +86,6 @@ chrono = { workspace = true }
 base64 = "0.22"
 
 # Workspace crates
-nanolambda-vmm = { path = "crates/vmm" }
 nanolambda-api = { path = "crates/api-server" }
 nanolambda-runtime = { path = "crates/runtime" }
 nanolambda-scheduler = { path = "crates/scheduler" }

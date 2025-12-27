@@ -1,8 +1,7 @@
 //! NanoLambda - Self-hosted serverless platform
 //!
-//! AWS Lambda-compatible serverless with microVM isolation.
+//! High-performance serverless platform with multiple runtime backends.
 
-pub use nanolambda_vmm as vmm;
 pub use nanolambda_api as api;
 pub use nanolambda_runtime as runtime;
 pub use nanolambda_scheduler as scheduler;
