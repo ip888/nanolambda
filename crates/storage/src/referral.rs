@@ -2,20 +2,20 @@
 use crate::error::{Result, StorageError};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use sqlx::{SqlitePool, Row};
+use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReferralCode {
     pub id: i64,
     pub referrer_api_key: String,
-    pub code: String,                    // Unique referral code (e.g., "user-abc123xyz")
-    pub display_name: String,            // User's display name for sharing
-    pub reward_type: String,             // "percentage" or "fixed"
-    pub reward_amount: i64,              // Percentage (1-100) or cents
-    pub reward_description: String,      // "20% off" or "$10 credit"
-    pub max_referrals: Option<i64>,      // Limit on successful referrals
-    pub current_referrals: i64,          // Count of successful signups
+    pub code: String,               // Unique referral code (e.g., "user-abc123xyz")
+    pub display_name: String,       // User's display name for sharing
+    pub reward_type: String,        // "percentage" or "fixed"
+    pub reward_amount: i64,         // Percentage (1-100) or cents
+    pub reward_description: String, // "20% off" or "$10 credit"
+    pub max_referrals: Option<i64>, // Limit on successful referrals
+    pub current_referrals: i64,     // Count of successful signups
     pub active: bool,
     pub created_at: i64,
     pub updated_at: i64,
@@ -25,28 +25,28 @@ pub struct ReferralCode {
 pub struct ReferralReward {
     pub id: i64,
     pub referral_code_id: i64,
-    pub referrer_api_key: String,        // The person who referred
-    pub referred_api_key: Option<String>,// The person who signed up (if they became customer)
-    pub referred_email: String,          // Email of referred person
-    pub status: String,                  // "pending", "activated", "claimed"
-    pub reward_earned: bool,             // true if reward was earned
-    pub reward_amount: i64,              // Reward in cents
-    pub discount_code_id: Option<i64>,   // Discount code generated for them
-    pub tracking_data: String,           // JSON with utm params, source, etc
-    pub referred_at: i64,                // When they clicked the referral link
-    pub activated_at: Option<i64>,       // When they signed up/activated
-    pub claimed_at: Option<i64>,         // When reward was applied
+    pub referrer_api_key: String,         // The person who referred
+    pub referred_api_key: Option<String>, // The person who signed up (if they became customer)
+    pub referred_email: String,           // Email of referred person
+    pub status: String,                   // "pending", "activated", "claimed"
+    pub reward_earned: bool,              // true if reward was earned
+    pub reward_amount: i64,               // Reward in cents
+    pub discount_code_id: Option<i64>,    // Discount code generated for them
+    pub tracking_data: String,            // JSON with utm params, source, etc
+    pub referred_at: i64,                 // When they clicked the referral link
+    pub activated_at: Option<i64>,        // When they signed up/activated
+    pub claimed_at: Option<i64>,          // When reward was applied
     pub created_at: i64,
     pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReferralStats {
-    pub total_referrals: i64,            // Total referral signups
-    pub active_referrals: i64,           // Successful referrals with reward earned
-    pub pending_referrals: i64,          // Pending verification
-    pub total_rewards_earned: i64,       // Total rewards in cents
-    pub total_rewards_value: String,     // Formatted as "$X.XX"
+    pub total_referrals: i64,        // Total referral signups
+    pub active_referrals: i64,       // Successful referrals with reward earned
+    pub pending_referrals: i64,      // Pending verification
+    pub total_rewards_earned: i64,   // Total rewards in cents
+    pub total_rewards_value: String, // Formatted as "$X.XX"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,7 +191,7 @@ impl ReferralManager {
                 .filter(|c| c.is_alphanumeric() || *c == '-')
                 .take(20)
                 .collect::<String>(),
-            Uuid::new_v4().to_string()[..8].to_string()
+            Uuid::new_v4().to_string()[..8].to_owned()
         );
 
         let now = Utc::now().timestamp();
@@ -459,10 +459,18 @@ impl ReferralManager {
         .await
         .map_err(|e| StorageError::DatabaseError(e.to_string()))?;
 
-        let total_referrals: i64 = stats_row.get::<Option<i64>, _>("total_referrals").unwrap_or(0);
-        let active_referrals: i64 = stats_row.get::<Option<i64>, _>("active_referrals").unwrap_or(0);
-        let pending_referrals: i64 = stats_row.get::<Option<i64>, _>("pending_referrals").unwrap_or(0);
-        let total_rewards_earned: i64 = stats_row.get::<Option<i64>, _>("total_rewards").unwrap_or(0);
+        let total_referrals: i64 = stats_row
+            .get::<Option<i64>, _>("total_referrals")
+            .unwrap_or(0);
+        let active_referrals: i64 = stats_row
+            .get::<Option<i64>, _>("active_referrals")
+            .unwrap_or(0);
+        let pending_referrals: i64 = stats_row
+            .get::<Option<i64>, _>("pending_referrals")
+            .unwrap_or(0);
+        let total_rewards_earned: i64 = stats_row
+            .get::<Option<i64>, _>("total_rewards")
+            .unwrap_or(0);
 
         Ok(ReferralStats {
             total_referrals,
@@ -550,7 +558,10 @@ impl ReferralManager {
     }
 
     /// Get details of a referral by code (for shared links)
-    pub async fn get_referral_details(&self, code: &str) -> Result<Option<(ReferralCode, ReferralStats)>> {
+    pub async fn get_referral_details(
+        &self,
+        code: &str,
+    ) -> Result<Option<(ReferralCode, ReferralStats)>> {
         match self.get_referral_code_by_code(code).await? {
             Some(referral) => {
                 let stats = self.get_referral_stats(&referral.referrer_api_key).await?;
@@ -682,8 +693,12 @@ mod tests {
 
         // Activate both
         let rewards = mgr.get_referral_rewards("user-123").await.unwrap();
-        mgr.activate_referral(rewards[0].id, "user-1").await.unwrap();
-        mgr.activate_referral(rewards[1].id, "user-2").await.unwrap();
+        mgr.activate_referral(rewards[0].id, "user-1")
+            .await
+            .unwrap();
+        mgr.activate_referral(rewards[1].id, "user-2")
+            .await
+            .unwrap();
 
         // Should now be at limit
         assert!(!mgr.can_accept_referral(code.id).await.unwrap());

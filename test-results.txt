@@ -1,0 +1,415 @@
+   Compiling num-integer v0.1.46
+   Compiling bytes-utils v0.1.4
+   Compiling nanolambda-storage v0.1.0 (/workspaces/nanolambda/crates/storage)
+   Compiling aws-smithy-async v1.2.6
+warning: method `hash_code` is never used
+  --> crates/runtime/src/nodejs/executor.rs:97:8
+   |
+28 | impl ProcessPool {
+   | ---------------- method in this implementation
+...
+97 |     fn hash_code(&self, code: &str) -> String {
+   |        ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: field `success` is never read
+   --> crates/runtime/src/nodejs/process.rs:125:9
+    |
+124 |     Success {
+    |     ------- field in this variant
+125 |         success: bool,
+    |         ^^^^^^^
+    |
+    = note: `NodeResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `success` is never read
+   --> crates/runtime/src/nodejs/process.rs:130:9
+    |
+129 |     Error {
+    |     ----- field in this variant
+130 |         success: bool,
+    |         ^^^^^^^
+    |
+    = note: `NodeResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: `nanolambda-runtime` (lib) generated 3 warnings
+   Compiling tokio-rustls v0.24.1
+   Compiling aws-smithy-types v1.3.3
+   Compiling tokio-rustls v0.26.4
+   Compiling hyper-rustls v0.24.2
+   Compiling hyper-rustls v0.27.7
+   Compiling crossbeam-epoch v0.9.18
+   Compiling aws-smithy-runtime-api v1.9.1
+   Compiling aws-smithy-eventstream v0.60.12
+warning: unused import: `std::sync::Arc`
+ --> crates/storage/src/trial.rs:3:5
+  |
+3 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `serde_json::json`
+ --> crates/storage/src/payment.rs:3:5
+  |
+3 | use serde_json::json;
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::sync::Arc`
+ --> crates/storage/src/payment.rs:5:5
+  |
+5 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused import: `header`
+ --> crates/storage/src/payment.rs:6:23
+  |
+6 | use reqwest::{Client, header};
+  |                       ^^^^^^
+
+warning: unused import: `FromRow`
+ --> crates/storage/src/invoice.rs:6:24
+  |
+6 | use sqlx::{SqlitePool, FromRow, Row};
+  |                        ^^^^^^^
+
+warning: use of deprecated struct `registry::FunctionRegistry`: Use StorageManager instead
+  --> crates/storage/src/registry.rs:12:6
+   |
+12 | impl FunctionRegistry {
+   |      ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: unused variable: `pool`
+   --> crates/storage/src/usage_db.rs:311:9
+    |
+311 |         pool: &Pool<Sqlite>,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_pool`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `trial_mgr`
+   --> crates/storage/src/payment.rs:553:13
+    |
+553 |         let trial_mgr = TrialManager::new(self.pool.clone()).await?;
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_trial_mgr`
+
+warning: unused variable: `reason`
+   --> crates/storage/src/annual.rs:206:62
+    |
+206 |     pub async fn downgrade_from_annual(&self, api_key: &str, reason: &str) -> Result<bool> {
+    |                                                              ^^^^^^ help: if this is intentional, prefix it with an underscore: `_reason`
+
+warning: unused variable: `total_customers`
+   --> crates/storage/src/clv.rs:278:13
+    |
+278 |         let total_customers = clvs.len() as i64;
+    |             ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_customers`
+
+warning: unused variable: `risk_score`
+   --> crates/storage/src/churn.rs:248:9
+    |
+248 |         risk_score: f64,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_risk_score`
+
+   Compiling aws-smithy-json v0.61.6
+warning: field `id` is never read
+   --> crates/storage/src/payment.rs:414:13
+    |
+413 |         struct SubscriptionWithItems {
+    |                --------------------- field in this struct
+414 |             id: String,
+    |             ^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: field `subscription` is never read
+   --> crates/storage/src/payment.rs:998:13
+    |
+995 |         struct Invoice {
+    |                ------- field in this struct
+...
+998 |             subscription: Option<String>,
+    |             ^^^^^^^^^^^^
+
+warning: field `subscription` is never read
+    --> crates/storage/src/payment.rs:1036:13
+     |
+1033 |         struct Invoice {
+     |                ------- field in this struct
+...
+1036 |             subscription: Option<String>,
+     |             ^^^^^^^^^^^^
+
+warning: field `id` is never read
+    --> crates/storage/src/payment.rs:1193:13
+     |
+1192 |         struct SubscriptionPrice {
+     |                ----------------- field in this struct
+1193 |             id: String,
+     |             ^^
+
+warning: field `function_costs` is never read
+  --> crates/storage/src/analytics.rs:88:5
+   |
+83 | pub struct UsageAnalyticsManager {
+   |            --------------------- field in this struct
+...
+88 |     function_costs: Arc<Mutex<HashMap<String, Vec<FunctionCostBreakdown>>>>,
+   |     ^^^^^^^^^^^^^^
+
+warning: field `pool` is never read
+  --> crates/storage/src/clv.rs:86:5
+   |
+78 | pub struct CLVManager {
+   |            ---------- field in this struct
+...
+86 |     pool: SqlitePool,
+   |     ^^^^
+
+warning: field `pool` is never read
+  --> crates/storage/src/churn.rs:88:5
+   |
+81 | pub struct ChurnAnalyzer {
+   |            ------------- field in this struct
+...
+88 |     pool: SqlitePool,
+   |     ^^^^
+
+   Compiling crossbeam-deque v0.8.6
+   Compiling half v2.7.1
+   Compiling ciborium-io v0.2.2
+   Compiling plotters-backend v0.3.7
+   Compiling nanolambda-api v0.1.0 (/workspaces/nanolambda/crates/api-server)
+   Compiling aws-smithy-http v0.62.4
+   Compiling aws-credential-types v1.2.8
+   Compiling aws-smithy-observability v0.1.4
+   Compiling aws-smithy-http-client v1.1.3
+   Compiling aws-types v1.3.9
+warning: unused import: `Serialize`
+ --> crates/api-server/src/discount_handlers.rs:9:26
+  |
+9 | use serde::{Deserialize, Serialize};
+  |                          ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Path`
+ --> crates/api-server/src/analytics_handlers.rs:3:15
+  |
+3 |     extract::{Path, State},
+  |               ^^^^
+
+warning: unused import: `Serialize`
+ --> crates/api-server/src/clv_handlers.rs:9:26
+  |
+9 | use serde::{Deserialize, Serialize};
+  |                          ^^^^^^^^^
+
+warning: unused import: `Serialize`
+ --> crates/api-server/src/churn_handlers.rs:9:26
+  |
+9 | use serde::{Deserialize, Serialize};
+  |                          ^^^^^^^^^
+
+   Compiling aws-sigv4 v1.3.5
+warning: `nanolambda-storage` (lib) generated 18 warnings (run `cargo fix --lib -p nanolambda-storage` to apply 5 suggestions)
+   Compiling ciborium-ll v0.2.2
+   Compiling plotters-svg v0.3.7
+   Compiling aws-smithy-query v0.60.8
+   Compiling rayon-core v1.13.0
+   Compiling nanolambda v0.1.0 (/workspaces/nanolambda)
+   Compiling itertools v0.10.5
+   Compiling aws-smithy-runtime v1.9.3
+warning: `nanolambda-api` (lib) generated 4 warnings (run `cargo fix --lib -p nanolambda-api` to apply 4 suggestions)
+   Compiling same-file v1.0.6
+   Compiling cast v0.3.0
+   Compiling tower-http v0.6.6
+   Compiling walkdir v2.5.0
+   Compiling criterion-plot v0.5.0
+   Compiling rayon v1.11.0
+   Compiling plotters v0.3.7
+   Compiling aws-runtime v1.5.12
+   Compiling ciborium v0.2.2
+   Compiling regex v1.11.3
+   Compiling aws-sdk-ssooidc v1.88.0
+   Compiling aws-sdk-sts v1.88.0
+   Compiling aws-sdk-sso v1.86.0
+   Compiling hyper-tls v0.6.0
+   Compiling tinytemplate v1.2.1
+   Compiling is-terminal v0.4.16
+   Compiling anes v0.1.6
+   Compiling oorandom v11.1.5
+   Compiling criterion v0.5.1
+   Compiling aws-config v1.8.8
+   Compiling reqwest v0.12.24
+   Compiling aws-sdk-lambda v1.100.0
+warning: unused import: `serde_json::json`
+ --> crates/api-server/tests/integration_test.rs:4:5
+  |
+4 | use serde_json::json;
+  |     ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: `nanolambda-api` (test "integration_test") generated 1 warning (run `cargo fix --test "integration_test"` to apply 1 suggestion)
+   Compiling nanolambda-runtime v0.1.0 (/workspaces/nanolambda/crates/runtime)
+warning: `nanolambda-runtime` (lib test) generated 3 warnings (3 duplicates)
+warning: unused import: `super::*`
+   --> crates/storage/src/annual.rs:314:9
+    |
+314 |     use super::*;
+    |         ^^^^^^^^
+
+warning: `nanolambda-api` (lib test) generated 4 warnings (4 duplicates)
+   Compiling nanolambda-benchmarks v0.1.0 (/workspaces/nanolambda/benchmarks)
+warning: field `region` is never read
+   --> benchmarks/src/platforms.rs:114:5
+    |
+112 | pub struct AwsLambda {
+    |            --------- field in this struct
+113 |     client: aws_sdk_lambda::Client,
+114 |     region: String,
+    |     ^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: fields `mean`, `std_dev`, `min`, and `max` are never read
+ --> benchmarks/src/statistics.rs:5:9
+  |
+1 | pub struct BenchmarkStats {
+  |            -------------- fields in this struct
+...
+5 |     pub mean: f64,
+  |         ^^^^
+6 |     pub std_dev: f64,
+  |         ^^^^^^^
+7 |     pub min: f64,
+  |         ^^^
+8 |     pub max: f64,
+  |         ^^^
+
+warning: `nanolambda-storage` (lib test) generated 19 warnings (18 duplicates) (run `cargo fix --lib -p nanolambda-storage --tests` to apply 1 suggestion)
+warning: `nanolambda-benchmarks` (bin "benchmark-runner" test) generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 56.95s
+     Running unittests src/lib.rs (target/debug/deps/nanolambda-74f442477274d442)
+
+running 1 test
+test tests::test_version ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/cli.rs (target/debug/deps/nanolambda_cli-f6b3366ebcc0b1ec)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/server.rs (target/debug/deps/nanolambda_server-c46017b2f98626b9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/nanolambda_api-2d14937aa7ba0b58)
+
+running 12 tests
+test auth::tests::test_extract_bearer_token ... ok
+test auth::tests::test_extract_invalid_format ... ok
+test auth::tests::test_extract_missing_bearer ... ok
+test metrics::tests::test_metrics_aggregate ... ok
+test metrics::tests::test_percentile_calculation ... ok
+test metrics::tests::test_record_metric ... ok
+test rate_limiter::tests::test_rate_limiter ... ok
+test rate_limiter::tests::test_token_bucket ... ok
+test usage_tracker::tests::test_billing_calculation ... ok
+test usage_tracker::tests::test_usage_tracking ... ok
+test concurrency::tests::test_global_limit ... ok
+test concurrency::tests::test_per_function_limit ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.00s
+
+     Running tests/integration_test.rs (target/debug/deps/integration_test-7da768f359752c34)
+
+running 6 tests
+test test_create_nodejs_function ... ok
+test test_health_check ... ok
+test test_delete_function ... ok
+test test_create_python_function ... ok
+test test_update_function ... ok
+test test_list_functions ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running unittests src/main.rs (target/debug/deps/benchmark_runner-6ae7f7293b8b5a06)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/nanolambda_runtime-22be5fc6520942c7)
+
+running 33 tests
+test executor::tests::test_executor_creation ... ok
+test metrics::tests::test_cpu_percent_calculation ... ok
+test metrics::tests::test_from_pid_current_process ... ok
+test metrics::tests::test_from_pid_invalid ... ok
+test metrics::tests::test_memory_mb_conversion ... ok
+test metrics::tests::test_parse_kb_value ... ok
+test metrics::tests::test_parse_status ... ok
+test executor::tests::test_function_error_handling ... ok
+test executor::tests::test_function_with_event ... FAILED
+test executor::tests::test_simple_function ... FAILED
+test nodejs::executor::tests::test_executor_creation ... ok
+test nodejs::executor::tests::test_health_check ... ok
+test nodejs::executor::tests::test_simple_execution ... ok
+test nodejs::executor::tests::test_error_handling ... ok
+test nodejs::executor::tests::test_async_execution ... ok
+test nodejs::executor::tests::test_cold_start_mode ... ok
+test nodejs::executor::tests::test_warm_starts ... ok
+test nodejs::process::tests::test_async_function ... ok
+test nodejs::tests::test_invalid_version ... ok
+test nodejs::tests::test_node_detection ... ok
+test nodejs::tests::test_version_parsing ... ok
+test nodejs::tests::test_version_parsing_without_v ... ok
+test nodejs::process::tests::test_error_handling ... ok
+test nodejs::tests::test_version_support ... ok
+test pool::tests::test_process_pool_creation ... ok
+test runtime_trait::tests::test_runtime_info ... ok
+test runtime_trait::tests::test_sync_runtime_trait ... ok
+test types::tests::test_generic_function_config ... ok
+test types::tests::test_language_display ... ok
+test types::tests::test_language_from_str ... ok
+test nodejs::process::tests::test_multiple_invocations ... ok
+test nodejs::process::tests::test_simple_function ... ok
+test pool::tests::test_warm_execution ... FAILED
+
+failures:
+
+---- executor::tests::test_function_with_event stdout ----
+
+thread 'executor::tests::test_function_with_event' panicked at crates/runtime/src/executor.rs:565:9:
+assertion failed: result.success
+
+---- executor::tests::test_simple_function stdout ----
+
+thread 'executor::tests::test_simple_function' panicked at crates/runtime/src/executor.rs:537:9:
+Function should execute successfully
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- pool::tests::test_warm_execution stdout ----
+
+thread 'pool::tests::test_warm_execution' panicked at crates/runtime/src/pool.rs:477:9:
+assertion failed: success1
+
+
+failures:
+    executor::tests::test_function_with_event
+    executor::tests::test_simple_function
+    pool::tests::test_warm_execution
+
+test result: FAILED. 30 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+error: test failed, to rerun pass `-p nanolambda-runtime --lib`

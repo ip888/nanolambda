@@ -1,9 +1,9 @@
+use anyhow::{Result, anyhow};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use anyhow::{Result, anyhow};
 
 /// Payment retry attempt record
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,21 +112,24 @@ impl PaymentRetryManager {
         let mut events = self.retry_events.lock().await;
 
         let now = Utc::now();
-        
+
         // Get or create retry status
-        let mut status = statuses.get(api_key).cloned().unwrap_or_else(|| PaymentRetryStatus {
-            api_key: api_key.to_string(),
-            account_status: "active".to_string(),
-            outstanding_amount_cents: 0,
-            failed_at: now,
-            current_attempt: 0,
-            max_attempts: self.config.max_attempts,
-            next_retry_at: None,
-            retry_history: Vec::new(),
-            dunning_sent: false,
-            final_notice_sent: false,
-            can_retry_now: false,
-        });
+        let mut status = statuses
+            .get(api_key)
+            .cloned()
+            .unwrap_or_else(|| PaymentRetryStatus {
+                api_key: api_key.to_string(),
+                account_status: "active".to_string(),
+                outstanding_amount_cents: 0,
+                failed_at: now,
+                current_attempt: 0,
+                max_attempts: self.config.max_attempts,
+                next_retry_at: None,
+                retry_history: Vec::new(),
+                dunning_sent: false,
+                final_notice_sent: false,
+                can_retry_now: false,
+            });
 
         // Update status
         status.outstanding_amount_cents += amount_cents;
@@ -199,13 +202,13 @@ impl PaymentRetryManager {
         let now = Utc::now();
 
         // Check if enough time has passed for retry
-        if let Some(next_retry) = status.next_retry_at {
-            if now < next_retry {
-                return Err(anyhow!(
-                    "Too soon to retry. Next retry available at: {}",
-                    next_retry.to_rfc3339()
-                ));
-            }
+        if let Some(next_retry) = status.next_retry_at
+            && now < next_retry
+        {
+            return Err(anyhow!(
+                "Too soon to retry. Next retry available at: {}",
+                next_retry.to_rfc3339()
+            ));
         }
 
         // Simulate retry (in real system, would call payment processor)
@@ -245,11 +248,12 @@ impl PaymentRetryManager {
             // Retry failed
             status.current_attempt += 1;
 
-            let delay_hours = if status.current_attempt < self.config.retry_delays_hours.len() as i32 {
-                self.config.retry_delays_hours[status.current_attempt as usize]
-            } else {
-                *self.config.retry_delays_hours.last().unwrap_or(&168)
-            };
+            let delay_hours =
+                if status.current_attempt < self.config.retry_delays_hours.len() as i32 {
+                    self.config.retry_delays_hours[status.current_attempt as usize]
+                } else {
+                    *self.config.retry_delays_hours.last().unwrap_or(&168)
+                };
 
             let next_retry = if status.current_attempt < self.config.max_attempts {
                 Some(now + Duration::hours(delay_hours))
@@ -279,19 +283,19 @@ impl PaymentRetryManager {
             });
 
             // Check if all attempts exhausted
-            if status.current_attempt >= self.config.max_attempts {
-                if self.config.suspend_after_final_failure {
-                    status.account_status = "suspended".to_string();
-                    
-                    events.push(PaymentRetryEvent {
-                        api_key: api_key.to_string(),
-                        event_type: "account_suspended".to_string(),
-                        amount_cents: status.outstanding_amount_cents,
-                        attempt_number: status.current_attempt,
-                        occurred_at: now,
-                        metadata: Some("Max retry attempts exceeded".to_string()),
-                    });
-                }
+            if status.current_attempt >= self.config.max_attempts
+                && self.config.suspend_after_final_failure
+            {
+                status.account_status = "suspended".to_string();
+
+                events.push(PaymentRetryEvent {
+                    api_key: api_key.to_string(),
+                    event_type: "account_suspended".to_string(),
+                    amount_cents: status.outstanding_amount_cents,
+                    attempt_number: status.current_attempt,
+                    occurred_at: now,
+                    metadata: Some("Max retry attempts exceeded".to_string()),
+                });
             }
 
             statuses.insert(api_key.to_string(), status.clone());
@@ -408,7 +412,7 @@ impl PaymentRetryManager {
     /// Send dunning notification (simulated - returns notification details)
     pub async fn send_dunning_notification(&self, api_key: &str) -> Result<String> {
         let mut statuses = self.retry_statuses.lock().await;
-        
+
         if let Some(mut status) = statuses.get(api_key).cloned() {
             let notification_type = if status.current_attempt >= status.max_attempts - 1 {
                 "final_notice"
@@ -428,7 +432,10 @@ impl PaymentRetryManager {
                 "Dunning notification sent: {} - Amount due: ${:.2}, Next retry: {}",
                 notification_type,
                 status.outstanding_amount_cents as f64 / 100.0,
-                status.next_retry_at.map(|d| d.to_rfc3339()).unwrap_or_else(|| "No retry scheduled".to_string())
+                status
+                    .next_retry_at
+                    .map(|d| d.to_rfc3339())
+                    .unwrap_or_else(|| "No retry scheduled".to_string())
             ))
         } else {
             Err(anyhow!("No retry status found for this API key"))
@@ -438,5 +445,311 @@ impl PaymentRetryManager {
     /// Get retry configuration
     pub fn get_config(&self) -> &RetryConfig {
         &self.config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_retry_config_default() {
+        let config = RetryConfig::default();
+        assert_eq!(config.max_attempts, 3);
+        assert_eq!(config.retry_delays_hours, vec![24, 72, 168]);
+        assert!(config.send_dunning_emails);
+        assert!(config.suspend_after_final_failure);
+    }
+
+    #[tokio::test]
+    async fn test_create_retry_manager() {
+        let manager = PaymentRetryManager::new().await;
+        assert!(manager.is_ok());
+
+        let manager = manager.unwrap();
+        assert_eq!(manager.get_config().max_attempts, 3);
+    }
+
+    #[tokio::test]
+    async fn test_create_retry_manager_with_custom_config() {
+        let custom_config = RetryConfig {
+            max_attempts: 5,
+            retry_delays_hours: vec![12, 24, 48, 96],
+            send_dunning_emails: false,
+            suspend_after_final_failure: false,
+        };
+
+        let manager = PaymentRetryManager::new_with_config(custom_config.clone()).await;
+        assert!(manager.is_ok());
+
+        let manager = manager.unwrap();
+        assert_eq!(manager.get_config().max_attempts, 5);
+        assert_eq!(manager.get_config().retry_delays_hours.len(), 4);
+        assert!(!manager.get_config().send_dunning_emails);
+    }
+
+    #[tokio::test]
+    async fn test_record_payment_failure() {
+        let manager = PaymentRetryManager::new().await.unwrap();
+        let api_key = "test_key_001";
+        let amount = 2999; // $29.99
+
+        let result = manager
+            .record_payment_failure(api_key, amount, "insufficient_funds")
+            .await;
+
+        assert!(result.is_ok());
+        let status = result.unwrap();
+
+        assert_eq!(status.api_key, api_key);
+        assert_eq!(status.outstanding_amount_cents, amount);
+        assert_eq!(status.account_status, "past_due");
+        assert_eq!(status.current_attempt, 1);
+        assert_eq!(status.max_attempts, 3);
+        assert!(status.retry_history.len() == 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_retry_status_not_found() {
+        let manager = PaymentRetryManager::new().await.unwrap();
+        let result = manager.get_retry_status("nonexistent_key").await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_retry_status_exists() {
+        let manager = PaymentRetryManager::new().await.unwrap();
+        let api_key = "test_key_002";
+
+        // First create a failure
+        manager
+            .record_payment_failure(api_key, 1999, "card_declined")
+            .await
+            .unwrap();
+
+        // Then retrieve it
+        let result = manager.get_retry_status(api_key).await;
+        assert!(result.is_ok());
+
+        let status = result.unwrap();
+        assert!(status.is_some());
+
+        let status = status.unwrap();
+        assert_eq!(status.api_key, api_key);
+        assert_eq!(status.outstanding_amount_cents, 1999);
+    }
+
+    #[tokio::test]
+    async fn test_process_retry_success() {
+        let manager = PaymentRetryManager::new().await.unwrap();
+        let api_key = "test_key_003";
+
+        // Record initial failure
+        manager
+            .record_payment_failure(api_key, 4999, "payment_failed")
+            .await
+            .unwrap();
+
+        // Process retry (simulates successful payment)
+        let result = manager.process_retry(api_key).await;
+        assert!(result.is_ok());
+
+        let status = result.unwrap();
+        assert_eq!(status.current_attempt, 2);
+    }
+
+    #[tokio::test]
+    async fn test_clear_retry_status() {
+        let manager = PaymentRetryManager::new().await.unwrap();
+        let api_key = "test_key_004";
+
+        // Create failure
+        manager
+            .record_payment_failure(api_key, 999, "declined")
+            .await
+            .unwrap();
+
+        // Verify exists
+        let status_before = manager.get_retry_status(api_key).await.unwrap();
+        assert!(status_before.is_some());
+
+        // Clear it
+        let clear_result = manager.clear_retry_status(api_key).await;
+        assert!(clear_result.is_ok());
+
+        // Verify removed
+        let status_after = manager.get_retry_status(api_key).await.unwrap();
+        assert!(status_after.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_past_due_customers() {
+        let manager = PaymentRetryManager::new().await.unwrap();
+
+        // Create multiple failures
+        manager
+            .record_payment_failure("key_001", 1000, "failed")
+            .await
+            .unwrap();
+        manager
+            .record_payment_failure("key_002", 2000, "failed")
+            .await
+            .unwrap();
+        manager
+            .record_payment_failure("key_003", 3000, "failed")
+            .await
+            .unwrap();
+
+        let result = manager.get_past_due_customers().await;
+        assert!(result.is_ok());
+
+        let customers = result.unwrap();
+        assert_eq!(customers.len(), 3);
+
+        // Verify all are past_due
+        for customer in customers {
+            assert_eq!(customer.account_status, "past_due");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_platform_metrics() {
+        let manager = PaymentRetryManager::new().await.unwrap();
+
+        // Create some test data
+        manager
+            .record_payment_failure("metric_key_001", 5000, "failed")
+            .await
+            .unwrap();
+        manager
+            .record_payment_failure("metric_key_002", 3000, "failed")
+            .await
+            .unwrap();
+
+        let result = manager.get_platform_metrics().await;
+        assert!(result.is_ok());
+
+        let metrics = result.unwrap();
+        assert!(metrics.total_failed_payments > 0);
+        assert!(metrics.accounts_in_retry >= 2);
+        assert!(metrics.total_outstanding_cents >= 8000);
+    }
+
+    #[tokio::test]
+    async fn test_retry_attempt_structure() {
+        let attempt = PaymentRetryAttempt {
+            attempt_number: 1,
+            attempted_at: Utc::now(),
+            amount_cents: 2999,
+            status: "failed".to_string(),
+            failure_reason: Some("card_declined".to_string()),
+            next_retry_at: Some(Utc::now() + Duration::hours(24)),
+        };
+
+        assert_eq!(attempt.attempt_number, 1);
+        assert_eq!(attempt.amount_cents, 2999);
+        assert_eq!(attempt.status, "failed");
+        assert!(attempt.failure_reason.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_retry_status_structure() {
+        let status = PaymentRetryStatus {
+            api_key: "test_key".to_string(),
+            account_status: "past_due".to_string(),
+            outstanding_amount_cents: 4999,
+            failed_at: Utc::now(),
+            current_attempt: 1,
+            max_attempts: 3,
+            next_retry_at: Some(Utc::now() + Duration::hours(24)),
+            retry_history: vec![],
+            dunning_sent: false,
+            final_notice_sent: false,
+            can_retry_now: true,
+        };
+
+        assert_eq!(status.account_status, "past_due");
+        assert_eq!(status.outstanding_amount_cents, 4999);
+        assert_eq!(status.current_attempt, 1);
+        assert!(status.can_retry_now);
+    }
+
+    #[tokio::test]
+    async fn test_retry_metrics_structure() {
+        let metrics = PaymentRetryMetrics {
+            total_failed_payments: 100,
+            accounts_in_retry: 25,
+            accounts_past_due: 20,
+            accounts_suspended: 5,
+            total_outstanding_cents: 125000,
+            successful_retries_count: 15,
+            failed_retries_count: 10,
+            recovery_rate_percentage: 60.0,
+            avg_recovery_days: 3.5,
+        };
+
+        assert_eq!(metrics.total_failed_payments, 100);
+        assert_eq!(metrics.accounts_in_retry, 25);
+        assert!((metrics.recovery_rate_percentage - 60.0).abs() < 0.01);
+    }
+
+    #[tokio::test]
+    async fn test_send_dunning_notification() {
+        let manager = PaymentRetryManager::new().await.unwrap();
+        let api_key = "dunning_test_key";
+
+        // Create failure first
+        manager
+            .record_payment_failure(api_key, 1999, "payment_failed")
+            .await
+            .unwrap();
+
+        // Send dunning notification
+        let result = manager.send_dunning_notification(api_key).await;
+        assert!(result.is_ok());
+
+        let message = result.unwrap();
+        assert!(!message.is_empty());
+        assert!(
+            message.contains(api_key) || message.contains("dunning") || message.contains("payment")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_multiple_retry_attempts() {
+        let manager = PaymentRetryManager::new().await.unwrap();
+        let api_key = "multi_retry_key";
+
+        // Record initial failure
+        let status1 = manager
+            .record_payment_failure(api_key, 2999, "card_declined")
+            .await
+            .unwrap();
+        assert_eq!(status1.current_attempt, 1);
+
+        // Process first retry
+        let status2 = manager.process_retry(api_key).await.unwrap();
+        assert_eq!(status2.current_attempt, 2);
+
+        // Process second retry
+        let status3 = manager.process_retry(api_key).await.unwrap();
+        assert_eq!(status3.current_attempt, 3);
+    }
+
+    #[test]
+    fn test_retry_config_custom_values() {
+        let config = RetryConfig {
+            max_attempts: 4,
+            retry_delays_hours: vec![6, 12, 24, 48],
+            send_dunning_emails: true,
+            suspend_after_final_failure: false,
+        };
+
+        assert_eq!(config.max_attempts, 4);
+        assert_eq!(config.retry_delays_hours[0], 6);
+        assert_eq!(config.retry_delays_hours[3], 48);
+        assert!(!config.suspend_after_final_failure);
     }
 }

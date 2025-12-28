@@ -1,14 +1,14 @@
 // Usage Analytics - Comprehensive insights into customer usage patterns
 use crate::Result;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 /// Daily usage summary for an API key
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DailyUsageSummary {
     pub api_key: String,
-    pub date: String,                    // YYYY-MM-DD format
+    pub date: String, // YYYY-MM-DD format
     pub total_invocations: i64,
     pub successful_invocations: i64,
     pub failed_invocations: i64,
@@ -24,13 +24,13 @@ pub struct DailyUsageSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonthlyUsageTrend {
     pub api_key: String,
-    pub month: String,                   // YYYY-MM format
+    pub month: String, // YYYY-MM format
     pub total_invocations: i64,
-    pub growth_vs_previous: f64,         // percentage
+    pub growth_vs_previous: f64, // percentage
     pub peak_day_invocations: i64,
     pub avg_daily_invocations: f64,
     pub most_used_function: Option<String>,
-    pub total_cost_estimate: i64,        // in cents
+    pub total_cost_estimate: i64, // in cents
 }
 
 /// Cost breakdown by function
@@ -41,7 +41,7 @@ pub struct FunctionCostBreakdown {
     pub invocation_count: i64,
     pub execution_time_ms: i64,
     pub memory_gb_seconds: f64,
-    pub estimated_cost: i64,             // in cents
+    pub estimated_cost: i64, // in cents
     pub percentage_of_total: f64,
 }
 
@@ -52,11 +52,11 @@ pub struct UsageProfile {
     pub tier: String,
     pub account_age_days: i64,
     pub total_invocations: i64,
-    pub monthly_growth_rate: f64,        // percentage
+    pub monthly_growth_rate: f64, // percentage
     pub is_growing: bool,
     pub is_declining: bool,
-    pub churn_risk: f64,                 // 0-1, higher = more risk
-    pub health_score: f64,               // 0-100, higher = healthier
+    pub churn_risk: f64,   // 0-1, higher = more risk
+    pub health_score: f64, // 0-100, higher = healthier
     pub recommendations: Vec<String>,
 }
 
@@ -65,15 +65,15 @@ pub struct UsageProfile {
 pub struct UsageAnalyticsSnapshot {
     pub timestamp: i64,
     pub api_key: String,
-    pub period_type: String,             // "daily", "weekly", "monthly"
+    pub period_type: String, // "daily", "weekly", "monthly"
     pub period_start: i64,
     pub period_end: i64,
     pub total_invocations: i64,
     pub average_daily_invocations: f64,
     pub peak_invocations_per_hour: i64,
     pub total_execution_hours: f64,
-    pub total_cost: i64,                 // in cents
-    pub estimated_next_month_cost: i64,  // in cents
+    pub total_cost: i64,                         // in cents
+    pub estimated_next_month_cost: i64,          // in cents
     pub most_used_functions: Vec<(String, i64)>, // (function_name, count)
     pub error_count: i64,
     pub error_rate: f64,
@@ -83,19 +83,19 @@ pub struct UsageAnalyticsSnapshot {
 pub struct UsageAnalyticsManager {
     // Daily summaries indexed by api_key and date
     daily_summaries: Arc<Mutex<HashMap<String, Vec<DailyUsageSummary>>>>,
-    
+
     // Function costs indexed by api_key
-    function_costs: Arc<Mutex<HashMap<String, Vec<FunctionCostBreakdown>>>>,
-    
+    _function_costs: Arc<Mutex<HashMap<String, Vec<FunctionCostBreakdown>>>>,
+
     // Usage profiles for all active customers
     usage_profiles: Arc<Mutex<HashMap<String, UsageProfile>>>,
-    
+
     // Monthly trends indexed by api_key
     monthly_trends: Arc<Mutex<HashMap<String, Vec<MonthlyUsageTrend>>>>,
-    
+
     // Pricing constants (in cents per unit)
-    cost_per_invocation: i64,             // 0.0000002 USD per invocation
-    cost_per_gb_second: i64,              // 0.000016667 USD per GB-second
+    cost_per_invocation: i64, // 0.0000002 USD per invocation
+    cost_per_gb_second: i64,  // 0.000016667 USD per GB-second
 }
 
 impl UsageAnalyticsManager {
@@ -103,11 +103,11 @@ impl UsageAnalyticsManager {
     pub async fn new(_pool: sqlx::SqlitePool) -> Result<Self> {
         Ok(Self {
             daily_summaries: Arc::new(Mutex::new(HashMap::new())),
-            function_costs: Arc::new(Mutex::new(HashMap::new())),
+            _function_costs: Arc::new(Mutex::new(HashMap::new())),
             usage_profiles: Arc::new(Mutex::new(HashMap::new())),
             monthly_trends: Arc::new(Mutex::new(HashMap::new())),
-            cost_per_invocation: 1,        // 0.00002 cents per invocation
-            cost_per_gb_second: 2,         // 0.0002 cents per GB-second
+            cost_per_invocation: 1, // 0.00002 cents per invocation
+            cost_per_gb_second: 2,  // 0.0002 cents per GB-second
         })
     }
 
@@ -115,9 +115,9 @@ impl UsageAnalyticsManager {
     pub async fn record_daily_usage(&self, summary: DailyUsageSummary) -> Result<()> {
         let mut summaries = self.daily_summaries.lock().unwrap();
         let key = summary.api_key.clone();
-        
-        summaries.entry(key).or_insert_with(Vec::new).push(summary);
-        
+
+        summaries.entry(key).or_default().push(summary);
+
         Ok(())
     }
 
@@ -128,7 +128,7 @@ impl UsageAnalyticsManager {
         days: i64,
     ) -> Result<Vec<DailyUsageSummary>> {
         let summaries = self.daily_summaries.lock().unwrap();
-        
+
         Ok(summaries
             .get(api_key)
             .map(|v| v.iter().take(days as usize).cloned().collect())
@@ -138,11 +138,8 @@ impl UsageAnalyticsManager {
     /// Get monthly usage trend
     pub async fn get_monthly_trends(&self, api_key: &str) -> Result<Vec<MonthlyUsageTrend>> {
         let trends = self.monthly_trends.lock().unwrap();
-        
-        Ok(trends
-            .get(api_key)
-            .cloned()
-            .unwrap_or_default())
+
+        Ok(trends.get(api_key).cloned().unwrap_or_default())
     }
 
     /// Calculate usage profile for a customer
@@ -166,11 +163,16 @@ impl UsageAnalyticsManager {
         let is_declining = monthly_growth < -10.0;
 
         // Calculate churn risk (0-1)
-        let churn_risk = if is_declining { 0.7 } else if is_growing { 0.1 } else { 0.3 };
+        let churn_risk = if is_declining {
+            0.7
+        } else if is_growing {
+            0.1
+        } else {
+            0.3
+        };
 
         // Calculate health score (0-100)
-        let health_score = 100.0
-            - (churn_risk * 50.0)
+        let health_score = 100.0 - (churn_risk * 50.0)
             + if account_age_days > 90 { 10.0 } else { 0.0 }
             + if is_growing { 15.0 } else { 0.0 };
 
@@ -181,15 +183,19 @@ impl UsageAnalyticsManager {
         }
 
         if monthly_growth > 100.0 {
-            recommendations.push("Rapid growth detected. Ensure your tier aligns with usage needs.".to_string());
+            recommendations.push(
+                "Rapid growth detected. Ensure your tier aligns with usage needs.".to_string(),
+            );
         }
 
         if account_age_days < 30 {
-            recommendations.push("New customer. Review our documentation to maximize value.".to_string());
+            recommendations
+                .push("New customer. Review our documentation to maximize value.".to_string());
         }
 
         if is_growing && current_monthly_invocations > 1_000_000 {
-            recommendations.push("High volume approaching tier limits. Consider upgrading tier.".to_string());
+            recommendations
+                .push("High volume approaching tier limits. Consider upgrading tier.".to_string());
         }
 
         let profile = UsageProfile {
@@ -219,10 +225,10 @@ impl UsageAnalyticsManager {
 
         for (name, invocations, execution_ms, memory_gb) in functions.iter() {
             let invocation_cost = invocations * self.cost_per_invocation;
-            let gb_seconds = ((execution_ms * (*memory_gb * 1000.0) as i64) / 1000) as i64;
+            let gb_seconds = (execution_ms * (*memory_gb * 1000.0) as i64) / 1000;
             let memory_cost = gb_seconds * self.cost_per_gb_second;
             let cost = invocation_cost + memory_cost;
-            
+
             total_cost += cost;
             breakdowns.push((name.clone(), cost));
         }
@@ -263,7 +269,7 @@ impl UsageAnalyticsManager {
         functions: Vec<(String, i64)>,
     ) -> Result<UsageAnalyticsSnapshot> {
         let now = chrono::Utc::now().timestamp();
-        
+
         // Estimate peak invocations per hour
         let peak_invocations = if execution_hours > 0.0 {
             (invocations as f64 / execution_hours) as i64
@@ -312,11 +318,9 @@ impl UsageAnalyticsManager {
     }
 
     /// Get usage summary for all customers (admin view)
-    pub async fn get_platform_analytics_summary(
-        &self,
-    ) -> Result<PlatformAnalyticsSummary> {
+    pub async fn get_platform_analytics_summary(&self) -> Result<PlatformAnalyticsSummary> {
         let profiles = self.usage_profiles.lock().unwrap();
-        
+
         let total_customers = profiles.len() as i64;
         let growing_customers = profiles.values().filter(|p| p.is_growing).count() as i64;
         let declining_customers = profiles.values().filter(|p| p.is_declining).count() as i64;

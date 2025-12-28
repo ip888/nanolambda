@@ -1,15 +1,15 @@
 // Referral program API handlers
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
-use std::collections::HashMap;
-use std::sync::Arc;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::error;
-use chrono::Utc;
 
 use crate::{ApiServer, handlers::ErrorResponse};
 
@@ -126,23 +126,21 @@ pub async fn generate_referral_code(
             )
             .await
         {
-            Ok(referral) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "referral": {
-                        "id": referral.id,
-                        "code": referral.code,
-                        "display_name": referral.display_name,
-                        "reward_type": referral.reward_type,
-                        "reward_amount": referral.reward_amount,
-                        "reward_description": referral.reward_description,
-                        "max_referrals": referral.max_referrals,
-                        "current_referrals": referral.current_referrals,
-                        "active": referral.active,
-                        "created_at": referral.created_at,
-                    }
-                })))
-            }
+            Ok(referral) => Ok(Json(json!({
+                "success": true,
+                "referral": {
+                    "id": referral.id,
+                    "code": referral.code,
+                    "display_name": referral.display_name,
+                    "reward_type": referral.reward_type,
+                    "reward_amount": referral.reward_amount,
+                    "reward_description": referral.reward_description,
+                    "max_referrals": referral.max_referrals,
+                    "current_referrals": referral.current_referrals,
+                    "active": referral.active,
+                    "created_at": referral.created_at,
+                }
+            }))),
             Err(e) => {
                 error!("Failed to generate referral code: {}", e);
                 Err((
@@ -209,15 +207,13 @@ pub async fn get_my_referral_code(
                     }
                 })))
             }
-            Ok(None) => {
-                Err((
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "NotFound".to_string(),
-                        message: "No referral code found for this user".to_string(),
-                    }),
-                ))
-            }
+            Ok(None) => Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "NotFound".to_string(),
+                    message: "No referral code found for this user".to_string(),
+                }),
+            )),
             Err(e) => {
                 error!("Failed to get referral code: {}", e);
                 Err((
@@ -271,7 +267,11 @@ pub async fn track_referral_click(
         };
 
         // Check if code can accept more referrals
-        if !referral_mgr.can_accept_referral(referral_code.id).await.unwrap_or(false) {
+        if !referral_mgr
+            .can_accept_referral(referral_code.id)
+            .await
+            .unwrap_or(false)
+        {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse {
@@ -293,21 +293,19 @@ pub async fn track_referral_click(
             .track_referral_click(referral_code.id, &req.email, &tracking_data.to_string())
             .await
         {
-            Ok(reward) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "message": "Referral tracked successfully",
-                    "referrer": {
-                        "name": referral_code.display_name,
-                        "reward_description": referral_code.reward_description,
-                    },
-                    "reward": {
-                        "id": reward.id,
-                        "status": reward.status,
-                        "reward_amount": reward.reward_amount,
-                    }
-                })))
-            }
+            Ok(reward) => Ok(Json(json!({
+                "success": true,
+                "message": "Referral tracked successfully",
+                "referrer": {
+                    "name": referral_code.display_name,
+                    "reward_description": referral_code.reward_description,
+                },
+                "reward": {
+                    "id": reward.id,
+                    "status": reward.status,
+                    "reward_amount": reward.reward_amount,
+                }
+            }))),
             Err(e) => {
                 error!("Failed to track referral: {}", e);
                 Err((
@@ -350,22 +348,20 @@ pub async fn get_my_referral_rewards(
 
     if let Some(referral_mgr) = state.referral_manager() {
         match referral_mgr.get_referral_rewards(api_key).await {
-            Ok(rewards) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "rewards": rewards.iter().map(|r| json!({
-                        "id": r.id,
-                        "referred_email": r.referred_email,
-                        "status": r.status,
-                        "reward_earned": r.reward_earned,
-                        "reward_amount": r.reward_amount,
-                        "referred_at": r.referred_at,
-                        "activated_at": r.activated_at,
-                        "claimed_at": r.claimed_at,
-                    })).collect::<Vec<_>>(),
-                    "count": rewards.len(),
-                })))
-            }
+            Ok(rewards) => Ok(Json(json!({
+                "success": true,
+                "rewards": rewards.iter().map(|r| json!({
+                    "id": r.id,
+                    "referred_email": r.referred_email,
+                    "status": r.status,
+                    "reward_earned": r.reward_earned,
+                    "reward_amount": r.reward_amount,
+                    "referred_at": r.referred_at,
+                    "activated_at": r.activated_at,
+                    "claimed_at": r.claimed_at,
+                })).collect::<Vec<_>>(),
+                "count": rewards.len(),
+            }))),
             Err(e) => {
                 error!("Failed to get referral rewards: {}", e);
                 Err((
@@ -400,19 +396,17 @@ pub async fn get_leaderboard(
 
     if let Some(referral_mgr) = state.referral_manager() {
         match referral_mgr.get_leaderboard(limit).await {
-            Ok(leaders) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "leaderboard": leaders.iter().map(|l| json!({
-                        "rank": l.rank,
-                        "name": l.display_name,
-                        "referral_code": l.referral_code,
-                        "successful_referrals": l.successful_referrals,
-                        "total_rewards_earned": l.total_rewards_earned,
-                        "total_rewards_value": format!("${:.2}", l.total_rewards_earned as f64 / 100.0),
-                    })).collect::<Vec<_>>(),
-                })))
-            }
+            Ok(leaders) => Ok(Json(json!({
+                "success": true,
+                "leaderboard": leaders.iter().map(|l| json!({
+                    "rank": l.rank,
+                    "name": l.display_name,
+                    "referral_code": l.referral_code,
+                    "successful_referrals": l.successful_referrals,
+                    "total_rewards_earned": l.total_rewards_earned,
+                    "total_rewards_value": format!("${:.2}", l.total_rewards_earned as f64 / 100.0),
+                })).collect::<Vec<_>>(),
+            }))),
             Err(e) => {
                 error!("Failed to get leaderboard: {}", e);
                 Err((
@@ -442,32 +436,28 @@ pub async fn get_referral_details(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     if let Some(referral_mgr) = state.referral_manager() {
         match referral_mgr.get_referral_details(&code).await {
-            Ok(Some((referral, stats))) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "referral": {
-                        "code": referral.code,
-                        "display_name": referral.display_name,
-                        "reward_description": referral.reward_description,
-                        "reward_type": referral.reward_type,
-                        "reward_amount": referral.reward_amount,
-                    },
-                    "stats": {
-                        "successful_referrals": stats.active_referrals,
-                        "total_rewards_earned": stats.total_rewards_earned,
-                        "total_rewards_value": stats.total_rewards_value,
-                    }
-                })))
-            }
-            Ok(None) => {
-                Err((
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "NotFound".to_string(),
-                        message: "Referral code not found".to_string(),
-                    }),
-                ))
-            }
+            Ok(Some((referral, stats))) => Ok(Json(json!({
+                "success": true,
+                "referral": {
+                    "code": referral.code,
+                    "display_name": referral.display_name,
+                    "reward_description": referral.reward_description,
+                    "reward_type": referral.reward_type,
+                    "reward_amount": referral.reward_amount,
+                },
+                "stats": {
+                    "successful_referrals": stats.active_referrals,
+                    "total_rewards_earned": stats.total_rewards_earned,
+                    "total_rewards_value": stats.total_rewards_value,
+                }
+            }))),
+            Ok(None) => Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "NotFound".to_string(),
+                    message: "Referral code not found".to_string(),
+                }),
+            )),
             Err(e) => {
                 error!("Failed to get referral details: {}", e);
                 Err((

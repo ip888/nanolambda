@@ -25,10 +25,10 @@ pub enum StorageError {
 
     #[error("Resource not found")]
     NotFound,
-    
+
     #[error("Database error: {0}")]
     DatabaseError(String),
-    
+
     #[error("External API error: {0}")]
     ExternalApiError(String),
 }

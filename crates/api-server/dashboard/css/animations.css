@@ -1,0 +1,46 @@
+/* ============================================================
+   ANIMATIONS & KEYFRAMES
+   ============================================================ */
+
+/* Pulse animation for live status indicator */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.75; }
+}
+
+.status-dot {
+    animation: pulse 3s ease-in-out infinite;
+}
+
+/* Color pulse animation for refresh buttons in loading state */
+@keyframes colorPulse {
+    0%, 100% { color: var(--color-blue); opacity: 1; }
+    50% { color: var(--color-blue-dark); opacity: 0.6; }
+}
+
+.refresh-btn.loading {
+    background: var(--color-blue) !important;
+    pointer-events: none;
+    width: 24px;
+    height: 24px;
+}
+
+.refresh-btn.loading i {
+    animation: colorPulse 0.6s ease-in-out infinite;
+    color: white !important;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--bg-tertiary);
+    border-top-color: var(--color-blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* Shimmer animation for skeleton loaders */
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}

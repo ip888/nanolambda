@@ -3,7 +3,7 @@
 //! Provides the main NodeJSExecutor that implements the Runtime trait for executing
 //! JavaScript/TypeScript functions with warm start support via process pooling.
 
-use super::{detect_nodejs, NodeVersion};
+use super::{NodeVersion, detect_nodejs};
 use crate::nodejs::process::NodeProcess;
 use crate::runtime_trait::Runtime;
 use crate::types::{GenericFunctionConfig, Language, RuntimeCapabilities, RuntimeInfo};
@@ -49,9 +49,16 @@ impl ProcessPool {
 
         if exists {
             // Check if it's healthy
-            let is_healthy = self.processes.get_mut(code_hash).unwrap().is_healthy();
+            let is_healthy = self
+                .processes
+                .get_mut(code_hash)
+                .map(|p| p.is_healthy())
+                .unwrap_or(false);
             if is_healthy {
-                return Ok(self.processes.get_mut(code_hash).unwrap());
+                return self
+                    .processes
+                    .get_mut(code_hash)
+                    .ok_or_else(|| ExecutorError::RuntimeError("Process disappeared".to_string()));
             } else {
                 // Remove unhealthy process
                 self.processes.remove(code_hash);
@@ -63,7 +70,9 @@ impl ProcessPool {
             .map_err(|e| ExecutorError::RuntimeError(format!("Failed to create process: {}", e)))?;
 
         self.processes.insert(code_hash.to_string(), process);
-        Ok(self.processes.get_mut(code_hash).unwrap())
+        self.processes.get_mut(code_hash).ok_or_else(|| {
+            ExecutorError::RuntimeError("Failed to retrieve inserted process".to_string())
+        })
     }
 
     /// Clean up old or unhealthy processes
@@ -71,9 +80,8 @@ impl ProcessPool {
         let max_age = std::time::Duration::from_secs(self.max_age_seconds);
 
         // Remove unhealthy or old processes
-        self.processes.retain(|_, process| {
-            process.is_healthy() && process.age() < max_age
-        });
+        self.processes
+            .retain(|_, process| process.is_healthy() && process.age() < max_age);
 
         // Enforce max size
         while self.processes.len() > self.max_size {
@@ -89,11 +97,6 @@ impl ProcessPool {
                 break;
             }
         }
-    }
-
-    /// Hash function code for cache key
-    fn hash_code(&self, code: &str) -> String {
-        blake3::hash(code.as_bytes()).to_hex().to_string()
     }
 }
 
@@ -133,11 +136,7 @@ impl NodeJSExecutor {
     }
 
     /// Execute with cold start (no pooling)
-    fn execute_cold_start(
-        &self,
-        function_code: &str,
-        event: &Value,
-    ) -> Result<ExecutionResult> {
+    fn execute_cold_start(&self, function_code: &str, event: &Value) -> Result<ExecutionResult> {
         let start = Instant::now();
 
         let node_path = self.node_path.to_string_lossy();
@@ -146,7 +145,8 @@ impl NodeJSExecutor {
         let mut process = NodeProcess::new(&node_path, function_code, code_hash.to_string())
             .map_err(|e| ExecutorError::RuntimeError(format!("Failed to spawn process: {}", e)))?;
 
-        let invocation_result = process.invoke(event)
+        let invocation_result = process
+            .invoke(event)
             .map_err(|e| ExecutorError::RuntimeError(format!("Invocation failed: {}", e)))?;
 
         let total_time = start.elapsed().as_millis() as u64;
@@ -171,23 +171,23 @@ impl NodeJSExecutor {
     }
 
     /// Execute with warm start (use pooling)
-    fn execute_warm_start(
-        &self,
-        function_code: &str,
-        event: &Value,
-    ) -> Result<ExecutionResult> {
+    fn execute_warm_start(&self, function_code: &str, event: &Value) -> Result<ExecutionResult> {
         let start = Instant::now();
 
         let code_hash = blake3::hash(function_code.as_bytes()).to_hex();
         let node_path = self.node_path.to_string_lossy();
 
-        let mut pool = self.pool.lock().unwrap();
+        let mut pool = self
+            .pool
+            .lock()
+            .map_err(|e| ExecutorError::RuntimeError(format!("Mutex poisoned: {}", e)))?;
         let process = pool.get_or_create(&code_hash, &node_path, function_code)?;
 
         // Check if this is a cold start (new process)
         let is_cold_start = process.stats().invocations == 0;
 
-        let invocation_result = process.invoke(event)
+        let invocation_result = process
+            .invoke(event)
             .map_err(|e| ExecutorError::RuntimeError(format!("Invocation failed: {}", e)))?;
 
         let total_time = start.elapsed().as_millis() as u64;
@@ -220,7 +220,7 @@ impl Runtime for NodeJSExecutor {
         event: Value,
     ) -> Result<ExecutionResult> {
         // Validate language
-        if &config.language != &Language::NodeJS {
+        if config.language != Language::NodeJS {
             return Err(ExecutorError::UnsupportedLanguage(format!(
                 "Expected NodeJS, got {:?}",
                 config.language
@@ -334,10 +334,7 @@ mod tests {
 
         assert!(result.success);
         let result_json: Value = serde_json::from_str(result.result.as_ref().unwrap()).unwrap();
-        assert_eq!(
-            result_json,
-            json!({ "message": "Hello, World!" })
-        );
+        assert_eq!(result_json, json!({ "message": "Hello, World!" }));
     }
 
     #[tokio::test]

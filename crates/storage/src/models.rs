@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionConfig {
@@ -50,14 +51,18 @@ impl FunctionStatus {
             FunctionStatus::Deleted => "deleted",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl FromStr for FunctionStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s {
             "active" => FunctionStatus::Active,
             "disabled" => FunctionStatus::Disabled,
             "deleted" => FunctionStatus::Deleted,
             _ => FunctionStatus::Active,
-        }
+        })
     }
 }
 
@@ -90,14 +95,18 @@ impl InvocationStatus {
             InvocationStatus::Timeout => "timeout",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl FromStr for InvocationStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s {
             "success" => InvocationStatus::Success,
             "error" => InvocationStatus::Error,
             "timeout" => InvocationStatus::Timeout,
             _ => InvocationStatus::Error,
-        }
+        })
     }
 }
 
@@ -138,13 +147,17 @@ impl ApiKeyStatus {
             ApiKeyStatus::Revoked => "revoked",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl FromStr for ApiKeyStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s {
             "active" => ApiKeyStatus::Active,
             "revoked" => ApiKeyStatus::Revoked,
             _ => ApiKeyStatus::Active,
-        }
+        })
     }
 }
 

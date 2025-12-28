@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tabled::{Table, Tabled};
 
-mod workloads;
 mod platforms;
 mod statistics;
+mod workloads;
 
-use workloads::{Workload, WorkloadType};
-use platforms::{Platform, NanoLambda, AwsLambda};
+use platforms::{AwsLambda, NanoLambda, Platform};
 use statistics::BenchmarkStats;
+use workloads::{Workload, WorkloadType};
 
 #[derive(Parser, Debug)]
 #[command(name = "benchmark-runner")]
@@ -129,9 +129,12 @@ async fn run_benchmarks<P: Platform>(
         }
 
         // Measure warm starts
-        println!("    📈 Measuring warm performance ({} iterations)...", args.iterations);
+        println!(
+            "    📈 Measuring warm performance ({} iterations)...",
+            args.iterations
+        );
         let mut warm_latencies = Vec::with_capacity(args.iterations);
-        
+
         for _ in 0..args.iterations {
             let start = Instant::now();
             platform.invoke(&workload).await?;
@@ -158,8 +161,10 @@ async fn run_benchmarks<P: Platform>(
             memory_mb: memory,
         };
 
-        println!("    ✅ P50: {:.2}ms | P95: {:.2}ms | P99: {:.2}ms | Throughput: {:.1} req/s\n",
-                 stats.p50, stats.p95, stats.p99, throughput);
+        println!(
+            "    ✅ P50: {:.2}ms | P95: {:.2}ms | P99: {:.2}ms | Throughput: {:.1} req/s\n",
+            stats.p50, stats.p95, stats.p99, throughput
+        );
 
         results.push(result);
 
@@ -170,24 +175,18 @@ async fn run_benchmarks<P: Platform>(
     Ok(results)
 }
 
-async fn measure_cold_start<P: Platform>(
-    platform: &P,
-    workload: &Workload,
-) -> anyhow::Result<f64> {
+async fn measure_cold_start<P: Platform>(platform: &P, workload: &Workload) -> anyhow::Result<f64> {
     // Ensure clean slate
     platform.ensure_cold_state(workload).await?;
-    
+
     let start = Instant::now();
     platform.invoke(workload).await?;
     let duration = start.elapsed().as_secs_f64() * 1000.0;
-    
+
     Ok(duration)
 }
 
-async fn measure_throughput<P: Platform>(
-    platform: &P,
-    workload: &Workload,
-) -> anyhow::Result<f64> {
+async fn measure_throughput<P: Platform>(platform: &P, workload: &Workload) -> anyhow::Result<f64> {
     let duration = Duration::from_secs(5);
     let mut count = 0;
     let start = Instant::now();
@@ -234,15 +233,21 @@ fn display_comparison(results: &[BenchmarkResult]) {
             let warm_speedup = aws.warm_p50_ms / nano.warm_p50_ms;
             let throughput_ratio = nano.throughput_rps / aws.throughput_rps;
 
-            println!("    Cold Start: {} ({:.1}x faster)",
-                     format_speedup(cold_speedup),
-                     cold_speedup);
-            println!("    Warm P50:   {} ({:.1}x faster)",
-                     format_speedup(warm_speedup),
-                     warm_speedup);
-            println!("    Throughput: {} ({:.1}x higher)",
-                     format_speedup(throughput_ratio),
-                     throughput_ratio);
+            println!(
+                "    Cold Start: {} ({:.1}x faster)",
+                format_speedup(cold_speedup),
+                cold_speedup
+            );
+            println!(
+                "    Warm P50:   {} ({:.1}x faster)",
+                format_speedup(warm_speedup),
+                warm_speedup
+            );
+            println!(
+                "    Throughput: {} ({:.1}x higher)",
+                format_speedup(throughput_ratio),
+                throughput_ratio
+            );
         }
         println!();
     }

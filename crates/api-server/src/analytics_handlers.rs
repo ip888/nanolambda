@@ -1,12 +1,8 @@
 // Usage Analytics API Handlers
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Json,
-};
-use std::sync::Arc;
+use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
 
 use crate::{ApiServer, handlers::ErrorResponse};
 
@@ -34,14 +30,13 @@ pub async fn get_daily_summaries(
             }),
         ))?;
 
-    let manager = state.analytics_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal error".to_string(),
-                message: "Analytics manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.analytics_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Internal error".to_string(),
+            message: "Analytics manager not available".to_string(),
+        }),
+    ))?;
 
     let summaries = manager
         .get_daily_summaries(api_key_str, 30)
@@ -78,14 +73,13 @@ pub async fn get_usage_profile(
             }),
         ))?;
 
-    let manager = state.analytics_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal error".to_string(),
-                message: "Analytics manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.analytics_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Internal error".to_string(),
+            message: "Analytics manager not available".to_string(),
+        }),
+    ))?;
 
     let profile = manager
         .calculate_usage_profile(api_key_str, "pro", 30, 10000, 9500)
@@ -123,14 +117,13 @@ pub async fn get_usage_snapshot(
             }),
         ))?;
 
-    let manager = state.analytics_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal error".to_string(),
-                message: "Analytics manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.analytics_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Internal error".to_string(),
+            message: "Analytics manager not available".to_string(),
+        }),
+    ))?;
 
     let functions = vec![
         ("handler".to_string(), 1000),
@@ -167,14 +160,13 @@ pub async fn get_usage_snapshot(
 pub async fn get_platform_analytics(
     State(state): State<Arc<ApiServer>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let manager = state.analytics_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal error".to_string(),
-                message: "Analytics manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.analytics_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Internal error".to_string(),
+            message: "Analytics manager not available".to_string(),
+        }),
+    ))?;
 
     let summary = manager
         .get_platform_analytics_summary()
@@ -211,27 +203,23 @@ pub async fn get_monthly_trends(
             }),
         ))?;
 
-    let manager = state.analytics_manager()
-        .ok_or((
+    let manager = state.analytics_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Internal error".to_string(),
+            message: "Analytics manager not available".to_string(),
+        }),
+    ))?;
+
+    let trends = manager.get_monthly_trends(api_key_str).await.map_err(|_| {
+        (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: "Internal error".to_string(),
-                message: "Analytics manager not available".to_string(),
+                error: "Failed to retrieve data".to_string(),
+                message: "Failed to retrieve monthly trends".to_string(),
             }),
-        ))?;
-
-    let trends = manager
-        .get_monthly_trends(api_key_str)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to retrieve data".to_string(),
-                    message: "Failed to retrieve monthly trends".to_string(),
-                }),
-            )
-        })?;
+        )
+    })?;
 
     Ok(Json(json!({
         "success": true,

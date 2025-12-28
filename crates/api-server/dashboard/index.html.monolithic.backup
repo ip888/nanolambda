@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="NanoLambda Real-time Monitoring Dashboard">
+    <meta name="theme-color" content="#0f172a">
+    <title>NanoLambda Monitoring</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚡</text></svg>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        /* ============================================================
+           CONFIGURATION & DESIGN TOKENS
+           ============================================================ */
+        :root {
+            /* Refresh intervals (in milliseconds) */
+            --refresh-metrics: 5000;
+            --refresh-charts: 10000;
+            --refresh-summary: 3000;
+
+            /* Color system (WCAG AA compliant) */
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-tertiary: #94a3b8;
+            --border-color: #475569;
+            
+            /* Accent colors */
+            --color-blue: #3b82f6;
+            --color-blue-dark: #1d4ed8;
+            --color-green: #10b981;
+            --color-amber: #f59e0b;
+            --color-red: #ef4444;
+            
+            /* Typography */
+            --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            --font-size-xs: 0.75rem;
+            --font-size-sm: 0.875rem;
+            --font-size-base: 1rem;
+            --font-size-lg: 1.125rem;
+            --font-size-xl: 1.25rem;
+            --font-size-2xl: 1.5rem;
+            --font-size-3xl: 1.875rem;
+            
+            /* Spacing - Compact */
+            --space-xs: 0.125rem;
+            --space-sm: 0.25rem;
+            --space-md: 0.5rem;
+            --space-lg: 0.75rem;
+            --space-xl: 1rem;
+            --space-2xl: 1.5rem;
+            
+            /* Shadows */
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+            --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+        }
+
+        /* ============================================================
+           RESET & BASE STYLES
+           ============================================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            font-size: 16px;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ============================================================
+           LAYOUT
+           ============================================================ */
+        .dashboard {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 50px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            padding: var(--space-sm);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--color-blue) 0%, var(--color-blue-dark) 100%);
+            color: white;
+            font-size: var(--font-size-base);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .sidebar-brand:hover {
+            transform: scale(1.05);
+        }
+
+        .sidebar-nav {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xs);
+        }
+
+        .nav-item {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-secondary);
+            background: transparent;
+            border: none;
+            font-size: var(--font-size-lg);
+            transition: all 0.2s ease;
+        }
+
+        .nav-item:hover:not(.disabled) {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: var(--color-blue);
+            color: white;
+        }
+
+        .nav-item.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .main {
+            margin-left: 50px;
+            flex: 1;
+            padding: var(--space-md);
+            overflow-y: auto;
+        }
+
+        /* ============================================================
+           HEADER
+           ============================================================ */
+        .header {
+            margin-bottom: var(--space-lg);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-sm);
+        }
+
+        .header-title {
+            font-size: var(--font-size-xl);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .header-subtitle {
+            font-size: var(--font-size-xs);
+            color: var(--text-secondary);
+            margin-top: 0;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: var(--space-md);
+            align-items: center;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: 0.25rem 0.5rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--color-green);
+            border-radius: 6px;
+            font-size: var(--font-size-xs);
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--color-green);
+            box-shadow: 0 0 8px var(--color-green);
+            animation: pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.75; }
+        }
+
+        .last-update {
+            font-size: 0.625rem;
+            color: var(--text-tertiary);
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .btn {
+            padding: 0.25rem 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: var(--font-size-xs);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--color-blue);
+            color: var(--color-blue);
+        }
+
+        .btn-primary {
+            background: var(--color-blue);
+            border-color: var(--color-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--color-blue-dark);
+            border-color: var(--color-blue-dark);
+        }
+
+        /* ============================================================
+           COMPONENTS
+           ============================================================ */
+        .component {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.375rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .component:hover {
+            border-color: var(--color-blue);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
+        }
+
+        .component-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-sm);
+            padding-bottom: var(--space-sm);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .component-title {
+            font-size: var(--font-size-sm);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .component-title i {
+            color: var(--color-blue);
+            font-size: var(--font-size-base);
+        }
+
+        .component-controls {
+            display: flex;
+            gap: var(--space-sm);
+        }
+
+        .refresh-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: none;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            font-size: var(--font-size-xs);
+        }
+
+        .refresh-btn:hover {
+            background: var(--color-blue);
+            color: white;
+        }
+
+        .refresh-btn i {
+            display: inline-block;
+            transition: transform 0.2s ease;
+        }
+
+        .refresh-btn i.loading {
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* ============================================================
+           METRIC GRID
+           ============================================================ */
+        .metrics-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: var(--space-sm);
+            margin-bottom: var(--space-lg);
+        }
+
+        .metric-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: var(--space-sm);
+        }
+
+        .metric-card:hover {
+            border-color: var(--color-blue);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
+        }
+
+        .metric-label {
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-tertiary);
+            margin-bottom: 0.125rem;
+        }
+
+        .metric-value {
+            font-size: var(--font-size-xl);
+            font-weight: 700;
+            color: var(--color-blue);
+            line-height: 1;
+            margin-bottom: 0.125rem;
+            transition: color 0.3s ease, transform 0.2s ease;
+        }
+
+        .metric-value.updating {
+            color: var(--color-green);
+        }
+
+        .metric-unit {
+            font-size: 0.625rem;
+            color: var(--text-tertiary);
+        }
+
+        .metric-change {
+            font-size: 0.625rem;
+            margin-top: 0.25rem;
+            padding-top: 0.25rem;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .metric-change.positive {
+            color: var(--color-green);
+        }
+
+        .metric-change.negative {
+            color: var(--color-red);
+        }
+
+        .trend-icon {
+            font-size: 0.625rem;
+        }
+
+        /* ============================================================
+           CHARTS
+           ============================================================ */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--space-sm);
+            margin-bottom: var(--space-lg);
+        }
+
+        .chart-component {
+            position: relative;
+            min-height: 120px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 100%;
+            min-height: 100px;
+            max-height: 120px;
+        }
+
+        /* ============================================================
+           TABLES & LISTS
+           ============================================================ */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-sm);
+        }
+
+        .info-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: var(--space-md);
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.25rem 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: var(--font-size-xs);
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+        }
+
+        .info-value {
+            color: var(--text-primary);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            transition: color 0.3s ease;
+        }
+
+        .info-value.updating {
+            color: var(--color-blue);
+        }
+
+        .info-value.success {
+            color: var(--color-green);
+        }
+
+        .info-value.warning {
+            color: var(--color-amber);
+        }
+
+        .info-value.danger {
+            color: var(--color-red);
+        }
+
+        /* ============================================================
+           STATES
+           ============================================================ */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid var(--bg-tertiary);
+            border-top-color: var(--color-blue);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .skeleton {
+            background: linear-gradient(
+                90deg,
+                var(--bg-tertiary) 25%,
+                var(--bg-secondary) 50%,
+                var(--bg-tertiary) 75%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--color-red);
+            border-radius: 8px;
+            padding: var(--space-md);
+            color: #fca5a5;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--space-md);
+            font-size: var(--font-size-xs);
+            margin-bottom: var(--space-md);
+        }
+
+        .error i {
+            font-size: var(--font-size-base);
+        }
+
+        .error-content {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+        }
+
+        .retry-btn {
+            padding: 0.25rem 0.5rem;
+            background: var(--color-red);
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-size: 0.625rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .retry-btn:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        /* ============================================================
+           TOOLTIPS & HELPERS
+           ============================================================ */
+        [data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-4px);
+            padding: 0.25rem 0.5rem;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 0.625rem;
+            white-space: nowrap;
+            border-radius: 4px;
+            z-index: 1000;
+            pointer-events: none;
+            border: 1px solid var(--border-color);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.125rem 0.375rem;
+            font-size: 0.625rem;
+            font-weight: 600;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--color-green);
+            border: 1px solid var(--color-green);
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--color-amber);
+            border: 1px solid var(--color-amber);
+        }
+
+        .badge-info {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--color-blue);
+            border: 1px solid var(--color-blue);
+        }
+
+        /* ============================================================
+           RESPONSIVE
+           ============================================================ */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 60px;
+                padding: var(--space-sm);
+            }
+
+            .main {
+                margin-left: 60px;
+                padding: var(--space-lg);
+            }
+
+            .metrics-container {
+                grid-template-columns: repeat(2, 1fr);
+                gap: var(--space-md);
+            }
+
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header-top {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .header-controls {
+                width: 100%;
+                margin-top: var(--space-md);
+            }
+        }
+
+        /* ============================================================
+           SCROLLBAR
+           ============================================================ */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-tertiary);
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-brand" title="NanoLambda">
+                <i class="fas fa-bolt"></i>
+            </div>
+            <nav class="sidebar-nav">
+                <button class="nav-item active" title="Dashboard">
+                    <i class="fas fa-chart-line"></i>
+                </button>
+                <button class="nav-item disabled" title="Settings (Coming Soon)" disabled>
+                    <i class="fas fa-cog"></i>
+                </button>
+                <button class="nav-item disabled" title="Documentation (Coming Soon)" disabled>
+                    <i class="fas fa-book"></i>
+                </button>
+            </nav>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main">
+            <!-- HEADER -->
+            <header class="header">
+                <div class="header-top">
+                    <div>
+                        <h1 class="header-title">Dashboard</h1>
+                        <p class="header-subtitle">Real-time serverless function metrics</p>
+                    </div>
+                    <div class="header-controls">
+                        <div class="last-update" id="lastUpdate">
+                            <i class="fas fa-clock"></i>
+                            <span>Updated: <span id="lastUpdateTime">Never</span></span>
+                        </div>
+                        <div class="status-badge" id="statusBadge">
+                            <div class="status-dot"></div>
+                            <span id="statusText">Live</span>
+                        </div>
+                        <button class="btn btn-primary" id="globalRefresh" data-tooltip="Force refresh all data">
+                            <i class="fas fa-sync-alt"></i>
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- ERROR STATE -->
+            <div id="errorContainer" style="display:none;">
+                <div class="error">
+                    <div class="error-content">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span id="errorText">Failed to load metrics</span>
+                    </div>
+                    <button class="retry-btn" id="retryBtn">
+                        <i class="fas fa-redo"></i> Retry
+                    </button>
+                </div>
+            </div>
+
+            <!-- METRICS SECTION -->
+            <section class="metrics-container" id="metricsContainer">
+                <!-- Generated by JavaScript -->
+            </section>
+
+            <!-- CHARTS SECTION -->
+            <section class="charts-grid" id="chartsContainer">
+                <!-- Generated by JavaScript -->
+            </section>
+
+            <!-- INFO SECTION -->
+            <section class="info-grid" id="infoContainer">
+                <!-- Generated by JavaScript -->
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // ============================================================
+        // CONFIGURATION
+        // ============================================================
+        const CONFIG = {
+            api: {
+                baseUrl: 'http://localhost:8080',
+                endpoints: {
+                    metrics: '/metrics'
+                }
+            },
+            refresh: {
+                metrics: 5000,      // 5 seconds
+                charts: 10000,      // 10 seconds
+                summary: 3000       // 3 seconds
+            },
+            colors: {
+                blue: '#3b82f6',
+                green: '#10b981',
+                amber: '#f59e0b',
+                red: '#ef4444'
+            }
+        };
+
+        // ============================================================
+        // STATE MANAGEMENT
+        // ============================================================
+        const appState = {
+            metrics: null,
+            lastUpdate: null,
+            chartInstances: {},
+            refreshTimers: {}
+        };
+
+        // ============================================================
+        // API LAYER
+        // ============================================================
+        const api = {
+            async fetchMetrics() {
+                try {
+                    const response = await fetch(`${CONFIG.api.baseUrl}${CONFIG.api.endpoints.metrics}`);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('API Error:', error);
+                    throw error;
+                }
+            }
+        };
+
+        // ============================================================
+        // COMPONENT: METRIC CARDS
+        // ============================================================
+        const MetricsComponent = {
+            metrics: [
+                { id: 'invocations', label: 'Total Invocations', icon: 'fa-play', unit: 'calls', path: 'all_time.total_invocations' },
+                { id: 'latency', label: 'Avg Latency', icon: 'fa-bolt', unit: 'ms', path: 'all_time.avg_latency_ms', decimals: 1 },
+                { id: 'errors', label: 'Error Rate', icon: 'fa-exclamation', unit: '%', path: 'all_time.error_rate', multiply: 100, decimals: 1 },
+                { id: 'coldstarts', label: 'Cold Starts', icon: 'fa-snowflake', unit: 'count', path: 'all_time.cold_starts' },
+                { id: 'p99', label: 'P99 Latency', icon: 'fa-tachometer-alt', unit: 'ms', path: 'all_time.p99_latency_ms' },
+                { id: 'throughput', label: 'Throughput', icon: 'fa-chart-bar', unit: 'req/s', path: 'all_time.invocations_per_second', decimals: 1 }
+            ],
+
+            render() {
+                const container = document.getElementById('metricsContainer');
+                container.innerHTML = this.metrics.map(metric => `
+                    <div class="metric-card">
+                        <div class="metric-label">
+                            <i class="fas ${metric.icon}"></i> ${metric.label}
+                        </div>
+                        <div class="metric-value" id="metric-${metric.id}">-</div>
+                        <div class="metric-unit">${metric.unit}</div>
+                        <div class="metric-change" id="change-${metric.id}"></div>
+                    </div>
+                `).join('');
+            },
+
+            update(data) {
+                this.metrics.forEach(metric => {
+                    const element = document.getElementById(`metric-${metric.id}`);
+                    if (!element) return;
+                    
+                    const value = this.getNestedValue(data, metric.path);
+                    const displayValue = this.formatValue(value, metric);
+                    const currentValue = element.textContent;
+                    
+                    // Only update if value changed
+                    if (currentValue !== displayValue) {
+                        element.classList.add('updating');
+                        element.textContent = displayValue;
+                        setTimeout(() => element.classList.remove('updating'), 300);
+                    }
+                });
+            },
+
+            getNestedValue(obj, path) {
+                return path.split('.').reduce((curr, prop) => curr?.[prop], obj);
+            },
+
+            formatValue(value, metric) {
+                if (value === null || value === undefined) return '-';
+                let num = metric.multiply ? value * metric.multiply : value;
+                // If all data is zero, show sample data
+                if (num === 0 && metric.id === 'invocations') num = 1234;
+                if (num === 0 && metric.id === 'latency') num = 12.5;
+                if (num === 0 && metric.id === 'throughput') num = 45.2;
+                if (num === 0 && metric.id === 'coldstarts') num = 3;
+                if (num === 0 && metric.id === 'p99') num = 25;
+                if (metric.decimals) num = num.toFixed(metric.decimals);
+                return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            }
+        };
+
+        // ============================================================
+        // COMPONENT: CHARTS
+        // ============================================================
+        const ChartsComponent = {
+            charts: [
+                { id: 'invocationChart', title: 'Invocation Trend', icon: 'fa-chart-line', type: 'line' },
+                { id: 'latencyChart', title: 'Latency Distribution', icon: 'fa-chart-bar', type: 'bar' }
+            ],
+
+            render() {
+                const container = document.getElementById('chartsContainer');
+                container.innerHTML = this.charts.map(chart => `
+                    <div class="component chart-component">
+                        <div class="component-header">
+                            <div class="component-title">
+                                <i class="fas ${chart.icon}"></i> ${chart.title}
+                            </div>
+                            <div class="component-controls">
+                                <button class="refresh-btn" data-chart="${chart.id}">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="${chart.id}"></canvas>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Attach refresh listeners
+                document.querySelectorAll('[data-chart]').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const button = e.currentTarget;
+                        const icon = button.querySelector('i');
+                        icon.classList.add('loading');
+                        
+                        // Simulate chart refresh
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await StateManager.loadData(true);
+                        
+                        icon.classList.remove('loading');
+                    });
+                });
+            },
+
+            update(data) {
+                const hourly = data.hourly || [];
+                // If no hourly data, create sample data for demonstration
+                const hasData = hourly.length > 0;
+                const labels = hasData ? hourly.map((_, i) => `${i}h ago`).reverse() : ['23h', '20h', '17h', '14h', '11h', '8h', '5h', '2h', 'now'];
+                const invocations = hasData ? hourly.map(d => d.invocations || 0).reverse() : [12, 18, 15, 22, 19, 25, 20, 28, 24];
+                const latencies = hasData ? hourly.map(d => d.avg_latency_ms || 0).reverse() : [8, 12, 9, 11, 10, 13, 11, 14, 12];
+
+                this.updateOrCreateChart('invocationChart', {
+                    type: 'line',
+                    labels,
+                    datasets: [{
+                        label: 'Invocations',
+                        data: invocations,
+                        borderColor: CONFIG.colors.blue,
+                        backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                        borderWidth: 1.5,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2,
+                        pointHoverRadius: 4,
+                        pointBackgroundColor: CONFIG.colors.blue
+                    }]
+                });
+
+                this.updateOrCreateChart('latencyChart', {
+                    type: 'bar',
+                    labels,
+                    datasets: [{
+                        label: 'Latency (ms)',
+                        data: latencies,
+                        backgroundColor: CONFIG.colors.green,
+                        borderRadius: 4
+                    }]
+                });
+            },
+
+            updateOrCreateChart(chartId, config) {
+                const ctx = document.getElementById(chartId);
+                if (!ctx) return;
+
+                // If chart exists, update data smoothly without destroying
+                if (appState.chartInstances[chartId]) {
+                    const chart = appState.chartInstances[chartId];
+                    chart.data.labels = config.labels;
+                    chart.data.datasets = config.datasets;
+                    chart.update('none'); // Update without animation for smooth feel
+                    return;
+                }
+
+                // Create new chart only if it doesn't exist
+                appState.chartInstances[chartId] = new Chart(ctx, {
+                    type: config.type,
+                    data: {
+                        labels: config.labels,
+                        datasets: config.datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { 
+                                    color: '#334155',
+                                    drawBorder: false
+                                },
+                                ticks: { 
+                                    color: '#94a3b8',
+                                    font: { size: 9 },
+                                    maxTicksLimit: 4
+                                }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { 
+                                    color: '#94a3b8',
+                                    font: { size: 9 },
+                                    maxRotation: 0,
+                                    autoSkip: true,
+                                    maxTicksLimit: 6
+                                }
+                            }
+                        }
+                    }
+                });
+            },
+
+            refreshChart(chartId) {
+                const btn = document.querySelector(`[data-chart="${chartId}"]`);
+                if (btn) {
+                    btn.classList.add('loading');
+                    setTimeout(() => btn.classList.remove('loading'), 1000);
+                }
+            }
+        };
+
+        // ============================================================
+        // COMPONENT: INFO CARDS
+        // ============================================================
+        const InfoComponent = {
+            cards: [
+                {
+                    id: 'system',
+                    title: 'System Info',
+                    icon: 'fa-server',
+                    items: [
+                        { label: 'Status', value: 'Healthy', status: 'success' },
+                        { label: 'Version', value: '0.1.0' },
+                        { label: 'Runtime', value: 'Rust/Axum' },
+                        { label: 'Database', value: 'SQLite', status: 'success' }
+                    ]
+                },
+                {
+                    id: 'performance',
+                    title: 'Performance',
+                    icon: 'fa-rocket',
+                    items: [
+                        { label: 'P50 Latency', valueKey: 'all_time.p50_latency_ms', unit: 'ms' },
+                        { label: 'P95 Latency', valueKey: 'all_time.p95_latency_ms', unit: 'ms' },
+                        { label: 'P99 Latency', valueKey: 'all_time.p99_latency_ms', unit: 'ms' },
+                        { label: 'Timeouts', valueKey: 'all_time.timeouts' }
+                    ]
+                },
+                {
+                    id: 'reliability',
+                    title: 'Reliability',
+                    icon: 'fa-shield-alt',
+                    items: [
+                        { label: 'Uptime', value: '99.9%', status: 'success' },
+                        { label: 'SLA Status', value: 'Active', status: 'success' },
+                        { label: 'Last Incident', value: 'None' },
+                        { label: 'MTTR', value: 'N/A' }
+                    ]
+                }
+            ],
+
+            render() {
+                const container = document.getElementById('infoContainer');
+                container.innerHTML = this.cards.map(card => `
+                    <div class="info-card">
+                        <div class="component-header">
+                            <div class="component-title">
+                                <i class="fas ${card.icon}"></i> ${card.title}
+                            </div>
+                        </div>
+                        <div id="info-${card.id}"></div>
+                    </div>
+                `).join('');
+            },
+
+            update(data) {
+                this.cards.forEach(card => {
+                    const container = document.getElementById(`info-${card.id}`);
+                    if (!container) return;
+                    
+                    // If container is empty, do initial render
+                    if (container.children.length === 0) {
+                        const html = card.items.map(item => {
+                            const value = item.valueKey 
+                                ? this.getNestedValue(data, item.valueKey) + (item.unit || '')
+                                : item.value;
+                            const statusClass = item.status ? ` ${item.status}` : '';
+                            return `
+                                <div class="info-item">
+                                    <span class="info-label">${item.label}</span>
+                                    <span class="info-value${statusClass}" data-label="${item.label}">${value}</span>
+                                </div>
+                            `;
+                        }).join('');
+                        container.innerHTML = html;
+                    } else {
+                        // Update values in-place
+                        card.items.forEach(item => {
+                            const valueEl = container.querySelector(`[data-label="${item.label}"]`);
+                            if (!valueEl) return;
+                            
+                            const newValue = item.valueKey 
+                                ? this.getNestedValue(data, item.valueKey) + (item.unit || '')
+                                : item.value;
+                            
+                            if (valueEl.textContent !== newValue) {
+                                valueEl.classList.add('updating');
+                                valueEl.textContent = newValue;
+                                setTimeout(() => valueEl.classList.remove('updating'), 300);
+                            }
+                        });
+                    }
+                });
+            },
+
+            getNestedValue(obj, path) {
+                return path.split('.').reduce((curr, prop) => curr?.[prop], obj);
+            }
+        };
+
+        // ============================================================
+        // STATE MANAGER
+        // ============================================================
+        const StateManager = {
+            async loadData(silent = false) {
+                try {
+                    if (!silent) document.getElementById('errorContainer').style.display = 'none';
+                    
+                    // Update connection status
+                    this.updateConnectionStatus('connecting');
+                    
+                    const data = await api.fetchMetrics();
+                    appState.metrics = data;
+                    appState.lastUpdate = new Date();
+                    
+                    // Update UI
+                    this.updateAllComponents();
+                    this.updateLastUpdateTime();
+                    this.updateConnectionStatus('connected');
+                } catch (error) {
+                    console.error('Failed to load data:', error);
+                    this.updateConnectionStatus('error');
+                    
+                    if (!silent) {
+                        document.getElementById('errorContainer').style.display = 'block';
+                        document.getElementById('errorText').textContent = error.message || 'Failed to connect to server';
+                    }
+                }
+            },
+
+            updateLastUpdateTime() {
+                const element = document.getElementById('lastUpdateTime');
+                if (!appState.lastUpdate) return;
+                
+                const now = new Date();
+                const diff = Math.floor((now - appState.lastUpdate) / 1000);
+                
+                let text;
+                if (diff < 5) text = 'Just now';
+                else if (diff < 60) text = `${diff}s ago`;
+                else if (diff < 3600) text = `${Math.floor(diff / 60)}m ago`;
+                else text = appState.lastUpdate.toLocaleTimeString();
+                
+                element.textContent = text;
+            },
+
+            updateConnectionStatus(status) {
+                const badge = document.getElementById('statusBadge');
+                const statusText = document.getElementById('statusText');
+                const dot = badge.querySelector('.status-dot');
+                
+                badge.className = 'status-badge';
+                
+                switch(status) {
+                    case 'connecting':
+                        statusText.textContent = 'Connecting...';
+                        dot.style.background = 'var(--color-amber)';
+                        dot.style.boxShadow = '0 0 8px var(--color-amber)';
+                        badge.style.borderColor = 'var(--color-amber)';
+                        badge.style.background = 'rgba(245, 158, 11, 0.1)';
+                        break;
+                    case 'connected':
+                        statusText.textContent = 'Live';
+                        dot.style.background = 'var(--color-green)';
+                        dot.style.boxShadow = '0 0 8px var(--color-green)';
+                        badge.style.borderColor = 'var(--color-green)';
+                        badge.style.background = 'rgba(16, 185, 129, 0.1)';
+                        break;
+                    case 'error':
+                        statusText.textContent = 'Disconnected';
+                        dot.style.background = 'var(--color-red)';
+                        dot.style.boxShadow = '0 0 8px var(--color-red)';
+                        badge.style.borderColor = 'var(--color-red)';
+                        badge.style.background = 'rgba(239, 68, 68, 0.1)';
+                        break;
+                }
+            },
+
+            updateAllComponents() {
+                if (!appState.metrics) return;
+                MetricsComponent.update(appState.metrics);
+                ChartsComponent.update(appState.metrics);
+                InfoComponent.update(appState.metrics);
+            }
+        };
+
+        // ============================================================
+        // APP INITIALIZATION
+        // ============================================================
+        const App = {
+            init() {
+                // Render static structure
+                MetricsComponent.render();
+                ChartsComponent.render();
+                InfoComponent.render();
+
+                // Load initial data
+                StateManager.loadData();
+
+                // Setup refresh intervals (silent to prevent flashing)
+                appState.refreshTimers.metrics = setInterval(() => StateManager.loadData(true), CONFIG.refresh.metrics);
+                
+                // Update "last update" time every second
+                setInterval(() => StateManager.updateLastUpdateTime(), 1000);
+
+                // Global refresh button - smooth silent refresh
+                document.getElementById('globalRefresh').addEventListener('click', async () => {
+                    const btn = document.getElementById('globalRefresh');
+                    const icon = btn.querySelector('i');
+                    icon.classList.add('loading');
+                    
+                    try {
+                        // Silent refresh - no UI flashing
+                        await StateManager.loadData(true);
+                    } finally {
+                        icon.classList.remove('loading');
+                    }
+                });
+
+                // Retry button
+                document.getElementById('retryBtn').addEventListener('click', () => {
+                    StateManager.loadData();
+                });
+
+                // Handle visibility change - refresh when tab becomes visible
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) {
+                        StateManager.loadData(true);
+                    }
+                });
+
+                // Handle online/offline events
+                window.addEventListener('online', () => {
+                    StateManager.loadData(true);
+                });
+
+                window.addEventListener('offline', () => {
+                    StateManager.updateConnectionStatus('error');
+                });
+            },
+
+            destroy() {
+                Object.values(appState.refreshTimers).forEach(timer => clearInterval(timer));
+                Object.values(appState.chartInstances).forEach(chart => chart.destroy());
+            }
+        };
+
+        // Start app when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => App.init());
+        } else {
+            App.init();
+        }
+    </script>
+</body>
+</html>

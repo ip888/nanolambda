@@ -1,13 +1,13 @@
 // Discount code API handlers
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
+use serde::Deserialize;
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tracing::error;
 
 use crate::{ApiServer, handlers::ErrorResponse};
@@ -42,8 +42,9 @@ pub async fn create_discount(
     Json(req): Json<CreateDiscountRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin API key (should be stored securely in environment)
-    let admin_key = std::env::var("ADMIN_API_KEY").unwrap_or_else(|_| "admin-key-change-me".to_string());
-    
+    let admin_key =
+        std::env::var("ADMIN_API_KEY").unwrap_or_else(|_| "admin-key-change-me".to_string());
+
     let api_key = headers
         .get("x-api-key")
         .and_then(|v| v.to_str().ok())
@@ -83,15 +84,18 @@ pub async fn create_discount(
             }
         };
 
-        match discount_mgr.create_discount(
-            req.code,
-            discount_type,
-            req.amount,
-            req.description,
-            req.max_uses,
-            req.expires_at,
-            None, // Stripe coupon ID will be filled if we create one
-        ).await {
+        match discount_mgr
+            .create_discount(
+                req.code,
+                discount_type,
+                req.amount,
+                req.description,
+                req.max_uses,
+                req.expires_at,
+                None, // Stripe coupon ID will be filled if we create one
+            )
+            .await
+        {
             Ok(mut discount) => {
                 // Optionally create Stripe coupon
                 if req.create_stripe_coupon.unwrap_or(false) {
@@ -152,21 +156,19 @@ pub async fn validate_discount(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     if let Some(discount_mgr) = state.discount_manager() {
         match discount_mgr.validate_discount(&req.code, req.amount).await {
-            Ok(validation) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "valid": validation.valid,
-                    "error_message": validation.error_message,
-                    "calculated_discount": validation.calculated_discount,
-                    "discount_code": validation.discount_code.map(|d| json!({
-                        "id": d.id,
-                        "code": d.code,
-                        "type": d.discount_type.as_str(),
-                        "amount": d.amount,
-                        "description": d.description,
-                    })),
-                })))
-            }
+            Ok(validation) => Ok(Json(json!({
+                "success": true,
+                "valid": validation.valid,
+                "error_message": validation.error_message,
+                "calculated_discount": validation.calculated_discount,
+                "discount_code": validation.discount_code.map(|d| json!({
+                    "id": d.id,
+                    "code": d.code,
+                    "type": d.discount_type.as_str(),
+                    "amount": d.amount,
+                    "description": d.description,
+                })),
+            }))),
             Err(e) => {
                 error!("Failed to validate discount code: {}", e);
                 Err((
@@ -209,20 +211,21 @@ pub async fn apply_discount(
         })?;
 
     if let Some(discount_mgr) = state.discount_manager() {
-        match discount_mgr.apply_discount(&req.code, api_key, req.amount).await {
-            Ok(usage) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "usage": {
-                        "id": usage.id,
-                        "discount_code_id": usage.discount_code_id,
-                        "applied_amount": usage.applied_amount,
-                        "original_amount": usage.original_amount,
-                        "final_amount": usage.final_amount,
-                        "used_at": usage.used_at,
-                    }
-                })))
-            }
+        match discount_mgr
+            .apply_discount(&req.code, api_key, req.amount)
+            .await
+        {
+            Ok(usage) => Ok(Json(json!({
+                "success": true,
+                "usage": {
+                    "id": usage.id,
+                    "discount_code_id": usage.discount_code_id,
+                    "applied_amount": usage.applied_amount,
+                    "original_amount": usage.original_amount,
+                    "final_amount": usage.final_amount,
+                    "used_at": usage.used_at,
+                }
+            }))),
             Err(e) => {
                 error!("Failed to apply discount code: {}", e);
                 Err((
@@ -252,8 +255,9 @@ pub async fn list_discounts(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin API key
-    let admin_key = std::env::var("ADMIN_API_KEY").unwrap_or_else(|_| "admin-key-change-me".to_string());
-    
+    let admin_key =
+        std::env::var("ADMIN_API_KEY").unwrap_or_else(|_| "admin-key-change-me".to_string());
+
     let api_key = headers
         .get("x-api-key")
         .and_then(|v| v.to_str().ok())
@@ -278,30 +282,29 @@ pub async fn list_discounts(
     }
 
     if let Some(discount_mgr) = state.discount_manager() {
-        let active_only = params.get("active_only")
+        let active_only = params
+            .get("active_only")
             .and_then(|v| v.parse::<bool>().ok())
             .unwrap_or(false);
 
         match discount_mgr.list_discounts(active_only).await {
-            Ok(discounts) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "discounts": discounts.iter().map(|d| json!({
-                        "id": d.id,
-                        "code": d.code,
-                        "type": d.discount_type.as_str(),
-                        "amount": d.amount,
-                        "description": d.description,
-                        "max_uses": d.max_uses,
-                        "current_uses": d.current_uses,
-                        "expires_at": d.expires_at,
-                        "stripe_coupon_id": d.stripe_coupon_id,
-                        "active": d.active,
-                        "created_at": d.created_at,
-                    })).collect::<Vec<_>>(),
-                    "count": discounts.len(),
-                })))
-            }
+            Ok(discounts) => Ok(Json(json!({
+                "success": true,
+                "discounts": discounts.iter().map(|d| json!({
+                    "id": d.id,
+                    "code": d.code,
+                    "type": d.discount_type.as_str(),
+                    "amount": d.amount,
+                    "description": d.description,
+                    "max_uses": d.max_uses,
+                    "current_uses": d.current_uses,
+                    "expires_at": d.expires_at,
+                    "stripe_coupon_id": d.stripe_coupon_id,
+                    "active": d.active,
+                    "created_at": d.created_at,
+                })).collect::<Vec<_>>(),
+                "count": discounts.len(),
+            }))),
             Err(e) => {
                 error!("Failed to list discount codes: {}", e);
                 Err((
@@ -331,8 +334,9 @@ pub async fn get_discount_usage(
     Path(discount_id): Path<i64>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     // Verify admin API key
-    let admin_key = std::env::var("ADMIN_API_KEY").unwrap_or_else(|_| "admin-key-change-me".to_string());
-    
+    let admin_key =
+        std::env::var("ADMIN_API_KEY").unwrap_or_else(|_| "admin-key-change-me".to_string());
+
     let api_key = headers
         .get("x-api-key")
         .and_then(|v| v.to_str().ok())
@@ -358,21 +362,19 @@ pub async fn get_discount_usage(
 
     if let Some(discount_mgr) = state.discount_manager() {
         match discount_mgr.get_discount_usage(discount_id).await {
-            Ok(usage) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "usage": usage.iter().map(|u| json!({
-                        "id": u.id,
-                        "discount_code_id": u.discount_code_id,
-                        "api_key": u.api_key,
-                        "applied_amount": u.applied_amount,
-                        "original_amount": u.original_amount,
-                        "final_amount": u.final_amount,
-                        "used_at": u.used_at,
-                    })).collect::<Vec<_>>(),
-                    "count": usage.len(),
-                })))
-            }
+            Ok(usage) => Ok(Json(json!({
+                "success": true,
+                "usage": usage.iter().map(|u| json!({
+                    "id": u.id,
+                    "discount_code_id": u.discount_code_id,
+                    "api_key": u.api_key,
+                    "applied_amount": u.applied_amount,
+                    "original_amount": u.original_amount,
+                    "final_amount": u.final_amount,
+                    "used_at": u.used_at,
+                })).collect::<Vec<_>>(),
+                "count": usage.len(),
+            }))),
             Err(e) => {
                 error!("Failed to get discount usage: {}", e);
                 Err((
@@ -415,20 +417,18 @@ pub async fn get_user_discount_usage(
 
     if let Some(discount_mgr) = state.discount_manager() {
         match discount_mgr.get_user_discount_usage(api_key).await {
-            Ok(usage) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "usage": usage.iter().map(|u| json!({
-                        "id": u.id,
-                        "discount_code_id": u.discount_code_id,
-                        "applied_amount": u.applied_amount,
-                        "original_amount": u.original_amount,
-                        "final_amount": u.final_amount,
-                        "used_at": u.used_at,
-                    })).collect::<Vec<_>>(),
-                    "count": usage.len(),
-                })))
-            }
+            Ok(usage) => Ok(Json(json!({
+                "success": true,
+                "usage": usage.iter().map(|u| json!({
+                    "id": u.id,
+                    "discount_code_id": u.discount_code_id,
+                    "applied_amount": u.applied_amount,
+                    "original_amount": u.original_amount,
+                    "final_amount": u.final_amount,
+                    "used_at": u.used_at,
+                })).collect::<Vec<_>>(),
+                "count": usage.len(),
+            }))),
             Err(e) => {
                 error!("Failed to get user discount usage: {}", e);
                 Err((

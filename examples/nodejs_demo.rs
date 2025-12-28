@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create Node.js executor
     let mut executor = NodeJSExecutor::new()?;
     println!("✓ Node.js executor created");
-    
+
     // Get runtime info
     let info = executor.runtime_info();
     println!("  Language: {:?}", info.language);
@@ -136,7 +136,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("     Cold start: {}", result2.metrics.is_cold_start);
     let speedup = if result2.metrics.total_ms > 0 {
-        format!("{}x faster", result1.metrics.total_ms / result2.metrics.total_ms.max(1))
+        format!(
+            "{}x faster",
+            result1.metrics.total_ms / result2.metrics.total_ms.max(1)
+        )
     } else {
         "< 1ms (very fast!)".to_string()
     };

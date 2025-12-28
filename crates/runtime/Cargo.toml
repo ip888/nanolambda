@@ -25,3 +25,7 @@ tracing = { workspace = true }
 
 # Hashing (upgrade from md5 to blake3 for better performance)
 blake3 = { workspace = true }
+
+# System calls for resource limits (Unix-only)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

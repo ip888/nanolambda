@@ -1,49 +1,50 @@
 //! Lambda-compatible REST API
 
-use std::sync::Arc;
 use axum::{
-    routing::{post, get, put, delete},
     Router,
+    routing::{delete, get, post, put},
 };
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
 
-pub mod routes;
-pub mod handlers;
-pub mod models;
-pub mod auth;
-pub mod metrics;
-pub mod concurrency;
-pub mod rate_limiter;
-pub mod usage_tracker;
-pub mod discount_handlers;
-pub mod referral_handlers;
-pub mod annual_handlers;
 pub mod analytics_handlers;
-pub mod clv_handlers;
+pub mod annual_handlers;
+pub mod auth;
 pub mod churn_handlers;
+pub mod clv_handlers;
+pub mod concurrency;
+pub mod discount_handlers;
+pub mod handlers;
+pub mod metrics;
+pub mod models;
 pub mod payment_retry_handlers;
+pub mod rate_limiter;
+pub mod referral_handlers;
+pub mod routes;
+pub mod usage_tracker;
 
-use nanolambda_runtime::{PythonExecutor, NodeJSExecutor};
-use nanolambda_storage::{
-    StorageManager, usage_db::UsageDb, pricing::PricingManager, 
-    trial::TrialManager, tier::TierManager, payment::PaymentManager
-};
+use crate::concurrency::{ConcurrencyConfig, ConcurrencyController};
 use crate::metrics::MetricsCollector;
-use crate::concurrency::{ConcurrencyController, ConcurrencyConfig};
-use crate::rate_limiter::{RateLimiter, RateLimitTier};
+use crate::rate_limiter::{RateLimitTier, RateLimiter};
 use crate::usage_tracker::UsageTracker;
+use nanolambda_runtime::{JavaExecutor, NodeJSExecutor, PythonExecutor};
+use nanolambda_storage::{
+    StorageManager, payment::PaymentManager, pricing::PricingManager, tier::TierManager,
+    trial::TrialManager, usage_db::UsageDb,
+};
 
 /// API server state
 pub struct ApiServer {
     storage: Arc<StorageManager>,
     python_executor: Arc<Mutex<PythonExecutor>>,
     nodejs_executor: Arc<Mutex<NodeJSExecutor>>,
+    java_executor: Option<Arc<Mutex<JavaExecutor>>>,
     metrics: Arc<MetricsCollector>,
     concurrency: Arc<ConcurrencyController>,
     rate_limiter: Arc<RateLimiter>,
     usage_tracker: Arc<UsageTracker>,
-    usage_db: Option<Arc<UsageDb>>, // Persistent usage tracking
+    usage_db: Option<Arc<UsageDb>>,       // Persistent usage tracking
     pricing: Option<Arc<PricingManager>>, // Dynamic pricing configuration
     trial_manager: Option<Arc<TrialManager>>, // Trial period tracking
     tier_manager: Option<Arc<TierManager>>, // Tiered pricing management
@@ -64,8 +65,24 @@ impl ApiServer {
         let storage = StorageManager::new(db_path)?;
         let python_executor = PythonExecutor::new()?;
         let nodejs_executor = NodeJSExecutor::new()?;
+
+        // Java is optional - log warning if not available
+        let java_executor = match JavaExecutor::new() {
+            Ok(executor) => {
+                info!("Java executor initialized successfully");
+                Some(Arc::new(Mutex::new(executor)))
+            }
+            Err(e) => {
+                info!(
+                    "Java executor unavailable: {}. Java functions will return 501.",
+                    e
+                );
+                None
+            }
+        };
+
         let concurrency_config = ConcurrencyConfig::default();
-        
+
         // Create separate usage database
         let usage_db_path = format!("{}.usage.db", db_path);
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -76,62 +93,61 @@ impl ApiServer {
         let pricing = PricingManager::new(pool.clone()).await?;
         let trial_manager = TrialManager::new(pool.clone()).await?;
         let tier_manager = TierManager::new(pool.clone()).await?;
-        
+
         // Initialize payment manager if Stripe key is provided
-        let stripe_key = std::env::var("STRIPE_SECRET_KEY")
-            .unwrap_or_else(|_| "sk_test_dummy".to_string());
-        
+        let stripe_key =
+            std::env::var("STRIPE_SECRET_KEY").unwrap_or_else(|_| "sk_test_dummy".to_string());
+
         let payment_manager = if stripe_key != "sk_test_dummy" {
-            Some(Arc::new(PaymentManager::new(stripe_key.clone(), pool.clone()).await?))
+            Some(Arc::new(
+                PaymentManager::new(stripe_key.clone(), pool.clone()).await?,
+            ))
         } else {
             info!("STRIPE_SECRET_KEY not set - payment features disabled");
             None
         };
-        
+
         // Initialize invoice manager (always available)
         let invoice_manager = Arc::new(
-            nanolambda_storage::invoice::InvoiceManager::new(stripe_key.clone(), pool.clone()).await?
+            nanolambda_storage::invoice::InvoiceManager::new(stripe_key.clone(), pool.clone())
+                .await?,
         );
-        
+
         // Initialize discount manager (always available)
         let discount_manager = Arc::new(
-            nanolambda_storage::discount::DiscountManager::new(stripe_key.clone(), pool.clone()).await?
+            nanolambda_storage::discount::DiscountManager::new(stripe_key.clone(), pool.clone())
+                .await?,
         );
-        
+
         // Initialize referral manager (always available)
-        let referral_manager = Arc::new(
-            nanolambda_storage::referral::ReferralManager::new(pool.clone()).await?
-        );
-        
+        let referral_manager =
+            Arc::new(nanolambda_storage::referral::ReferralManager::new(pool.clone()).await?);
+
         // Initialize annual billing manager (always available)
-        let annual_billing_manager = Arc::new(
-            nanolambda_storage::annual::AnnualBillingManager::new(pool.clone()).await?
-        );
-        
+        let annual_billing_manager =
+            Arc::new(nanolambda_storage::annual::AnnualBillingManager::new(pool.clone()).await?);
+
         // Initialize analytics manager (always available)
         let analytics_manager = Arc::new(
-            nanolambda_storage::analytics::UsageAnalyticsManager::new(pool.clone()).await?
+            nanolambda_storage::analytics::UsageAnalyticsManager::new(pool.clone()).await?,
         );
-        
+
         // Initialize CLV manager (always available)
-        let clv_manager = Arc::new(
-            nanolambda_storage::clv::CLVManager::new(pool.clone()).await?
-        );
-        
+        let clv_manager = Arc::new(nanolambda_storage::clv::CLVManager::new(pool.clone()).await?);
+
         // Initialize churn analyzer (always available)
-        let churn_analyzer = Arc::new(
-            nanolambda_storage::churn::ChurnAnalyzer::new(pool.clone()).await?
-        );
-        
+        let churn_analyzer =
+            Arc::new(nanolambda_storage::churn::ChurnAnalyzer::new(pool.clone()).await?);
+
         // Initialize payment retry manager (always available)
-        let payment_retry_manager = Arc::new(
-            nanolambda_storage::payment_retry::PaymentRetryManager::new().await?
-        );
-        
+        let payment_retry_manager =
+            Arc::new(nanolambda_storage::payment_retry::PaymentRetryManager::new().await?);
+
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
             nodejs_executor: Arc::new(Mutex::new(nodejs_executor)),
+            java_executor,
             metrics: Arc::new(MetricsCollector::new()),
             concurrency: Arc::new(ConcurrencyController::new(concurrency_config)),
             rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
@@ -151,56 +167,59 @@ impl ApiServer {
             payment_retry_manager: Some(payment_retry_manager),
         })
     }
-    
+
     /// Create new API server with in-memory database (for testing)
     pub async fn new_in_memory() -> Result<Self, Box<dyn std::error::Error>> {
         let storage = StorageManager::new_in_memory()?;
         let python_executor = PythonExecutor::new()?;
         let nodejs_executor = NodeJSExecutor::new()?;
+        let java_executor = JavaExecutor::new().ok().map(|e| Arc::new(Mutex::new(e)));
         let concurrency_config = ConcurrencyConfig::default();
-        
+
         // Create in-memory invoice manager for testing
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(1)
             .connect("sqlite::memory:")
             .await?;
         let invoice_manager = Arc::new(
-            nanolambda_storage::invoice::InvoiceManager::new("sk_test_dummy".to_string(), pool.clone()).await?
+            nanolambda_storage::invoice::InvoiceManager::new(
+                "sk_test_dummy".to_string(),
+                pool.clone(),
+            )
+            .await?,
         );
         let discount_manager = Arc::new(
-            nanolambda_storage::discount::DiscountManager::new("sk_test_dummy".to_string(), pool.clone()).await?
+            nanolambda_storage::discount::DiscountManager::new(
+                "sk_test_dummy".to_string(),
+                pool.clone(),
+            )
+            .await?,
         );
-        let referral_manager = Arc::new(
-            nanolambda_storage::referral::ReferralManager::new(pool.clone()).await?
-        );
-        let annual_billing_manager = Arc::new(
-            nanolambda_storage::annual::AnnualBillingManager::new(pool.clone()).await?
-        );
+        let referral_manager =
+            Arc::new(nanolambda_storage::referral::ReferralManager::new(pool.clone()).await?);
+        let annual_billing_manager =
+            Arc::new(nanolambda_storage::annual::AnnualBillingManager::new(pool.clone()).await?);
         let analytics_manager = Arc::new(
-            nanolambda_storage::analytics::UsageAnalyticsManager::new(pool.clone()).await?
+            nanolambda_storage::analytics::UsageAnalyticsManager::new(pool.clone()).await?,
         );
-        let clv_manager = Arc::new(
-            nanolambda_storage::clv::CLVManager::new(pool.clone()).await?
-        );
-        let churn_analyzer = Arc::new(
-            nanolambda_storage::churn::ChurnAnalyzer::new(pool).await?
-        );
-        let payment_retry_manager = Arc::new(
-            nanolambda_storage::payment_retry::PaymentRetryManager::new().await?
-        );
-        
+        let clv_manager = Arc::new(nanolambda_storage::clv::CLVManager::new(pool.clone()).await?);
+        let churn_analyzer = Arc::new(nanolambda_storage::churn::ChurnAnalyzer::new(pool).await?);
+        let payment_retry_manager =
+            Arc::new(nanolambda_storage::payment_retry::PaymentRetryManager::new().await?);
+
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
             nodejs_executor: Arc::new(Mutex::new(nodejs_executor)),
+            java_executor,
             metrics: Arc::new(MetricsCollector::new()),
             concurrency: Arc::new(ConcurrencyController::new(concurrency_config)),
             rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
             usage_tracker: Arc::new(UsageTracker::new(10000)),
-            usage_db: None, // No persistent tracking for in-memory mode
-            pricing: None, // No dynamic pricing for in-memory mode
-            trial_manager: None, // No trial tracking for in-memory mode
-            tier_manager: None, // No tier management for in-memory mode
+            usage_db: None,        // No persistent tracking for in-memory mode
+            pricing: None,         // No dynamic pricing for in-memory mode
+            trial_manager: None,   // No trial tracking for in-memory mode
+            tier_manager: None,    // No tier management for in-memory mode
             payment_manager: None, // No payment processing for in-memory mode
             invoice_manager,
             discount_manager: Some(discount_manager),
@@ -222,74 +241,83 @@ impl ApiServer {
     pub fn python_executor(&self) -> &Arc<Mutex<PythonExecutor>> {
         &self.python_executor
     }
-    
+
     /// Get Node.js executor reference
     pub fn nodejs_executor(&self) -> &Arc<Mutex<NodeJSExecutor>> {
         &self.nodejs_executor
     }
-    
+
+    /// Get Java executor reference (optional)
+    pub fn java_executor(&self) -> Option<&Arc<Mutex<JavaExecutor>>> {
+        self.java_executor.as_ref()
+    }
+
     /// Get metrics collector reference
     pub fn metrics(&self) -> &Arc<MetricsCollector> {
         &self.metrics
     }
-    
+
     /// Get concurrency controller reference
     pub fn concurrency(&self) -> &Arc<ConcurrencyController> {
         &self.concurrency
     }
-    
+
     /// Get rate limiter reference
     pub fn rate_limiter(&self) -> &Arc<RateLimiter> {
         &self.rate_limiter
     }
-    
+
     /// Get usage tracker reference
     pub fn usage_tracker(&self) -> &Arc<UsageTracker> {
         &self.usage_tracker
     }
-    
+
     /// Get usage database reference (persistent tracking)
     pub fn usage_db(&self) -> Option<&Arc<UsageDb>> {
         self.usage_db.as_ref()
     }
-    
+
     /// Get pricing manager reference (dynamic pricing)
     pub fn pricing(&self) -> Option<&Arc<PricingManager>> {
         self.pricing.as_ref()
     }
-    
+
     /// Get trial manager reference (trial period tracking)
     pub fn trial_manager(&self) -> Option<&Arc<TrialManager>> {
         self.trial_manager.as_ref()
     }
-    
+
     /// Get tier manager reference (tiered pricing management)
     pub fn tier_manager(&self) -> Option<&Arc<TierManager>> {
         self.tier_manager.as_ref()
     }
-    
+
     /// Get payment manager reference (Stripe payment integration)
     pub fn payment_manager(&self) -> Option<&Arc<PaymentManager>> {
         self.payment_manager.as_ref()
     }
-    
+
     /// Get discount manager reference (discount code management)
     pub fn discount_manager(&self) -> Option<&Arc<nanolambda_storage::discount::DiscountManager>> {
         self.discount_manager.as_ref()
     }
-    
+
     /// Get referral manager reference (referral program management)
     pub fn referral_manager(&self) -> Option<&Arc<nanolambda_storage::referral::ReferralManager>> {
         self.referral_manager.as_ref()
     }
-    
+
     /// Get annual billing manager reference (annual subscription management)
-    pub fn annual_billing_manager(&self) -> Option<&Arc<nanolambda_storage::annual::AnnualBillingManager>> {
+    pub fn annual_billing_manager(
+        &self,
+    ) -> Option<&Arc<nanolambda_storage::annual::AnnualBillingManager>> {
         self.annual_billing_manager.as_ref()
     }
 
     /// Get analytics manager reference (usage analytics and insights)
-    pub fn analytics_manager(&self) -> Option<&Arc<nanolambda_storage::analytics::UsageAnalyticsManager>> {
+    pub fn analytics_manager(
+        &self,
+    ) -> Option<&Arc<nanolambda_storage::analytics::UsageAnalyticsManager>> {
         self.analytics_manager.as_ref()
     }
 
@@ -304,14 +332,16 @@ impl ApiServer {
     }
 
     /// Get payment retry manager reference (payment retry logic)
-    pub fn payment_retry_manager(&self) -> Option<&Arc<nanolambda_storage::payment_retry::PaymentRetryManager>> {
+    pub fn payment_retry_manager(
+        &self,
+    ) -> Option<&Arc<nanolambda_storage::payment_retry::PaymentRetryManager>> {
         self.payment_retry_manager.as_ref()
     }
 
     /// Start the API server
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
         let state = Arc::new(self);
-        
+
         // Clone storage for auth middleware
         let storage_for_auth = state.storage.clone();
 
@@ -323,184 +353,276 @@ impl ApiServer {
             .route("/functions/{name}", get(handlers::get_function))
             .route("/functions/{name}", put(handlers::update_function))
             .route("/functions/{name}", delete(handlers::delete_function))
-            
             // Function invocation
             .route("/functions/{name}/invoke", post(handlers::invoke_function))
-            
             // Function versioning
-            .route("/functions/{name}/versions", get(handlers::list_function_versions))
-            .route("/functions/{name}/versions", post(handlers::publish_function_version))
-            .route("/functions/{name}/versions/{version}", get(handlers::get_function_version))
-            
+            .route(
+                "/functions/{name}/versions",
+                get(handlers::list_function_versions),
+            )
+            .route(
+                "/functions/{name}/versions",
+                post(handlers::publish_function_version),
+            )
+            .route(
+                "/functions/{name}/versions/{version}",
+                get(handlers::get_function_version),
+            )
             // API Key management (viewing/revoking requires auth)
             .route("/auth/keys", get(handlers::list_api_keys))
             .route("/auth/keys/{id}", delete(handlers::revoke_api_key))
-            
             // Rate limiting status (requires auth)
             .route("/rate-limit/status", get(handlers::get_rate_limit_status))
-            
             // Usage tracking and billing (requires auth)
             .route("/usage/stats", get(handlers::get_usage_stats))
             .route("/usage/billing", get(handlers::get_billing_info))
-            
             // Trial status (requires auth to view own trial)
             .route("/trial/status", get(handlers::get_trial_status))
-            
             // Tier management (requires auth to view own tier and upgrade)
             .route("/tier/current", get(handlers::get_current_tier))
             .route("/tier/upgrade", put(handlers::upgrade_tier))
-            .route("/tier/recommendation", get(handlers::get_upgrade_recommendation))
+            .route(
+                "/tier/recommendation",
+                get(handlers::get_upgrade_recommendation),
+            )
             .route("/tier/preview", get(handlers::get_upgrade_preview))
-            
             // Invoice management (requires auth)
             .route("/invoices", get(handlers::list_invoices))
             .route("/invoices/summary", get(handlers::get_invoice_summary))
             .route("/invoices/{invoice_id}", get(handlers::get_invoice))
-            .route("/invoices/sync/{stripe_invoice_id}", post(handlers::sync_invoice))
-            
+            .route(
+                "/invoices/sync/{stripe_invoice_id}",
+                post(handlers::sync_invoice),
+            )
             // Payment management (Stripe integration - requires auth)
             .route("/payment/customer", post(handlers::create_customer))
             .route("/payment/customer", get(handlers::get_customer_info))
             .route("/payment/method", post(handlers::attach_payment_method))
             .route("/payment/subscription", post(handlers::create_subscription))
-            .route("/payment/subscription", delete(handlers::cancel_subscription))
-            
+            .route(
+                "/payment/subscription",
+                delete(handlers::cancel_subscription),
+            )
             // Metered billing (requires auth)
             .route("/payment/usage", post(handlers::report_metered_usage))
             .route("/payment/overage", get(handlers::calculate_overage))
-            
             // Customer Portal (requires auth)
             .route("/payment/portal", post(handlers::create_portal_session))
-            
             // Usage alerts (requires auth)
             .route("/usage/check-alerts", post(handlers::check_usage_alerts))
             .route("/usage/alerts", get(handlers::get_usage_alerts))
-            
             // Discount code management (requires auth)
             .route("/discounts/apply", post(discount_handlers::apply_discount))
-            .route("/discounts/my-usage", get(discount_handlers::get_user_discount_usage))
-            
+            .route(
+                "/discounts/my-usage",
+                get(discount_handlers::get_user_discount_usage),
+            )
             // Admin discount routes (requires ADMIN_API_KEY)
             .route("/discounts", post(discount_handlers::create_discount))
             .route("/discounts", get(discount_handlers::list_discounts))
-            .route("/discounts/{discount_id}/usage", get(discount_handlers::get_discount_usage))
-            
+            .route(
+                "/discounts/{discount_id}/usage",
+                get(discount_handlers::get_discount_usage),
+            )
             // Referral program management (requires auth)
-            .route("/referrals/generate", post(referral_handlers::generate_referral_code))
-            .route("/referrals/my-code", get(referral_handlers::get_my_referral_code))
-            .route("/referrals/my-rewards", get(referral_handlers::get_my_referral_rewards))
-            
+            .route(
+                "/referrals/generate",
+                post(referral_handlers::generate_referral_code),
+            )
+            .route(
+                "/referrals/my-code",
+                get(referral_handlers::get_my_referral_code),
+            )
+            .route(
+                "/referrals/my-rewards",
+                get(referral_handlers::get_my_referral_rewards),
+            )
             // Annual billing management (requires auth)
-            .route("/billing/annual/plan", get(annual_handlers::get_annual_plan))
-            .route("/billing/annual/upgrade", post(annual_handlers::upgrade_to_annual))
-            .route("/billing/annual/usage", get(annual_handlers::get_annual_subscription_usage))
-            .route("/billing/annual/downgrade", post(annual_handlers::downgrade_from_annual))
-            
+            .route(
+                "/billing/annual/plan",
+                get(annual_handlers::get_annual_plan),
+            )
+            .route(
+                "/billing/annual/upgrade",
+                post(annual_handlers::upgrade_to_annual),
+            )
+            .route(
+                "/billing/annual/usage",
+                get(annual_handlers::get_annual_subscription_usage),
+            )
+            .route(
+                "/billing/annual/downgrade",
+                post(annual_handlers::downgrade_from_annual),
+            )
             // Usage analytics (requires auth)
-            .route("/analytics/daily-summaries", get(analytics_handlers::get_daily_summaries))
-            .route("/analytics/profile", get(analytics_handlers::get_usage_profile))
-            .route("/analytics/snapshot", post(analytics_handlers::get_usage_snapshot))
-            .route("/analytics/trends", get(analytics_handlers::get_monthly_trends))
-            
+            .route(
+                "/analytics/daily-summaries",
+                get(analytics_handlers::get_daily_summaries),
+            )
+            .route(
+                "/analytics/profile",
+                get(analytics_handlers::get_usage_profile),
+            )
+            .route(
+                "/analytics/snapshot",
+                post(analytics_handlers::get_usage_snapshot),
+            )
+            .route(
+                "/analytics/trends",
+                get(analytics_handlers::get_monthly_trends),
+            )
             // Customer Lifetime Value (requires auth)
             .route("/clv", get(clv_handlers::get_customer_clv))
             .route("/clv/calculate", post(clv_handlers::calculate_clv))
             .route("/clv/predict", post(clv_handlers::get_revenue_prediction))
             .route("/clv/cohorts", get(clv_handlers::get_cohort_analysis))
-            
             // Churn analysis and prevention (requires auth)
             .route("/churn/analyze", post(churn_handlers::analyze_churn_risk))
             .route("/churn/risk", get(churn_handlers::get_risk_profile))
             .route("/churn/record", post(churn_handlers::record_churn))
-            .route("/churn/intervention", post(churn_handlers::record_intervention))
-            .route("/churn/interventions", get(churn_handlers::get_interventions))
-            
+            .route(
+                "/churn/intervention",
+                post(churn_handlers::record_intervention),
+            )
+            .route(
+                "/churn/interventions",
+                get(churn_handlers::get_interventions),
+            )
             // Payment retry logic (requires auth)
-            .route("/payment-retry/record-failure", post(payment_retry_handlers::record_payment_failure))
-            .route("/payment-retry/process", post(payment_retry_handlers::process_retry))
-            .route("/payment-retry/status", get(payment_retry_handlers::get_retry_status))
-            .route("/payment-retry/clear", post(payment_retry_handlers::clear_retry_status))
-            .route("/payment-retry/send-dunning", post(payment_retry_handlers::send_dunning_notification))
-            
+            .route(
+                "/payment-retry/record-failure",
+                post(payment_retry_handlers::record_payment_failure),
+            )
+            .route(
+                "/payment-retry/process",
+                post(payment_retry_handlers::process_retry),
+            )
+            .route(
+                "/payment-retry/status",
+                get(payment_retry_handlers::get_retry_status),
+            )
+            .route(
+                "/payment-retry/clear",
+                post(payment_retry_handlers::clear_retry_status),
+            )
+            .route(
+                "/payment-retry/send-dunning",
+                post(payment_retry_handlers::send_dunning_notification),
+            )
             // Pricing updates (admin only)
             .route("/pricing", put(handlers::update_pricing))
-            
             .layer(axum::middleware::from_fn_with_state(
                 storage_for_auth,
-                auth::auth_middleware
+                auth::auth_middleware,
             ))
             .with_state(state.clone());
-        
+
         // Public routes (no auth required)
         let public_routes = Router::new()
             // API key creation (must be public to get first key)
             .route("/auth/keys", post(handlers::create_api_key))
-            
             // Metrics (public for now, could be protected later)
             .route("/metrics", get(handlers::get_metrics))
             .route("/dashboard", get(handlers::get_dashboard))
             .route("/dashboard/{*file}", get(handlers::get_dashboard_file))
             .route("/concurrency", get(handlers::get_concurrency_stats))
-            
             // Rate limiting admin endpoints (public for now, should be protected)
             .route("/rate-limit/stats", get(handlers::get_all_rate_limit_stats))
             .route("/rate-limit/tier", put(handlers::set_rate_limit_tier))
-            
             // Usage tracking admin endpoints (public for now, should be protected)
             .route("/usage/all", get(handlers::get_all_usage_stats))
-            
             // Pricing (public - anyone can view current rates)
             .route("/pricing", get(handlers::get_pricing))
             .route("/pricing/history", get(handlers::get_pricing_history))
-            
             // Trial admin endpoints (public for now, should be protected)
             .route("/trial/all", get(handlers::get_all_trials))
-            
             // Tier plans (public - anyone can view available tiers)
             .route("/tier/plans", get(handlers::get_tier_plans))
-            
             // Stripe webhooks (public - verified by signature)
             .route("/webhooks/stripe", post(handlers::stripe_webhook))
-            
             // Discount validation (public - no auth required for validation)
-            .route("/discounts/validate", post(discount_handlers::validate_discount))
-            
+            .route(
+                "/discounts/validate",
+                post(discount_handlers::validate_discount),
+            )
             // Referral tracking and details (public)
-            .route("/referrals/track", post(referral_handlers::track_referral_click))
-            .route("/referrals/leaderboard", get(referral_handlers::get_leaderboard))
-            .route("/referrals/{code}", get(referral_handlers::get_referral_details))
-            
+            .route(
+                "/referrals/track",
+                post(referral_handlers::track_referral_click),
+            )
+            .route(
+                "/referrals/leaderboard",
+                get(referral_handlers::get_leaderboard),
+            )
+            .route(
+                "/referrals/{code}",
+                get(referral_handlers::get_referral_details),
+            )
             // Annual billing pricing (public)
-            .route("/billing/annual/pricing/{tier}", get(annual_handlers::get_annual_pricing))
-            
+            .route(
+                "/billing/annual/pricing/{tier}",
+                get(annual_handlers::get_annual_pricing),
+            )
             // Platform analytics (public - admin can view)
-            .route("/analytics/platform", get(analytics_handlers::get_platform_analytics))
-            
+            .route(
+                "/analytics/platform",
+                get(analytics_handlers::get_platform_analytics),
+            )
             // CLV segments and summary (public - admin view)
             .route("/clv/segments", get(clv_handlers::get_clv_segments))
             .route("/clv/summary", get(clv_handlers::get_platform_clv_summary))
-            
             // Churn predictions and platform metrics (public - admin view)
             .route("/churn/predict", get(churn_handlers::predict_churn))
             .route("/churn/metrics", get(churn_handlers::get_platform_metrics))
-            
             // Payment retry metrics and past-due customers (public - admin view)
-            .route("/payment-retry/metrics", get(payment_retry_handlers::get_platform_metrics))
-            .route("/payment-retry/past-due", get(payment_retry_handlers::get_past_due_customers))
-            
+            .route(
+                "/payment-retry/metrics",
+                get(payment_retry_handlers::get_platform_metrics),
+            )
+            .route(
+                "/payment-retry/past-due",
+                get(payment_retry_handlers::get_past_due_customers),
+            )
             // Health check
             .route("/health", get(handlers::health_check))
             .with_state(state);
-        
-        let app = Router::new()
-            .merge(protected_routes)
-            .merge(public_routes);
+
+        let app = Router::new().merge(protected_routes).merge(public_routes);
 
         info!("Starting API server on 0.0.0.0:8080");
         let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
-        axum::serve(listener, app.into_make_service())
-            .await?;
+        axum::serve(listener, app.into_make_service()).await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_api_server_initialization() {
+        let result = ApiServer::new_in_memory().await;
+        assert!(
+            result.is_ok(),
+            "API server should initialize in memory mode"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_api_server_components_accessible() {
+        let server = ApiServer::new_in_memory().await.unwrap();
+
+        // Verify core components are accessible
+        let _storage = server.storage();
+        let _python = server.python_executor();
+        let _nodejs = server.nodejs_executor();
+        let _metrics = server.metrics();
+        let _concurrency = server.concurrency();
+        let _rate_limiter = server.rate_limiter();
+        let _tracker = server.usage_tracker();
+
+        // Test passed if no panics occurred
     }
 }

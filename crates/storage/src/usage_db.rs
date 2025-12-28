@@ -3,8 +3,8 @@
 //! This module provides append-only usage event logging and aggregated statistics
 //! for billing, analytics, and audit trails.
 
-use sqlx::{Pool, Sqlite, Row};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use sqlx::{Pool, Row, Sqlite};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -81,11 +81,11 @@ impl UsageDb {
             pool,
             cache: Arc::new(RwLock::new(HashMap::new())),
         };
-        
+
         db.init_tables().await?;
         Ok(db)
     }
-    
+
     /// Initialize database tables
     async fn init_tables(&self) -> Result<(), sqlx::Error> {
         // Usage events table (append-only)
@@ -109,15 +109,15 @@ impl UsageDb {
         )
         .execute(&self.pool)
         .await?;
-        
+
         // Index for fast queries by API key and time range
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_usage_events_api_key_timestamp 
-             ON usage_events(api_key, timestamp)"
+             ON usage_events(api_key, timestamp)",
         )
         .execute(&self.pool)
         .await?;
-        
+
         // Daily aggregated statistics
         sqlx::query(
             r#"
@@ -138,7 +138,7 @@ impl UsageDb {
         )
         .execute(&self.pool)
         .await?;
-        
+
         // Usage alerts tracking table
         sqlx::query(
             r#"
@@ -157,23 +157,23 @@ impl UsageDb {
         )
         .execute(&self.pool)
         .await?;
-        
+
         // Index for checking if alert was already sent for this period
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_usage_alerts_api_key_type_period 
-             ON usage_alerts(api_key, alert_type, period_start)"
+             ON usage_alerts(api_key, alert_type, period_start)",
         )
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
-    
+
     /// Record a usage event (async, non-blocking)
     pub fn record_event(&self, event: UsageEvent) {
         let pool = self.pool.clone();
         let cache = self.cache.clone();
-        
+
         tokio::spawn(async move {
             if let Err(e) = Self::insert_event(&pool, &event).await {
                 tracing::error!("Failed to record usage event: {:?}", e);
@@ -185,7 +185,7 @@ impl UsageDb {
             }
         });
     }
-    
+
     async fn insert_event(pool: &Pool<Sqlite>, event: &UsageEvent) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"
@@ -208,10 +208,10 @@ impl UsageDb {
         .bind(event.total_cost)
         .execute(pool)
         .await?;
-        
+
         Ok(())
     }
-    
+
     /// Get usage statistics for an API key (current month)
     pub async fn get_stats(&self, api_key: &str) -> Result<UsageStats, sqlx::Error> {
         // Try cache first
@@ -225,10 +225,10 @@ impl UsageDb {
                 }
             }
         }
-        
+
         // Calculate from database
         let stats = self.calculate_current_month_stats(api_key).await?;
-        
+
         // Update cache
         {
             let mut cache = self.cache.write().await;
@@ -240,15 +240,18 @@ impl UsageDb {
                 },
             );
         }
-        
+
         Ok(stats)
     }
-    
-    async fn calculate_current_month_stats(&self, api_key: &str) -> Result<UsageStats, sqlx::Error> {
+
+    async fn calculate_current_month_stats(
+        &self,
+        api_key: &str,
+    ) -> Result<UsageStats, sqlx::Error> {
         let now = chrono::Utc::now();
         let month_start = now.format("%Y-%m-01").to_string();
         let month_end = now.format("%Y-%m-%d").to_string();
-        
+
         let row = sqlx::query(
             r#"
             SELECT 
@@ -268,7 +271,7 @@ impl UsageDb {
         .bind(&month_end)
         .fetch_one(&self.pool)
         .await?;
-        
+
         // Get unique functions used
         let functions_row = sqlx::query(
             r#"
@@ -279,20 +282,22 @@ impl UsageDb {
             "#,
         )
         .bind(api_key)
-        .bind(chrono::NaiveDate::parse_from_str(&month_start, "%Y-%m-%d")
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .timestamp())
+        .bind(
+            chrono::NaiveDate::parse_from_str(&month_start, "%Y-%m-%d")
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_utc()
+                .timestamp(),
+        )
         .fetch_all(&self.pool)
         .await?;
-        
+
         let functions_used: Vec<String> = functions_row
             .iter()
             .map(|r| r.get::<String, _>("function_name"))
             .collect();
-        
+
         Ok(UsageStats {
             api_key: api_key.to_string(),
             date: month_end,
@@ -303,12 +308,13 @@ impl UsageDb {
             total_memory_mb_seconds: row.get::<f64, _>("total_memory_mb_seconds"),
             cold_starts: row.get::<i64, _>("cold_starts") as u64,
             total_cost: row.get::<f64, _>("total_cost"),
-            functions_used: serde_json::to_string(&functions_used).unwrap_or_else(|_| "[]".to_string()),
+            functions_used: serde_json::to_string(&functions_used)
+                .unwrap_or_else(|_| "[]".to_string()),
         })
     }
-    
+
     async fn update_cache(
-        pool: &Pool<Sqlite>,
+        _pool: &Pool<Sqlite>,
         cache: &Arc<RwLock<HashMap<String, CachedStats>>>,
         api_key: &str,
     ) -> Result<(), sqlx::Error> {
@@ -318,7 +324,7 @@ impl UsageDb {
         cache.remove(api_key);
         Ok(())
     }
-    
+
     /// Get billing information for a time period
     pub async fn get_billing_info(
         &self,
@@ -340,39 +346,43 @@ impl UsageDb {
             "#,
         )
         .bind(api_key)
-        .bind(chrono::DateTime::from_timestamp(period_start, 0)
-            .unwrap()
-            .format("%Y-%m-%d")
-            .to_string())
-        .bind(chrono::DateTime::from_timestamp(period_end, 0)
-            .unwrap()
-            .format("%Y-%m-%d")
-            .to_string())
+        .bind(
+            chrono::DateTime::from_timestamp(period_start, 0)
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string(),
+        )
+        .bind(
+            chrono::DateTime::from_timestamp(period_end, 0)
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string(),
+        )
         .fetch_all(&self.pool)
         .await?;
-        
+
         let mut total_invocations = 0u64;
         let mut total_cost = 0.0;
         let mut breakdown = Vec::new();
-        
+
         for row in rows {
             let invocations = row.get::<i64, _>("total_invocations") as u64;
             let cost = row.get::<f64, _>("total_cost");
-            
+
             total_invocations += invocations;
             total_cost += cost;
-            
+
             breakdown.push(DailyCost {
                 date: row.get("date"),
                 invocations,
                 cost,
             });
         }
-        
+
         // Calculate invocation vs compute cost split (approximate)
         let invocation_cost = total_invocations as f64 * 0.00000016;
         let compute_cost = total_cost - invocation_cost;
-        
+
         Ok(BillingInfo {
             api_key: api_key.to_string(),
             period_start,
@@ -384,7 +394,7 @@ impl UsageDb {
             breakdown,
         })
     }
-    
+
     /// Run daily aggregation job (should be run once per day)
     pub async fn aggregate_daily_stats(&self) -> Result<(), sqlx::Error> {
         let yesterday = chrono::Utc::now()
@@ -392,16 +402,16 @@ impl UsageDb {
             .unwrap()
             .format("%Y-%m-%d")
             .to_string();
-        
+
         let yesterday_start = chrono::NaiveDate::parse_from_str(&yesterday, "%Y-%m-%d")
             .unwrap()
             .and_hms_opt(0, 0, 0)
             .unwrap()
             .and_utc()
             .timestamp();
-        
+
         let yesterday_end = yesterday_start + 86400;
-        
+
         // Get all API keys that had activity yesterday
         let api_keys: Vec<String> = sqlx::query(
             "SELECT DISTINCT api_key FROM usage_events 
@@ -414,16 +424,16 @@ impl UsageDb {
         .iter()
         .map(|r| r.get("api_key"))
         .collect();
-        
+
         for api_key in api_keys {
             self.aggregate_for_api_key(&api_key, &yesterday, yesterday_start, yesterday_end)
                 .await?;
         }
-        
+
         tracing::info!("Daily aggregation completed for {}", yesterday);
         Ok(())
     }
-    
+
     async fn aggregate_for_api_key(
         &self,
         api_key: &str,
@@ -450,7 +460,7 @@ impl UsageDb {
         .bind(end)
         .fetch_one(&self.pool)
         .await?;
-        
+
         // Get unique functions
         let functions: Vec<String> = sqlx::query(
             "SELECT DISTINCT function_name FROM usage_events 
@@ -464,7 +474,7 @@ impl UsageDb {
         .iter()
         .map(|r| r.get("function_name"))
         .collect();
-        
+
         // Insert or update aggregated stats
         sqlx::query(
             r#"
@@ -495,7 +505,7 @@ impl UsageDb {
         .bind(serde_json::to_string(&functions).unwrap_or_else(|_| "[]".to_string()))
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 }

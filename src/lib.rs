@@ -19,6 +19,6 @@ mod tests {
 
     #[test]
     fn test_version() {
-        assert!(!VERSION.is_empty());
+        assert!(VERSION.chars().next().is_some());
     }
 }

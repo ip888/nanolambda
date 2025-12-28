@@ -1,9 +1,9 @@
 //! Usage tracking for billing and analytics
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use serde::{Serialize, Deserialize};
 
 /// Usage record for a single invocation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,27 +50,27 @@ impl UsageStats {
 
     fn record(&mut self, usage: &UsageRecord) {
         self.total_invocations += 1;
-        
+
         if usage.success {
             self.successful_invocations += 1;
         } else {
             self.failed_invocations += 1;
         }
-        
+
         self.total_execution_time_ms += usage.execution_time_ms as u64;
-        
+
         // Memory MB-seconds: (memory_mb * execution_seconds)
         let execution_seconds = usage.execution_time_ms as f64 / 1000.0;
         self.total_memory_mb_seconds += usage.memory_used_mb * execution_seconds;
-        
+
         if usage.cold_start {
             self.cold_starts += 1;
         }
-        
+
         if !self.functions_used.contains(&usage.function_name) {
             self.functions_used.push(usage.function_name.clone());
         }
-        
+
         self.last_use = usage.timestamp;
     }
 }
@@ -79,10 +79,10 @@ impl UsageStats {
 pub struct UsageTracker {
     /// Usage stats aggregated by API key
     stats: Arc<RwLock<HashMap<String, UsageStats>>>,
-    
+
     /// Detailed usage records (circular buffer, last N records)
     records: Arc<RwLock<Vec<UsageRecord>>>,
-    
+
     /// Maximum records to keep in memory
     max_records: usize,
 }
@@ -111,7 +111,7 @@ impl UsageTracker {
         {
             let mut records = self.records.write().await;
             records.push(usage);
-            
+
             // Keep only last N records
             if records.len() > self.max_records {
                 records.remove(0);
@@ -146,15 +146,15 @@ impl UsageTracker {
     /// Get usage stats for a specific time window
     pub async fn get_stats_since(&self, api_key: &str, since_timestamp: i64) -> UsageStats {
         let records = self.records.read().await;
-        
+
         let mut stats = UsageStats::new(api_key.to_string(), since_timestamp);
-        
+
         for record in records.iter() {
             if record.api_key == api_key && record.timestamp >= since_timestamp {
                 stats.record(record);
             }
         }
-        
+
         stats
     }
 
@@ -164,18 +164,18 @@ impl UsageTracker {
         // Pricing: 20% cheaper than AWS Lambda
         // AWS: $0.20 per 1M invocations, $0.0000166667 per GB-second
         // NanoLambda: $0.16 per 1M invocations, $0.000015 per GB-second
-        
+
         // Invocation cost (millisecond-granular billing)
         let invocation_cost = stats.total_invocations as f64 * 0.00000016;
-        
+
         // Memory cost: Convert MB-seconds to GB-seconds (millisecond-granular)
         // Calculated from: (memory_mb / 1024) * (execution_time_ms / 1000)
         let gb_seconds = stats.total_memory_mb_seconds / 1024.0;
         let memory_cost = gb_seconds * 0.000015;
-        
+
         // Total cost
         let total_cost = invocation_cost + memory_cost;
-        
+
         BillingInfo {
             api_key: stats.api_key.clone(),
             invocations: stats.total_invocations,
@@ -226,7 +226,7 @@ mod tests {
     #[tokio::test]
     async fn test_usage_tracking() {
         let tracker = UsageTracker::new(1000);
-        
+
         let usage = UsageRecord {
             timestamp: 1234567890,
             api_key: "test_key".to_string(),
@@ -236,9 +236,9 @@ mod tests {
             cold_start: true,
             success: true,
         };
-        
+
         tracker.record(usage).await;
-        
+
         let stats = tracker.get_stats("test_key").await.unwrap();
         assert_eq!(stats.total_invocations, 1);
         assert_eq!(stats.successful_invocations, 1);
@@ -252,23 +252,23 @@ mod tests {
             total_invocations: 1000000, // 1M invocations
             successful_invocations: 999000,
             failed_invocations: 1000,
-            total_execution_time_ms: 100000000, // 100k seconds
+            total_execution_time_ms: 100000000,   // 100k seconds
             total_memory_mb_seconds: 128000000.0, // 125,000 GB-seconds
             cold_starts: 10000,
             functions_used: vec!["test_fn".to_string()],
             first_use: 0,
             last_use: 1000000,
         };
-        
+
         let bill = UsageTracker::calculate_bill(&stats);
-        
+
         // 1M invocations * $0.00000016 = $0.16
         assert!((bill.invocation_cost - 0.16).abs() < 0.01);
-        
+
         // 125,000 GB-seconds * $0.000015 = $1.875
         let expected_memory = 125000.0 * 0.000015;
         assert!((bill.memory_cost - expected_memory).abs() < 0.01);
-        
+
         // Total: $0.16 + $1.875 = $2.035
         assert!((bill.total_cost - (0.16 + expected_memory)).abs() < 0.01);
     }

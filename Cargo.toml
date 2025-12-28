@@ -84,6 +84,7 @@ chrono = { workspace = true }
 
 # Additional dependencies
 base64 = "0.22"
+reqwest = { version = "0.12", features = ["json"] }
 
 # Workspace crates
 nanolambda-api = { path = "crates/api-server" }

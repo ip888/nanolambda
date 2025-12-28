@@ -31,7 +31,7 @@ impl TokenBucket {
     /// Try to consume tokens, returns true if allowed
     pub fn try_consume(&mut self, tokens: u32) -> bool {
         self.refill();
-        
+
         if self.tokens >= tokens as f64 {
             self.tokens -= tokens as f64;
             true
@@ -44,7 +44,7 @@ impl TokenBucket {
     fn refill(&mut self) {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_refill).as_secs_f64();
-        
+
         self.tokens = (self.tokens + elapsed * self.refill_rate).min(self.capacity as f64);
         self.last_refill = now;
     }
@@ -87,8 +87,8 @@ impl RateLimitTier {
     /// Get bucket configuration (capacity, refill_rate per second)
     pub fn bucket_config(&self) -> (u32, f64) {
         match self {
-            RateLimitTier::Free => (20, 10.0 / 60.0),        // 10/min burst 20
-            RateLimitTier::Hobby => (200, 100.0 / 60.0),     // 100/min burst 200
+            RateLimitTier::Free => (20, 10.0 / 60.0), // 10/min burst 20
+            RateLimitTier::Hobby => (200, 100.0 / 60.0), // 100/min burst 200
             RateLimitTier::Developer => (1000, 500.0 / 60.0), // 500/min burst 1000
             RateLimitTier::Production => (4000, 2000.0 / 60.0), // 2000/min burst 4000
             RateLimitTier::Enterprise => (10000, 5000.0 / 60.0), // 5000/min burst 10000
@@ -123,13 +123,11 @@ impl RateLimiter {
     /// Check if request is allowed for given API key
     pub async fn check_rate_limit(&self, api_key: &str) -> Result<(), RateLimitError> {
         let mut buckets = self.buckets.write().await;
-        
-        let (bucket, tier) = buckets
-            .entry(api_key.to_string())
-            .or_insert_with(|| {
-                let (capacity, rate) = self.default_tier.bucket_config();
-                (TokenBucket::new(capacity, rate), self.default_tier)
-            });
+
+        let (bucket, tier) = buckets.entry(api_key.to_string()).or_insert_with(|| {
+            let (capacity, rate) = self.default_tier.bucket_config();
+            (TokenBucket::new(capacity, rate), self.default_tier)
+        });
 
         if bucket.try_consume(1) {
             Ok(())
@@ -146,13 +144,16 @@ impl RateLimiter {
     pub async fn set_tier(&self, api_key: &str, tier: RateLimitTier) {
         let mut buckets = self.buckets.write().await;
         let (capacity, rate) = tier.bucket_config();
-        buckets.insert(api_key.to_string(), (TokenBucket::new(capacity, rate), tier));
+        buckets.insert(
+            api_key.to_string(),
+            (TokenBucket::new(capacity, rate), tier),
+        );
     }
 
     /// Get current rate limit status for API key
     pub async fn get_status(&self, api_key: &str) -> RateLimitStatus {
         let mut buckets = self.buckets.write().await;
-        
+
         if let Some((bucket, tier)) = buckets.get_mut(api_key) {
             RateLimitStatus {
                 tier: *tier,
@@ -241,11 +242,11 @@ mod tests {
     #[test]
     fn test_token_bucket() {
         let mut bucket = TokenBucket::new(10, 1.0); // 10 capacity, 1/sec
-        
+
         // Can consume up to capacity
         assert!(bucket.try_consume(5));
         assert_eq!(bucket.available_tokens(), 5);
-        
+
         // Can't exceed capacity
         assert!(!bucket.try_consume(10));
         assert!(bucket.try_consume(5));
@@ -255,10 +256,10 @@ mod tests {
     #[tokio::test]
     async fn test_rate_limiter() {
         let limiter = RateLimiter::new(RateLimitTier::Free);
-        
+
         // Should allow first requests
         assert!(limiter.check_rate_limit("test_key").await.is_ok());
-        
+
         // Can check status
         let status = limiter.get_status("test_key").await;
         assert!(status.available_tokens < status.capacity);

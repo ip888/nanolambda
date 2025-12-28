@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
 
 /// Single metrics data point
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,10 +66,10 @@ impl MetricsCollector {
     /// Record a new metric point
     pub async fn record(&self, point: MetricPoint) {
         let mut points = self.points.write().await;
-        
+
         // Add new point
         points.push_back(point);
-        
+
         // Remove old points if exceeding max
         while points.len() > self.max_points {
             points.pop_front();
@@ -83,15 +83,13 @@ impl MetricsCollector {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
-        
+
         let cutoff = now - last_seconds;
-        
+
         // Filter points within time window
-        let recent_points: Vec<&MetricPoint> = points
-            .iter()
-            .filter(|p| p.timestamp >= cutoff)
-            .collect();
-        
+        let recent_points: Vec<&MetricPoint> =
+            points.iter().filter(|p| p.timestamp >= cutoff).collect();
+
         if recent_points.is_empty() {
             return MetricsAggregate {
                 total_invocations: 0,
@@ -107,27 +105,33 @@ impl MetricsCollector {
                 error_rate: 0.0,
             };
         }
-        
+
         let total = recent_points.len();
         let cold_starts = recent_points.iter().filter(|p| p.cold_start).count();
-        let errors = recent_points.iter().filter(|p| p.status == MetricStatus::Error).count();
-        let timeouts = recent_points.iter().filter(|p| p.status == MetricStatus::Timeout).count();
-        
+        let errors = recent_points
+            .iter()
+            .filter(|p| p.status == MetricStatus::Error)
+            .count();
+        let timeouts = recent_points
+            .iter()
+            .filter(|p| p.status == MetricStatus::Timeout)
+            .count();
+
         // Calculate latency stats
         let mut latencies: Vec<i64> = recent_points.iter().map(|p| p.execution_time_ms).collect();
         latencies.sort_unstable();
-        
+
         let avg_latency = latencies.iter().sum::<i64>() as f64 / latencies.len() as f64;
         let p50 = Self::percentile(&latencies, 50);
         let p95 = Self::percentile(&latencies, 95);
         let p99 = Self::percentile(&latencies, 99);
-        
+
         // Calculate rates
         let duration_seconds = last_seconds as f64;
         let invocations_per_second = total as f64 / duration_seconds;
         let cold_start_rate = cold_starts as f64 / total as f64;
         let error_rate = errors as f64 / total as f64;
-        
+
         MetricsAggregate {
             total_invocations: total,
             cold_starts,
@@ -146,7 +150,7 @@ impl MetricsCollector {
     /// Get all-time metrics
     pub async fn get_all_time_metrics(&self) -> MetricsAggregate {
         let points = self.points.read().await;
-        
+
         if points.is_empty() {
             return MetricsAggregate {
                 total_invocations: 0,
@@ -162,29 +166,35 @@ impl MetricsCollector {
                 error_rate: 0.0,
             };
         }
-        
+
         let total = points.len();
         let cold_starts = points.iter().filter(|p| p.cold_start).count();
-        let errors = points.iter().filter(|p| p.status == MetricStatus::Error).count();
-        let timeouts = points.iter().filter(|p| p.status == MetricStatus::Timeout).count();
-        
+        let errors = points
+            .iter()
+            .filter(|p| p.status == MetricStatus::Error)
+            .count();
+        let timeouts = points
+            .iter()
+            .filter(|p| p.status == MetricStatus::Timeout)
+            .count();
+
         let mut latencies: Vec<i64> = points.iter().map(|p| p.execution_time_ms).collect();
         latencies.sort_unstable();
-        
+
         let avg_latency = latencies.iter().sum::<i64>() as f64 / latencies.len() as f64;
         let p50 = Self::percentile(&latencies, 50);
         let p95 = Self::percentile(&latencies, 95);
         let p99 = Self::percentile(&latencies, 99);
-        
+
         // Calculate time span
         let first_ts = points.front().unwrap().timestamp;
         let last_ts = points.back().unwrap().timestamp;
         let duration_seconds = (last_ts - first_ts).max(1) as f64;
-        
+
         let invocations_per_second = total as f64 / duration_seconds;
         let cold_start_rate = cold_starts as f64 / total as f64;
         let error_rate = errors as f64 / total as f64;
-        
+
         MetricsAggregate {
             total_invocations: total,
             cold_starts,
@@ -205,7 +215,7 @@ impl MetricsCollector {
         if sorted.is_empty() {
             return 0;
         }
-        let idx = (sorted.len() * p / 100).min(sorted.len() - 1);
+        let idx = ((sorted.len() - 1) * p / 100).min(sorted.len() - 1);
         sorted[idx]
     }
 }
@@ -223,7 +233,7 @@ mod tests {
     #[tokio::test]
     async fn test_record_metric() {
         let collector = MetricsCollector::new();
-        
+
         let point = MetricPoint {
             timestamp: 1000,
             function_name: "test".to_string(),
@@ -231,9 +241,9 @@ mod tests {
             execution_time_ms: 50,
             status: MetricStatus::Success,
         };
-        
+
         collector.record(point).await;
-        
+
         let metrics = collector.get_all_time_metrics().await;
         assert_eq!(metrics.total_invocations, 1);
         assert_eq!(metrics.cold_starts, 1);
@@ -246,18 +256,24 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
-        
+
         // Record 10 invocations
         for i in 0..10 {
-            collector.record(MetricPoint {
-                timestamp: now - i,
-                function_name: "test".to_string(),
-                cold_start: i == 0, // Only first is cold start
-                execution_time_ms: 10 + i * 5,
-                status: if i < 8 { MetricStatus::Success } else { MetricStatus::Error },
-            }).await;
+            collector
+                .record(MetricPoint {
+                    timestamp: now - i,
+                    function_name: "test".to_string(),
+                    cold_start: i == 0, // Only first is cold start
+                    execution_time_ms: 10 + i * 5,
+                    status: if i < 8 {
+                        MetricStatus::Success
+                    } else {
+                        MetricStatus::Error
+                    },
+                })
+                .await;
         }
-        
+
         let metrics = collector.get_metrics(60).await;
         assert_eq!(metrics.total_invocations, 10);
         assert_eq!(metrics.cold_starts, 1);
@@ -269,8 +285,12 @@ mod tests {
     #[tokio::test]
     async fn test_percentile_calculation() {
         let data = vec![10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+        // For 10 elements (indices 0-9):
+        // p50: (9 * 50 / 100) = 4 → data[4] = 50 ✓
+        // p95: (9 * 95 / 100) = 8 → data[8] = 90 (not 100)
+        // p99: (9 * 99 / 100) = 8 → data[8] = 90 (not 100)
         assert_eq!(MetricsCollector::percentile(&data, 50), 50);
-        assert_eq!(MetricsCollector::percentile(&data, 95), 100);
-        assert_eq!(MetricsCollector::percentile(&data, 99), 100);
+        assert_eq!(MetricsCollector::percentile(&data, 95), 90);
+        assert_eq!(MetricsCollector::percentile(&data, 99), 90);
     }
 }

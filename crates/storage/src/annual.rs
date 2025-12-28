@@ -1,9 +1,9 @@
 // Annual Billing Management - Using in-memory storage
 use crate::Result;
-use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 /// Annual billing plan configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,13 +11,13 @@ pub struct AnnualPlan {
     pub id: i64,
     pub api_key: String,
     pub tier: String,
-    pub annual_price: i64,      // in cents
+    pub annual_price: i64,       // in cents
     pub monthly_equivalent: i64, // in cents (annual / 12)
     pub discount_percentage: i64,
     pub billing_start_date: i64,
     pub billing_end_date: i64,
     pub auto_renew: bool,
-    pub status: String,  // "active", "cancelled", "expired"
+    pub status: String, // "active", "cancelled", "expired"
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -84,9 +84,13 @@ impl AnnualBillingManager {
         // Default tier pricing
         let monthly_price = match tier {
             "trial" => 0,
-            "pro" => 2900,  // $29/month
-            "enterprise" => 9900,  // $99/month
-            _ => return Err(crate::error::StorageError::InvalidConfig("Unknown tier".to_string()).into()),
+            "pro" => 2900,        // $29/month
+            "enterprise" => 9900, // $99/month
+            _ => {
+                return Err(crate::error::StorageError::InvalidConfig(
+                    "Unknown tier".to_string(),
+                ));
+            }
         };
 
         let annual_regular_price = monthly_price * 12;
@@ -123,7 +127,7 @@ impl AnnualBillingManager {
     /// Switch to annual billing for a customer
     pub async fn upgrade_to_annual(&self, api_key: &str, tier: &str) -> Result<AnnualPlan> {
         let breakdown = self.get_billing_breakdown(tier).await?;
-        
+
         let now = Utc::now().timestamp();
         let billing_start_date = now;
         let billing_end_date = now + (365 * 24 * 60 * 60);
@@ -150,8 +154,11 @@ impl AnnualBillingManager {
             updated_at: now,
         };
 
-        self.plans.lock().unwrap().insert(api_key.to_string(), plan.clone());
-        
+        self.plans
+            .lock()
+            .unwrap()
+            .insert(api_key.to_string(), plan.clone());
+
         self.history.lock().unwrap().push((
             api_key.to_string(),
             "upgrade_to_annual".to_string(),
@@ -167,7 +174,10 @@ impl AnnualBillingManager {
     }
 
     /// Get subscription usage for annual plan
-    pub async fn get_annual_subscription_usage(&self, api_key: &str) -> Result<Option<AnnualSubscriptionUsage>> {
+    pub async fn get_annual_subscription_usage(
+        &self,
+        api_key: &str,
+    ) -> Result<Option<AnnualSubscriptionUsage>> {
         let plan = match self.get_annual_plan(api_key).await? {
             Some(p) => p,
             None => return Ok(None),
@@ -183,11 +193,7 @@ impl AnnualBillingManager {
             0.0
         };
 
-        let billing_period = format!(
-            "{} to {}",
-            plan.billing_start_date,
-            plan.billing_end_date
-        );
+        let billing_period = format!("{} to {}", plan.billing_start_date, plan.billing_end_date);
 
         Ok(Some(AnnualSubscriptionUsage {
             api_key: api_key.to_string(),
@@ -203,20 +209,20 @@ impl AnnualBillingManager {
     }
 
     /// Switch from annual back to monthly
-    pub async fn downgrade_from_annual(&self, api_key: &str, reason: &str) -> Result<bool> {
+    pub async fn downgrade_from_annual(&self, api_key: &str, _reason: &str) -> Result<bool> {
         let now = Utc::now().timestamp();
-        
+
         let mut plans = self.plans.lock().unwrap();
         if let Some(plan) = plans.get_mut(api_key) {
             plan.status = "cancelled".to_string();
             plan.updated_at = now;
-            
+
             self.history.lock().unwrap().push((
                 api_key.to_string(),
                 "downgrade_from_annual".to_string(),
                 now,
             ));
-            
+
             Ok(true)
         } else {
             Ok(false)
@@ -227,8 +233,9 @@ impl AnnualBillingManager {
     pub async fn get_active_annual_plans(&self) -> Result<Vec<AnnualPlan>> {
         let now = Utc::now().timestamp();
         let plans = self.plans.lock().unwrap();
-        
-        Ok(plans.values()
+
+        Ok(plans
+            .values()
             .filter(|p| p.status == "active" && p.billing_end_date > now)
             .cloned()
             .collect())
@@ -239,7 +246,8 @@ impl AnnualBillingManager {
         let plans = self.plans.lock().unwrap();
         let now = Utc::now().timestamp();
 
-        let active_plans: Vec<_> = plans.values()
+        let active_plans: Vec<_> = plans
+            .values()
             .filter(|p| p.status == "active" && p.billing_end_date > now)
             .collect();
 
@@ -252,14 +260,18 @@ impl AnnualBillingManager {
         };
 
         let avg_discount = if !active_plans.is_empty() {
-            active_plans.iter().map(|p| p.discount_percentage as f64).sum::<f64>()
+            active_plans
+                .iter()
+                .map(|p| p.discount_percentage as f64)
+                .sum::<f64>()
                 / active_plans.len() as f64
         } else {
             0.0
         };
 
         let thirty_days_ago = now - (30 * 24 * 60 * 60);
-        let churned = plans.values()
+        let churned = plans
+            .values()
             .filter(|p| p.status == "cancelled" && p.updated_at > thirty_days_ago)
             .count() as i64;
 
@@ -286,18 +298,18 @@ impl AnnualBillingManager {
     pub async fn process_expiring_plans(&self) -> Result<(i64, i64)> {
         let now = Utc::now().timestamp();
         let renewal_window = 7 * 24 * 60 * 60;
-        
+
         let mut renewed_count = 0i64;
         let mut renewal_amount = 0i64;
 
         let mut plans = self.plans.lock().unwrap();
-        
+
         for (_key, plan) in plans.iter_mut() {
-            if plan.status == "active" 
-                && plan.auto_renew 
-                && plan.billing_end_date >= now 
-                && plan.billing_end_date <= now + renewal_window {
-                
+            if plan.status == "active"
+                && plan.auto_renew
+                && plan.billing_end_date >= now
+                && plan.billing_end_date <= now + renewal_window
+            {
                 plan.billing_end_date = now + (365 * 24 * 60 * 60);
                 plan.updated_at = now;
                 renewed_count += 1;

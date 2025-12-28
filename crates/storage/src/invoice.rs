@@ -3,7 +3,8 @@ use crate::error::{Result, StorageError};
 use crate::tier::TierLevel;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use sqlx::{SqlitePool, FromRow, Row};
+use sqlx::{Row, SqlitePool};
+use std::str::FromStr;
 
 const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
 
@@ -13,7 +14,7 @@ pub struct Invoice {
     pub api_key: String,
     pub stripe_invoice_id: Option<String>,
     pub invoice_number: String,
-    pub amount_due: i64, // in cents
+    pub amount_due: i64,  // in cents
     pub amount_paid: i64, // in cents
     pub currency: String,
     pub status: InvoiceStatus,
@@ -49,16 +50,20 @@ impl InvoiceStatus {
             InvoiceStatus::Uncollectible => "uncollectible",
         }
     }
-    
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+}
+
+impl FromStr for InvoiceStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "draft" => InvoiceStatus::Draft,
             "open" => InvoiceStatus::Open,
             "paid" => InvoiceStatus::Paid,
             "void" => InvoiceStatus::Void,
             "uncollectible" => InvoiceStatus::Uncollectible,
             _ => InvoiceStatus::Draft,
-        }
+        })
     }
 }
 
@@ -69,7 +74,7 @@ pub struct InvoiceLineItem {
     pub description: String,
     pub quantity: i64,
     pub unit_amount: i64, // in cents
-    pub amount: i64, // in cents
+    pub amount: i64,      // in cents
     pub currency: String,
     pub period_start: i64,
     pub period_end: i64,
@@ -209,7 +214,7 @@ impl InvoiceManager {
     ) -> Result<Invoice> {
         let now = Utc::now().timestamp();
         let invoice_number = Self::generate_invoice_number();
-        
+
         let id = sqlx::query(
             r#"
             INSERT INTO invoices (
@@ -269,7 +274,7 @@ impl InvoiceManager {
         period_end: i64,
     ) -> Result<InvoiceLineItem> {
         let amount = quantity * unit_amount;
-        
+
         let id = sqlx::query(
             r#"
             INSERT INTO invoice_line_items (
@@ -330,12 +335,14 @@ impl InvoiceManager {
             amount_due: r.get("amount_due"),
             amount_paid: r.get("amount_paid"),
             currency: r.get("currency"),
-            status: InvoiceStatus::from_str(r.get("status")),
+            status: InvoiceStatus::from_str(r.get("status")).unwrap(),
             period_start: r.get("period_start"),
             period_end: r.get("period_end"),
             due_date: r.get("due_date"),
             paid_at: r.get("paid_at"),
-            tier_level: TierLevel::from_str(r.get("tier_level")).unwrap_or(TierLevel::Starter),
+            tier_level: TierLevel::from_str(r.get("tier_level"))
+                .ok()
+                .unwrap_or(TierLevel::Starter),
             description: r.get("description"),
             invoice_pdf_url: r.get("invoice_pdf_url"),
             hosted_invoice_url: r.get("hosted_invoice_url"),
@@ -345,7 +352,10 @@ impl InvoiceManager {
     }
 
     /// Get invoice by Stripe invoice ID
-    pub async fn get_invoice_by_stripe_id(&self, stripe_invoice_id: &str) -> Result<Option<Invoice>> {
+    pub async fn get_invoice_by_stripe_id(
+        &self,
+        stripe_invoice_id: &str,
+    ) -> Result<Option<Invoice>> {
         let row = sqlx::query(
             r#"
             SELECT id, api_key, stripe_invoice_id, invoice_number, 
@@ -370,12 +380,14 @@ impl InvoiceManager {
             amount_due: r.get("amount_due"),
             amount_paid: r.get("amount_paid"),
             currency: r.get("currency"),
-            status: InvoiceStatus::from_str(r.get("status")),
+            status: InvoiceStatus::from_str(r.get("status")).unwrap(),
             period_start: r.get("period_start"),
             period_end: r.get("period_end"),
             due_date: r.get("due_date"),
             paid_at: r.get("paid_at"),
-            tier_level: TierLevel::from_str(r.get("tier_level")).unwrap_or(TierLevel::Starter),
+            tier_level: TierLevel::from_str(r.get("tier_level"))
+                .ok()
+                .unwrap_or(TierLevel::Starter),
             description: r.get("description"),
             invoice_pdf_url: r.get("invoice_pdf_url"),
             hosted_invoice_url: r.get("hosted_invoice_url"),
@@ -392,7 +404,7 @@ impl InvoiceManager {
         status_filter: Option<InvoiceStatus>,
     ) -> Result<Vec<Invoice>> {
         let limit = limit.unwrap_or(100);
-        
+
         let rows = if let Some(status) = status_filter {
             sqlx::query(
                 r#"
@@ -444,12 +456,14 @@ impl InvoiceManager {
                 amount_due: r.get("amount_due"),
                 amount_paid: r.get("amount_paid"),
                 currency: r.get("currency"),
-                status: InvoiceStatus::from_str(r.get("status")),
+                status: InvoiceStatus::from_str(r.get("status")).unwrap(),
                 period_start: r.get("period_start"),
                 period_end: r.get("period_end"),
                 due_date: r.get("due_date"),
                 paid_at: r.get("paid_at"),
-                tier_level: TierLevel::from_str(r.get("tier_level")).unwrap_or(TierLevel::Starter),
+                tier_level: TierLevel::from_str(r.get("tier_level"))
+                    .ok()
+                    .unwrap_or(TierLevel::Starter),
                 description: r.get("description"),
                 invoice_pdf_url: r.get("invoice_pdf_url"),
                 hosted_invoice_url: r.get("hosted_invoice_url"),
@@ -477,8 +491,8 @@ impl InvoiceManager {
 
         Ok(items
             .into_iter()
-            .map(|(id, invoice_id, description, quantity, unit_amount, amount, currency, period_start, period_end)| {
-                InvoiceLineItem {
+            .map(
+                |(
                     id,
                     invoice_id,
                     description,
@@ -488,8 +502,20 @@ impl InvoiceManager {
                     currency,
                     period_start,
                     period_end,
-                }
-            })
+                )| {
+                    InvoiceLineItem {
+                        id,
+                        invoice_id,
+                        description,
+                        quantity,
+                        unit_amount,
+                        amount,
+                        currency,
+                        period_start,
+                        period_end,
+                    }
+                },
+            )
             .collect())
     }
 
@@ -502,7 +528,7 @@ impl InvoiceManager {
         paid_at: Option<i64>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
-        
+
         if let Some(paid) = amount_paid {
             sqlx::query(
                 r#"
@@ -546,7 +572,7 @@ impl InvoiceManager {
         hosted_invoice_url: Option<String>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
-        
+
         sqlx::query(
             r#"
             UPDATE invoices 
@@ -567,13 +593,12 @@ impl InvoiceManager {
 
     /// Get invoice summary for a user
     pub async fn get_invoice_summary(&self, api_key: &str) -> Result<InvoiceSummary> {
-        let total_invoices: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM invoices WHERE api_key = ?"
-        )
-        .bind(api_key)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| StorageError::DatabaseError(e.to_string()))?;
+        let total_invoices: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM invoices WHERE api_key = ?")
+                .bind(api_key)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| StorageError::DatabaseError(e.to_string()))?;
 
         let total_paid: i64 = sqlx::query_scalar(
             "SELECT COALESCE(SUM(amount_paid), 0) FROM invoices WHERE api_key = ? AND status = 'paid'"
@@ -605,7 +630,7 @@ impl InvoiceManager {
     pub async fn sync_stripe_invoice(&self, stripe_invoice_id: &str) -> Result<Option<Invoice>> {
         // Fetch invoice from Stripe API
         let url = format!("{}/invoices/{}", STRIPE_API_BASE, stripe_invoice_id);
-        
+
         let client = reqwest::Client::new();
         let response = client
             .get(&url)
@@ -615,9 +640,10 @@ impl InvoiceManager {
             .map_err(|e| crate::error::StorageError::ExternalApiError(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(crate::error::StorageError::ExternalApiError(
-                format!("Stripe API error: {}", response.status())
-            ));
+            return Err(crate::error::StorageError::ExternalApiError(format!(
+                "Stripe API error: {}",
+                response.status()
+            )));
         }
 
         let stripe_invoice: serde_json::Value = response
@@ -633,7 +659,7 @@ impl InvoiceManager {
 
         // Update status
         if let Some(status_str) = stripe_invoice.get("status").and_then(|s| s.as_str()) {
-            invoice.status = InvoiceStatus::from_str(status_str);
+            invoice.status = InvoiceStatus::from_str(status_str).unwrap();
         }
 
         // Update payment info
@@ -641,10 +667,10 @@ impl InvoiceManager {
             invoice.amount_paid = amount_paid;
         }
 
-        if let Some(status_transitions) = stripe_invoice.get("status_transitions") {
-            if let Some(paid_at) = status_transitions.get("paid_at").and_then(|p| p.as_i64()) {
-                invoice.paid_at = Some(paid_at);
-            }
+        if let Some(status_transitions) = stripe_invoice.get("status_transitions")
+            && let Some(paid_at) = status_transitions.get("paid_at").and_then(|p| p.as_i64())
+        {
+            invoice.paid_at = Some(paid_at);
         }
 
         // Update URLs
@@ -652,7 +678,10 @@ impl InvoiceManager {
             invoice.invoice_pdf_url = Some(pdf_url.to_string());
         }
 
-        if let Some(hosted_url) = stripe_invoice.get("hosted_invoice_url").and_then(|u| u.as_str()) {
+        if let Some(hosted_url) = stripe_invoice
+            .get("hosted_invoice_url")
+            .and_then(|u| u.as_str())
+        {
             invoice.hosted_invoice_url = Some(hosted_url.to_string());
         }
 
@@ -662,13 +691,15 @@ impl InvoiceManager {
             invoice.status.clone(),
             Some(invoice.amount_paid),
             invoice.paid_at,
-        ).await?;
+        )
+        .await?;
 
         self.update_invoice_urls(
             invoice.id,
             invoice.invoice_pdf_url.clone(),
             invoice.hosted_invoice_url.clone(),
-        ).await?;
+        )
+        .await?;
 
         Ok(Some(invoice))
     }

@@ -18,10 +18,8 @@ impl BenchmarkStats {
         let p99 = percentile(&sorted, 99.0);
 
         let mean = sorted.iter().sum::<f64>() / sorted.len() as f64;
-        
-        let variance = sorted.iter()
-            .map(|x| (x - mean).powi(2))
-            .sum::<f64>() / sorted.len() as f64;
+
+        let variance = sorted.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / sorted.len() as f64;
         let std_dev = variance.sqrt();
 
         let min = sorted.first().copied().unwrap_or(0.0);

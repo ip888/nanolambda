@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::workloads::Workload;
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait Platform: Send + Sync {
@@ -40,7 +40,8 @@ impl Platform for NanoLambda {
             "timeout_ms": 30000,
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/functions", self.base_url))
             .json(&payload)
             .send()
@@ -55,8 +56,13 @@ impl Platform for NanoLambda {
     }
 
     async fn invoke(&self, workload: &Workload) -> anyhow::Result<serde_json::Value> {
-        let response = self.client
-            .post(format!("{}/invoke/{}", self.base_url, workload.function_name()))
+        let response = self
+            .client
+            .post(format!(
+                "{}/invoke/{}",
+                self.base_url,
+                workload.function_name()
+            ))
             .json(&workload.payload())
             .send()
             .await?;
@@ -71,15 +77,18 @@ impl Platform for NanoLambda {
     }
 
     async fn get_memory_usage(&self, workload: &Workload) -> anyhow::Result<u64> {
-        let response = self.client
-            .get(format!("{}/functions/{}", self.base_url, workload.function_name()))
+        let response = self
+            .client
+            .get(format!(
+                "{}/functions/{}",
+                self.base_url,
+                workload.function_name()
+            ))
             .send()
             .await?;
 
         let data: serde_json::Value = response.json().await?;
-        let memory = data["config"]["memory_mb"]
-            .as_u64()
-            .unwrap_or(128);
+        let memory = data["config"]["memory_mb"].as_u64().unwrap_or(128);
 
         Ok(memory)
     }
@@ -94,8 +103,13 @@ impl Platform for NanoLambda {
     }
 
     async fn cleanup(&self, workload: &Workload) -> anyhow::Result<()> {
-        let response = self.client
-            .delete(format!("{}/functions/{}", self.base_url, workload.function_name()))
+        let response = self
+            .client
+            .delete(format!(
+                "{}/functions/{}",
+                self.base_url,
+                workload.function_name()
+            ))
             .send()
             .await?;
 
@@ -116,9 +130,12 @@ pub struct AwsLambda {
 
 impl AwsLambda {
     pub async fn new() -> anyhow::Result<Self> {
-        let config = aws_config::defaults(aws_config::BehaviorVersion::latest()).load().await;
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .load()
+            .await;
         let client = aws_sdk_lambda::Client::new(&config);
-        let region = config.region()
+        let region = config
+            .region()
             .map(|r| r.as_ref().to_string())
             .unwrap_or_else(|| "us-east-1".to_string());
 
@@ -150,16 +167,17 @@ impl Platform for AwsLambda {
         let mut zip_buffer = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_buffer));
-            let options: FileOptions<()> = FileOptions::default()
-                .compression_method(zip::CompressionMethod::Deflated);
-            
+            let options: FileOptions<()> =
+                FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
             zip.start_file("lambda_function.py", options)?;
             zip.write_all(workload.code().as_bytes())?;
             zip.finish()?;
         }
 
         // Delete if exists (ignore errors)
-        let _ = self.client
+        let _ = self
+            .client
             .delete_function()
             .function_name(workload.function_name())
             .send()
@@ -178,7 +196,7 @@ impl Platform for AwsLambda {
             .code(
                 aws_sdk_lambda::types::FunctionCode::builder()
                     .zip_file(Blob::new(zip_buffer))
-                    .build()
+                    .build(),
             )
             .memory_size(128)
             .timeout(30)
@@ -195,8 +213,9 @@ impl Platform for AwsLambda {
         use aws_sdk_lambda::primitives::Blob;
 
         let payload_str = serde_json::to_string(&workload.payload())?;
-        
-        let response = self.client
+
+        let response = self
+            .client
             .invoke()
             .function_name(workload.function_name())
             .payload(Blob::new(payload_str.as_bytes()))
@@ -212,13 +231,15 @@ impl Platform for AwsLambda {
     }
 
     async fn get_memory_usage(&self, workload: &Workload) -> anyhow::Result<u64> {
-        let response = self.client
+        let response = self
+            .client
             .get_function()
             .function_name(workload.function_name())
             .send()
             .await?;
 
-        let memory = response.configuration()
+        let memory = response
+            .configuration()
             .and_then(|c| c.memory_size())
             .unwrap_or(128);
 

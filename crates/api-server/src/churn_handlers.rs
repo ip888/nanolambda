@@ -1,13 +1,9 @@
 // Churn Prevention API Handlers
 // HTTP endpoints for churn analysis and intervention tracking
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use axum::{Json, extract::State, http::StatusCode};
+use serde::Deserialize;
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 use crate::ApiServer;
@@ -63,15 +59,13 @@ pub async fn analyze_churn_risk(
         ))?;
 
     // Get churn analyzer
-    let analyzer = state
-        .churn_analyzer()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "Churn analyzer not available".to_string(),
-            }),
-        ))?;
+    let analyzer = state.churn_analyzer().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "Churn analyzer not available".to_string(),
+        }),
+    ))?;
 
     // Analyze churn risk
     let profile = analyzer
@@ -120,29 +114,24 @@ pub async fn get_risk_profile(
         ))?;
 
     // Get churn analyzer
-    let analyzer = state
-        .churn_analyzer()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "Churn analyzer not available".to_string(),
-            }),
-        ))?;
+    let analyzer = state.churn_analyzer().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "Churn analyzer not available".to_string(),
+        }),
+    ))?;
 
     // Get risk profile
-    let profile = analyzer
-        .get_risk_profile(api_key_str)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to retrieve profile".to_string(),
-                    message: e.to_string(),
-                }),
-            )
-        })?;
+    let profile = analyzer.get_risk_profile(api_key_str).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Failed to retrieve profile".to_string(),
+                message: e.to_string(),
+            }),
+        )
+    })?;
 
     if let Some(profile_data) = profile {
         Ok(Json(json!({
@@ -179,15 +168,13 @@ pub async fn record_churn(
         ))?;
 
     // Get churn analyzer
-    let analyzer = state
-        .churn_analyzer()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "Churn analyzer not available".to_string(),
-            }),
-        ))?;
+    let analyzer = state.churn_analyzer().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "Churn analyzer not available".to_string(),
+        }),
+    ))?;
 
     // Record churn
     analyzer
@@ -219,15 +206,13 @@ pub async fn predict_churn(
     State(state): State<Arc<ApiServer>>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
     // Get churn analyzer
-    let analyzer = state
-        .churn_analyzer()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "Churn analyzer not available".to_string(),
-            }),
-        ))?;
+    let analyzer = state.churn_analyzer().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "Churn analyzer not available".to_string(),
+        }),
+    ))?;
 
     // Generate predictions for multiple periods
     let week_prediction = analyzer.predict_churn("next-week").await.map_err(|e| {
@@ -275,15 +260,13 @@ pub async fn get_platform_metrics(
     State(state): State<Arc<ApiServer>>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
     // Get churn analyzer
-    let analyzer = state
-        .churn_analyzer()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "Churn analyzer not available".to_string(),
-            }),
-        ))?;
+    let analyzer = state.churn_analyzer().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "Churn analyzer not available".to_string(),
+        }),
+    ))?;
 
     // Get platform metrics
     let metrics = analyzer.get_platform_metrics().await.map_err(|e| {
@@ -321,15 +304,13 @@ pub async fn record_intervention(
         ))?;
 
     // Get churn analyzer
-    let analyzer = state
-        .churn_analyzer()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "Churn analyzer not available".to_string(),
-            }),
-        ))?;
+    let analyzer = state.churn_analyzer().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "Churn analyzer not available".to_string(),
+        }),
+    ))?;
 
     // Create intervention
     let intervention = nanolambda_storage::churn::Intervention {
@@ -379,29 +360,24 @@ pub async fn get_interventions(
         ))?;
 
     // Get churn analyzer
-    let analyzer = state
-        .churn_analyzer()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "Churn analyzer not available".to_string(),
-            }),
-        ))?;
+    let analyzer = state.churn_analyzer().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "Churn analyzer not available".to_string(),
+        }),
+    ))?;
 
     // Get interventions
-    let interventions = analyzer
-        .get_interventions(api_key_str)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to retrieve interventions".to_string(),
-                    message: e.to_string(),
-                }),
-            )
-        })?;
+    let interventions = analyzer.get_interventions(api_key_str).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Failed to retrieve interventions".to_string(),
+                message: e.to_string(),
+            }),
+        )
+    })?;
 
     Ok(Json(json!({
         "success": true,

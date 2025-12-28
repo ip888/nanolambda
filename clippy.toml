@@ -1,0 +1,5 @@
+# Clippy configuration for nanolambda project
+# Allow some pedantic warnings that don't affect production quality
+
+# Allow functions with more than 7 arguments - common in builder patterns
+too-many-arguments-threshold = 10

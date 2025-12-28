@@ -1,13 +1,9 @@
 // CLV API Handlers
 // HTTP endpoints for Customer Lifetime Value metrics
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use axum::{Json, extract::State, http::StatusCode};
+use serde::Deserialize;
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 use crate::ApiServer;
@@ -49,29 +45,24 @@ pub async fn get_customer_clv(
         ))?;
 
     // Get CLV manager
-    let manager = state
-        .clv_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "CLV manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.clv_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "CLV manager not available".to_string(),
+        }),
+    ))?;
 
     // Get CLV data
-    let clv = manager
-        .get_customer_clv(api_key_str)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to retrieve CLV".to_string(),
-                    message: e.to_string(),
-                }),
-            )
-        })?;
+    let clv = manager.get_customer_clv(api_key_str).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Failed to retrieve CLV".to_string(),
+                message: e.to_string(),
+            }),
+        )
+    })?;
 
     if let Some(clv_data) = clv {
         Ok(Json(json!({
@@ -120,15 +111,13 @@ pub async fn calculate_clv(
     }
 
     // Get CLV manager
-    let manager = state
-        .clv_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "CLV manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.clv_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "CLV manager not available".to_string(),
+        }),
+    ))?;
 
     // Calculate CLV
     let clv = manager
@@ -197,15 +186,13 @@ pub async fn get_revenue_prediction(
     }
 
     // Get CLV manager
-    let manager = state
-        .clv_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "CLV manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.clv_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "CLV manager not available".to_string(),
+        }),
+    ))?;
 
     // Generate prediction
     let prediction = manager
@@ -237,15 +224,13 @@ pub async fn get_clv_segments(
     State(state): State<Arc<ApiServer>>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
     // Get CLV manager
-    let manager = state
-        .clv_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "CLV manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.clv_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "CLV manager not available".to_string(),
+        }),
+    ))?;
 
     // Get segments
     let segments = manager.get_clv_segments().await.map_err(|e| {
@@ -269,15 +254,13 @@ pub async fn get_platform_clv_summary(
     State(state): State<Arc<ApiServer>>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
     // Get CLV manager
-    let manager = state
-        .clv_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "CLV manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.clv_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "CLV manager not available".to_string(),
+        }),
+    ))?;
 
     // Get summary
     let summary = manager.get_platform_clv_summary().await.map_err(|e| {
@@ -301,15 +284,13 @@ pub async fn get_cohort_analysis(
     State(state): State<Arc<ApiServer>>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
     // Get CLV manager
-    let manager = state
-        .clv_manager()
-        .ok_or((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Service unavailable".to_string(),
-                message: "CLV manager not available".to_string(),
-            }),
-        ))?;
+    let manager = state.clv_manager().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "Service unavailable".to_string(),
+            message: "CLV manager not available".to_string(),
+        }),
+    ))?;
 
     // Get cohorts
     let cohorts = manager.get_cohorts().await.map_err(|e| {

@@ -1,22 +1,25 @@
 //! Request handlers - Integrated with storage and runtime
 
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
     response::Html,
 };
-use std::collections::HashMap;
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{info, error};
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::sync::Arc;
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::ApiServer;
-use nanolambda_storage::{FunctionConfig as StorageFunctionConfig, InvocationRecord, InvocationStatus};
-use nanolambda_runtime::{GenericFunctionConfig, Language};
 use nanolambda_runtime::runtime_trait::Runtime;
+use nanolambda_runtime::{GenericFunctionConfig, Language};
+use nanolambda_storage::{
+    FunctionConfig as StorageFunctionConfig, InvocationRecord, InvocationStatus,
+};
 
 // ============================================================================
 // Request/Response Models
@@ -97,7 +100,7 @@ pub async fn create_function(
     Json(request): Json<CreateFunctionRequest>,
 ) -> Result<Json<FunctionResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Creating function: {}", request.name);
-    
+
     // Create function config for storage
     let config = StorageFunctionConfig {
         name: request.name.clone(),
@@ -108,24 +111,22 @@ pub async fn create_function(
         timeout_ms: request.timeout_ms,
         environment: request.environment,
     };
-    
+
     // Store function in database
     match state.storage().create_function(config) {
         Ok(_function_id) => {
             // Retrieve the created function to get all fields
             match state.storage().get_function(&request.name) {
-                Ok(Some(function)) => {
-                    Ok(Json(FunctionResponse {
-                        name: function.name,
-                        runtime: function.runtime,
-                        handler: function.handler,
-                        memory_mb: function.memory_mb,
-                        timeout_ms: function.timeout_ms,
-                        status: function.status.as_str().to_string(),
-                        created_at: function.created_at,
-                        updated_at: function.updated_at,
-                    }))
-                }
+                Ok(Some(function)) => Ok(Json(FunctionResponse {
+                    name: function.name,
+                    runtime: function.runtime,
+                    handler: function.handler,
+                    memory_mb: function.memory_mb,
+                    timeout_ms: function.timeout_ms,
+                    status: function.status.as_str().to_string(),
+                    created_at: function.created_at,
+                    updated_at: function.updated_at,
+                })),
                 Ok(None) => {
                     error!("Function created but not found: {}", request.name);
                     Err((
@@ -166,7 +167,7 @@ pub async fn list_functions(
     State(state): State<Arc<ApiServer>>,
 ) -> Result<Json<ListFunctionsResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Listing all functions");
-    
+
     match state.storage().list_functions() {
         Ok(functions) => {
             let function_responses: Vec<FunctionResponse> = functions
@@ -182,7 +183,7 @@ pub async fn list_functions(
                     updated_at: f.updated_at,
                 })
                 .collect();
-            
+
             let count = function_responses.len();
             Ok(Json(ListFunctionsResponse {
                 functions: function_responses,
@@ -208,29 +209,25 @@ pub async fn get_function(
     Path(name): Path<String>,
 ) -> Result<Json<FunctionResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Getting function: {}", name);
-    
+
     match state.storage().get_function(&name) {
-        Ok(Some(function)) => {
-            Ok(Json(FunctionResponse {
-                name: function.name,
-                runtime: function.runtime,
-                handler: function.handler,
-                memory_mb: function.memory_mb,
-                timeout_ms: function.timeout_ms,
-                status: function.status.as_str().to_string(),
-                created_at: function.created_at,
-                updated_at: function.updated_at,
-            }))
-        }
-        Ok(None) => {
-            Err((
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "FunctionNotFound".to_string(),
-                    message: format!("Function '{}' not found", name),
-                }),
-            ))
-        }
+        Ok(Some(function)) => Ok(Json(FunctionResponse {
+            name: function.name,
+            runtime: function.runtime,
+            handler: function.handler,
+            memory_mb: function.memory_mb,
+            timeout_ms: function.timeout_ms,
+            status: function.status.as_str().to_string(),
+            created_at: function.created_at,
+            updated_at: function.updated_at,
+        })),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "FunctionNotFound".to_string(),
+                message: format!("Function '{}' not found", name),
+            }),
+        )),
         Err(e) => {
             error!("Failed to get function: {}", e);
             Err((
@@ -251,7 +248,7 @@ pub async fn update_function(
     Json(request): Json<CreateFunctionRequest>,
 ) -> Result<Json<FunctionResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Updating function: {}", name);
-    
+
     // Create function config for storage
     let config = StorageFunctionConfig {
         name: request.name,
@@ -262,33 +259,29 @@ pub async fn update_function(
         timeout_ms: request.timeout_ms,
         environment: request.environment,
     };
-    
+
     // Update function in database
     match state.storage().update_function(&name, config) {
         Ok(_) => {
             // Retrieve the updated function
             match state.storage().get_function(&name) {
-                Ok(Some(function)) => {
-                    Ok(Json(FunctionResponse {
-                        name: function.name,
-                        runtime: function.runtime,
-                        handler: function.handler,
-                        memory_mb: function.memory_mb,
-                        timeout_ms: function.timeout_ms,
-                        status: function.status.as_str().to_string(),
-                        created_at: function.created_at,
-                        updated_at: function.updated_at,
-                    }))
-                }
-                Ok(None) => {
-                    Err((
-                        StatusCode::NOT_FOUND,
-                        Json(ErrorResponse {
-                            error: "FunctionNotFound".to_string(),
-                            message: format!("Function '{}' not found after update", name),
-                        }),
-                    ))
-                }
+                Ok(Some(function)) => Ok(Json(FunctionResponse {
+                    name: function.name,
+                    runtime: function.runtime,
+                    handler: function.handler,
+                    memory_mb: function.memory_mb,
+                    timeout_ms: function.timeout_ms,
+                    status: function.status.as_str().to_string(),
+                    created_at: function.created_at,
+                    updated_at: function.updated_at,
+                })),
+                Ok(None) => Err((
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: "FunctionNotFound".to_string(),
+                        message: format!("Function '{}' not found after update", name),
+                    }),
+                )),
                 Err(e) => {
                     error!("Failed to retrieve updated function: {}", e);
                     Err((
@@ -320,11 +313,9 @@ pub async fn delete_function(
     Path(name): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     info!("Deleting function: {}", name);
-    
+
     match state.storage().delete_function(&name) {
-        Ok(_) => {
-            Ok(StatusCode::NO_CONTENT)
-        }
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
             error!("Failed to delete function: {}", e);
             Err((
@@ -345,83 +336,94 @@ pub async fn invoke_function(
     req: axum::extract::Request,
 ) -> Result<Json<InvokeResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Invoking function: {}", name);
-    
+
     let request_id = Uuid::new_v4().to_string();
     let started_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_secs() as i64;
-    
+
     // Extract auth context and request body
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     // Check trial status (block if expired)
-    if !api_key.is_empty() {
-        if let Some(trial_mgr) = state.trial_manager() {
-            match trial_mgr.get_trial_status(&api_key).await {
-                Ok(trial) => {
-                    if !trial.is_valid() {
-                        let reason = trial.expiration_reason().unwrap_or_else(|| "Trial expired".to_string());
-                        return Err((
-                            StatusCode::PAYMENT_REQUIRED,
-                            Json(ErrorResponse {
-                                error: "TrialExpired".to_string(),
-                                message: format!("{} - Please upgrade to continue using the service", reason),
-                            }),
-                        ));
-                    }
+    if !api_key.is_empty()
+        && let Some(trial_mgr) = state.trial_manager()
+    {
+        match trial_mgr.get_trial_status(&api_key).await {
+            Ok(trial) => {
+                if !trial.is_valid() {
+                    let reason = trial
+                        .expiration_reason()
+                        .unwrap_or_else(|| "Trial expired".to_string());
+                    return Err((
+                        StatusCode::PAYMENT_REQUIRED,
+                        Json(ErrorResponse {
+                            error: "TrialExpired".to_string(),
+                            message: format!(
+                                "{} - Please upgrade to continue using the service",
+                                reason
+                            ),
+                        }),
+                    ));
                 }
-                Err(_) => {
-                    // No trial found - could be paid user or legacy key, allow through
-                }
+            }
+            Err(_) => {
+                // No trial found - could be paid user or legacy key, allow through
             }
         }
     }
-    
+
     // Parse request body
     let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
-        .map_err(|e| (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "InvalidRequest".to_string(),
-                message: format!("Failed to read request body: {}", e),
-            }),
-        ))?;
-    
-    let request: InvokeRequest = serde_json::from_slice(&bytes)
-        .map_err(|e| (
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidRequest".to_string(),
+                    message: format!("Failed to read request body: {}", e),
+                }),
+            )
+        })?;
+
+    let request: InvokeRequest = serde_json::from_slice(&bytes).map_err(|e| {
+        (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "InvalidRequest".to_string(),
                 message: format!("Invalid JSON: {}", e),
             }),
-        ))?;
-    
+        )
+    })?;
+
     // 0a. Check tier limits and monthly quota
-    if !api_key.is_empty() {
-        if let Some(tier_mgr) = state.tier_manager() {
-            // Check monthly invocation limit
-            match tier_mgr.check_monthly_limit(&api_key).await {
-                Ok(within_limit) => {
-                    if !within_limit {
-                        return Err((
-                            StatusCode::PAYMENT_REQUIRED,
-                            Json(ErrorResponse {
-                                error: "MonthlyLimitExceeded".to_string(),
-                                message: "Monthly invocation limit reached for your tier. Please upgrade to continue.".to_string(),
-                            }),
-                        ));
-                    }
+    if !api_key.is_empty()
+        && let Some(tier_mgr) = state.tier_manager()
+    {
+        // Check monthly invocation limit
+        match tier_mgr.check_monthly_limit(&api_key).await {
+            Ok(within_limit) => {
+                if !within_limit {
+                    return Err((
+                        StatusCode::PAYMENT_REQUIRED,
+                        Json(ErrorResponse {
+                            error: "MonthlyLimitExceeded".to_string(),
+                            message: "Monthly invocation limit reached for your tier. Please upgrade to continue.".to_string(),
+                        }),
+                    ));
                 }
-                Err(_) => {
-                    // No tier assigned yet - will be assigned after trial
-                }
+            }
+            Err(_) => {
+                // No tier assigned yet - will be assigned after trial
             }
         }
     }
-    
+
     // 0b. Check rate limit
     if let Err(e) = state.rate_limiter().check_rate_limit(&api_key).await {
         return Err((
@@ -432,7 +434,7 @@ pub async fn invoke_function(
             }),
         ));
     }
-    
+
     // 0c. Acquire concurrency permits (queues if at limit, rejects if queue full)
     let _concurrency_guard = match state.concurrency().acquire(&name).await {
         Ok(guard) => guard,
@@ -446,7 +448,7 @@ pub async fn invoke_function(
             ));
         }
     };
-    
+
     // 1. Load function from database
     let function = match state.storage().get_function(&name) {
         Ok(Some(f)) => f,
@@ -470,28 +472,27 @@ pub async fn invoke_function(
             ));
         }
     };
-    
+
     // 2. Check tier limits for memory and timeout
-    if !api_key.is_empty() {
-        if let Some(tier_mgr) = state.tier_manager() {
-            if let Ok(user_tier) = tier_mgr.get_user_tier(&api_key).await {
-                let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
-                if let Err(e) = tier_config.check_limits(
-                    function.memory_mb.try_into().unwrap_or(u32::MAX), 
-                    function.timeout_ms.try_into().unwrap_or(i64::MAX)
-                ) {
-                    return Err((
-                        StatusCode::FORBIDDEN,
-                        Json(ErrorResponse {
-                            error: "TierLimitExceeded".to_string(),
-                            message: e,
-                        }),
-                    ));
-                }
-            }
+    if !api_key.is_empty()
+        && let Some(tier_mgr) = state.tier_manager()
+        && let Ok(user_tier) = tier_mgr.get_user_tier(&api_key).await
+    {
+        let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
+        if let Err(e) = tier_config.check_limits(
+            function.memory_mb.try_into().unwrap_or(u32::MAX),
+            function.timeout_ms.try_into().unwrap_or(i64::MAX),
+        ) {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(ErrorResponse {
+                    error: "TierLimitExceeded".to_string(),
+                    message: e,
+                }),
+            ));
         }
     }
-    
+
     // 3. Check if function is active
     if function.status != nanolambda_storage::FunctionStatus::Active {
         return Err((
@@ -502,7 +503,7 @@ pub async fn invoke_function(
             }),
         ));
     }
-    
+
     // 3. Detect language from runtime
     let language = if function.runtime.starts_with("python") {
         Language::Python
@@ -517,7 +518,7 @@ pub async fn invoke_function(
             }),
         ));
     };
-    
+
     // 4. Build configuration based on runtime type
     let execution_result = match language {
         Language::Python => {
@@ -533,11 +534,11 @@ pub async fn invoke_function(
                 timeout_seconds: function.timeout_ms / 1000,
                 working_dir: None,
             };
-            
+
             // Clone the payload for the blocking task
             let payload = request.payload.clone();
             let executor = Arc::clone(state.python_executor());
-            
+
             tokio::task::spawn_blocking(move || {
                 // This runs in a blocking thread pool
                 let runtime = tokio::runtime::Handle::try_current().ok();
@@ -545,17 +546,22 @@ pub async fn invoke_function(
                     rt.block_on(executor.lock())
                 } else {
                     // Fallback: create a new runtime for the blocking task
-                    tokio::runtime::Runtime::new().unwrap().block_on(executor.lock())
+                    tokio::runtime::Runtime::new()
+                        .expect("Failed to create tokio runtime")
+                        .block_on(executor.lock())
                 };
                 exec.execute(py_config, payload)
-            }).await
-                .map_err(|e| (
+            })
+            .await
+            .map_err(|e| {
+                (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(ErrorResponse {
                         error: "ExecutionError".to_string(),
                         message: format!("Task join error: {}", e),
                     }),
-                ))?
+                )
+            })?
         }
         Language::NodeJS => {
             // Node.js implements Runtime trait with GenericFunctionConfig
@@ -567,29 +573,49 @@ pub async fn invoke_function(
             )
             .with_memory_limit(function.memory_mb)
             .with_timeout(function.timeout_ms / 1000);
-            
+
             let executor = state.nodejs_executor().lock().await;
             executor.execute(&config, request.payload.clone()).await
         }
         Language::Java => {
-            return Err((
-                StatusCode::NOT_IMPLEMENTED,
-                Json(ErrorResponse {
-                    error: "NotImplemented".to_string(),
-                    message: "Java runtime not yet implemented".to_string(),
-                }),
-            ));
+            // Check if Java executor is available
+            let java_exec = match state.java_executor() {
+                Some(exec) => exec,
+                None => {
+                    return Err((
+                        StatusCode::NOT_IMPLEMENTED,
+                        Json(ErrorResponse {
+                            error: "NotImplemented".to_string(),
+                            message:
+                                "Java runtime not available. Please install JDK 11, 17, or 21."
+                                    .to_string(),
+                        }),
+                    ));
+                }
+            };
+
+            let config = nanolambda_runtime::types::GenericFunctionConfig::new(
+                function.name.clone(),
+                Language::Java,
+                function.code.clone(),
+                function.handler.clone(),
+            )
+            .with_memory_limit(function.memory_mb)
+            .with_timeout(function.timeout_ms / 1000);
+
+            let executor = java_exec.lock().await;
+            executor.execute(&config, request.payload.clone()).await
         }
     };
-    
+
     // 5. Process execution result
     match execution_result {
         Ok(exec_result) => {
             let completed_at = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_else(|_| std::time::Duration::from_secs(0))
                 .as_secs() as i64;
-            
+
             // Record invocation in database
             let invocation_record = InvocationRecord {
                 function_id: function.id,
@@ -606,12 +632,12 @@ pub async fn invoke_function(
                 cold_start: exec_result.metrics.is_cold_start,
                 error_message: exec_result.error.clone(),
             };
-            
+
             if let Err(e) = state.storage().record_invocation(invocation_record) {
                 error!("Failed to record invocation: {}", e);
                 // Continue anyway - execution succeeded
             }
-            
+
             // Record metrics
             let metrics_point = crate::metrics::MetricPoint {
                 timestamp: completed_at,
@@ -625,7 +651,7 @@ pub async fn invoke_function(
                 },
             };
             state.metrics().record(metrics_point).await;
-            
+
             // Record usage for billing (in-memory tracker)
             let usage_record = crate::usage_tracker::UsageRecord {
                 timestamp: completed_at,
@@ -637,7 +663,7 @@ pub async fn invoke_function(
                 success: exec_result.success,
             };
             state.usage_tracker().record(usage_record).await;
-            
+
             // Also record to persistent database (async, non-blocking)
             if let Some(usage_db) = state.usage_db() {
                 // Get tier-specific pricing (if user has a tier), otherwise use dynamic pricing
@@ -647,7 +673,7 @@ pub async fn invoke_function(
                         let inv_cost = tier_config.calculate_invocation_cost(1);
                         let comp_cost = tier_config.calculate_compute_cost(
                             exec_result.metrics.memory_peak_mb as u32,
-                            exec_result.metrics.execution_ms as i64
+                            exec_result.metrics.execution_ms as i64,
                         );
                         (inv_cost, comp_cost)
                     } else {
@@ -660,7 +686,7 @@ pub async fn invoke_function(
                         let inv_cost = pricing.calculate_invocation_cost(1);
                         let comp_cost = pricing.calculate_compute_cost(
                             exec_result.metrics.memory_peak_mb as u32,
-                            exec_result.metrics.execution_ms as i64
+                            exec_result.metrics.execution_ms as i64,
                         );
                         (inv_cost, comp_cost)
                     }
@@ -674,13 +700,13 @@ pub async fn invoke_function(
                     let inv_cost = pricing.calculate_invocation_cost(1);
                     let comp_cost = pricing.calculate_compute_cost(
                         exec_result.metrics.memory_peak_mb as u32,
-                        exec_result.metrics.execution_ms as i64
+                        exec_result.metrics.execution_ms as i64,
                     );
                     (inv_cost, comp_cost)
                 };
-                
+
                 let total_cost = invocation_cost + compute_cost;
-                
+
                 let event = nanolambda_storage::usage_db::UsageEvent {
                     id: None,
                     timestamp: completed_at,
@@ -697,7 +723,7 @@ pub async fn invoke_function(
                 };
                 usage_db.record_event(event);
             }
-            
+
             // Increment trial and tier counters (async, non-blocking)
             if !api_key.is_empty() {
                 if let Some(trial_mgr) = state.trial_manager() {
@@ -709,25 +735,29 @@ pub async fn invoke_function(
                         }
                     });
                 }
-                
+
                 if let Some(tier_mgr) = state.tier_manager() {
                     let tier_mgr_clone = tier_mgr.clone();
                     let api_key_clone = api_key.clone();
                     tokio::spawn(async move {
-                        if let Err(e) = tier_mgr_clone.increment_monthly_invocations(&api_key_clone).await {
+                        if let Err(e) = tier_mgr_clone
+                            .increment_monthly_invocations(&api_key_clone)
+                            .await
+                        {
                             error!("Failed to increment tier monthly counter: {}", e);
                         }
                     });
                 }
             }
-            
+
             // Parse result string to JSON
             let result_value = if let Some(ref result_str) = exec_result.result {
-                serde_json::from_str(result_str).unwrap_or(serde_json::Value::String(result_str.clone()))
+                serde_json::from_str(result_str)
+                    .unwrap_or(serde_json::Value::String(result_str.clone()))
             } else {
                 serde_json::Value::Null
             };
-            
+
             // Return response
             if exec_result.success {
                 Ok(Json(InvokeResponse {
@@ -757,13 +787,13 @@ pub async fn invoke_function(
         }
         Err(e) => {
             error!("Function execution error: {}", e);
-            
+
             // Record failed invocation
             let completed_at = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_else(|_| std::time::Duration::from_secs(0))
                 .as_secs() as i64;
-            
+
             let invocation_record = InvocationRecord {
                 function_id: function.id,
                 request_id: request_id.clone(),
@@ -775,11 +805,11 @@ pub async fn invoke_function(
                 cold_start: false,
                 error_message: Some(e.to_string()),
             };
-            
+
             if let Err(err) = state.storage().record_invocation(invocation_record) {
                 error!("Failed to record failed invocation: {}", err);
             }
-            
+
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
@@ -841,7 +871,7 @@ pub async fn list_function_versions(
     Path(name): Path<String>,
 ) -> Result<Json<ListVersionsResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Listing versions for function: {}", name);
-    
+
     match state.storage().list_function_versions(&name) {
         Ok(functions) => {
             let versions: Vec<VersionResponse> = functions
@@ -860,7 +890,7 @@ pub async fn list_function_versions(
                     updated_at: f.updated_at,
                 })
                 .collect();
-            
+
             let count = versions.len();
             Ok(Json(ListVersionsResponse { versions, count }))
         }
@@ -883,7 +913,7 @@ pub async fn get_function_version(
     Path((name, version)): Path<(String, i64)>,
 ) -> Result<Json<VersionResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Getting function {} version {}", name, version);
-    
+
     match state.storage().get_function_by_version(&name, version) {
         Ok(Some(f)) => Ok(Json(VersionResponse {
             id: f.id,
@@ -925,7 +955,7 @@ pub async fn publish_function_version(
     Json(request): Json<PublishVersionRequest>,
 ) -> Result<Json<VersionResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Publishing new version for function: {}", name);
-    
+
     // Create config for new version
     let config = StorageFunctionConfig {
         name: name.clone(),
@@ -936,11 +966,14 @@ pub async fn publish_function_version(
         timeout_ms: request.timeout_ms,
         environment: request.environment,
     };
-    
+
     match state.storage().publish_version(&name, config) {
         Ok(new_id) => {
-            info!("Published new version for function '{}' with id {}", name, new_id);
-            
+            info!(
+                "Published new version for function '{}' with id {}",
+                name, new_id
+            );
+
             // Get the newly created version to return
             match state.storage().get_function(&name) {
                 Ok(Some(f)) => Ok(Json(VersionResponse {
@@ -992,7 +1025,7 @@ pub async fn publish_function_version(
 // API Key Management Handlers
 // ============================================================================
 
-use nanolambda_storage::{CreateApiKeyRequest, ApiKey};
+use nanolambda_storage::{ApiKey, CreateApiKeyRequest};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateKeyResponse {
@@ -1044,13 +1077,15 @@ pub async fn create_api_key(
     match state.storage().create_api_key(request) {
         Ok(key) => {
             info!("Created API key '{}' with id {}", key.name, key.id);
-            
+
             // Auto-start trial for new API keys
             if let Some(trial_mgr) = state.trial_manager() {
                 match trial_mgr.start_trial(&key.key).await {
                     Ok(trial) => {
-                        info!("Started 14-day trial for API key {}: {} days, {} invocations remaining", 
-                            key.id, trial.days_remaining, trial.invocations_remaining);
+                        info!(
+                            "Started 14-day trial for API key {}: {} days, {} invocations remaining",
+                            key.id, trial.days_remaining, trial.invocations_remaining
+                        );
                     }
                     Err(e) => {
                         // Log error but don't fail key creation
@@ -1058,7 +1093,7 @@ pub async fn create_api_key(
                     }
                 }
             }
-            
+
             Ok(Json(CreateKeyResponse {
                 id: key.id,
                 key: key.key,
@@ -1150,7 +1185,7 @@ pub async fn get_metrics(
     let last_hour = state.metrics().get_metrics(3600).await;
     let last_24h = state.metrics().get_metrics(86400).await;
     let all_time = state.metrics().get_all_time_metrics().await;
-    
+
     Ok(Json(MetricsResponse {
         last_hour,
         last_24h,
@@ -1187,13 +1222,27 @@ pub async fn get_dashboard_file(
         "js/api.js" => include_bytes!("../dashboard/js/api.js").to_vec(),
         "js/store.js" => include_bytes!("../dashboard/js/store.js").to_vec(),
         "js/app.js" => include_bytes!("../dashboard/js/app.js").to_vec(),
-        "js/components/MetricCard.js" => include_bytes!("../dashboard/js/components/MetricCard.js").to_vec(),
-        "js/components/StatsGrid.js" => include_bytes!("../dashboard/js/components/StatsGrid.js").to_vec(),
-        "js/components/ChartsPanel.js" => include_bytes!("../dashboard/js/components/ChartsPanel.js").to_vec(),
-        "js/components/AnalyticsModal.js" => include_bytes!("../dashboard/js/components/AnalyticsModal.js").to_vec(),
-        "js/components/CLVModal.js" => include_bytes!("../dashboard/js/components/CLVModal.js").to_vec(),
-        "js/components/ChurnModal.js" => include_bytes!("../dashboard/js/components/ChurnModal.js").to_vec(),
-        "js/components/PaymentRetryModal.js" => include_bytes!("../dashboard/js/components/PaymentRetryModal.js").to_vec(),
+        "js/components/MetricCard.js" => {
+            include_bytes!("../dashboard/js/components/MetricCard.js").to_vec()
+        }
+        "js/components/StatsGrid.js" => {
+            include_bytes!("../dashboard/js/components/StatsGrid.js").to_vec()
+        }
+        "js/components/ChartsPanel.js" => {
+            include_bytes!("../dashboard/js/components/ChartsPanel.js").to_vec()
+        }
+        "js/components/AnalyticsModal.js" => {
+            include_bytes!("../dashboard/js/components/AnalyticsModal.js").to_vec()
+        }
+        "js/components/CLVModal.js" => {
+            include_bytes!("../dashboard/js/components/CLVModal.js").to_vec()
+        }
+        "js/components/ChurnModal.js" => {
+            include_bytes!("../dashboard/js/components/ChurnModal.js").to_vec()
+        }
+        "js/components/PaymentRetryModal.js" => {
+            include_bytes!("../dashboard/js/components/PaymentRetryModal.js").to_vec()
+        }
         "css/main.css" => include_bytes!("../dashboard/css/main.css").to_vec(),
         "css/components.css" => include_bytes!("../dashboard/css/components.css").to_vec(),
         _ => return Err(StatusCode::NOT_FOUND),
@@ -1202,19 +1251,19 @@ pub async fn get_dashboard_file(
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(
         axum::http::header::CONTENT_TYPE,
-        content_type.parse().unwrap(),
+        content_type
+            .parse()
+            .unwrap_or_else(|_| "application/octet-stream".parse().unwrap()),
     );
 
     Ok((StatusCode::OK, headers, content))
 }
 
 /// GET /concurrency - Get concurrency statistics
-pub async fn get_concurrency_stats(
-    State(state): State<Arc<ApiServer>>,
-) -> Json<serde_json::Value> {
+pub async fn get_concurrency_stats(State(state): State<Arc<ApiServer>>) -> Json<serde_json::Value> {
     let global_stats = state.concurrency().get_global_stats();
     let function_stats = state.concurrency().get_all_stats().await;
-    
+
     Json(serde_json::json!({
         "global": {
             "max_concurrent": global_stats.max_global_concurrent,
@@ -1236,12 +1285,15 @@ pub async fn get_rate_limit_status(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     let status = state.rate_limiter().get_status(&api_key).await;
-    
+
     Ok(Json(serde_json::json!({
-        "tier": serde_json::to_value(&status.tier).unwrap(),
+        "tier": serde_json::to_value(status.tier).unwrap_or(serde_json::json!("Free")),
         "available_tokens": status.available_tokens,
         "capacity": status.capacity,
         "refill_rate": format!("{:.2}/sec", status.refill_rate),
@@ -1254,20 +1306,20 @@ pub async fn get_all_rate_limit_stats(
     State(state): State<Arc<ApiServer>>,
 ) -> Json<serde_json::Value> {
     let all_stats = state.rate_limiter().get_all_stats().await;
-    
+
     let stats_json: Vec<_> = all_stats
         .into_iter()
         .map(|(key, status)| {
             serde_json::json!({
                 "api_key": key,
-                "tier": serde_json::to_value(&status.tier).unwrap(),
+                "tier": serde_json::to_value(status.tier).unwrap_or(serde_json::json!("Free")),
                 "available_tokens": status.available_tokens,
                 "capacity": status.capacity,
                 "refill_rate_per_min": format!("{:.0}/min", status.refill_rate * 60.0),
             })
         })
         .collect();
-    
+
     Json(serde_json::json!({ "rate_limits": stats_json }))
 }
 
@@ -1283,7 +1335,7 @@ pub async fn set_rate_limit_tier(
     Json(request): Json<SetTierRequest>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     use crate::rate_limiter::RateLimitTier;
-    
+
     let tier = match request.tier.to_lowercase().as_str() {
         "free" => RateLimitTier::Free,
         "hobby" => RateLimitTier::Hobby,
@@ -1295,14 +1347,17 @@ pub async fn set_rate_limit_tier(
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse {
                     error: "InvalidTier".to_string(),
-                    message: format!("Unknown tier: {}. Valid: free, hobby, developer, production, enterprise", request.tier),
+                    message: format!(
+                        "Unknown tier: {}. Valid: free, hobby, developer, production, enterprise",
+                        request.tier
+                    ),
                 }),
             ));
         }
     };
-    
+
     state.rate_limiter().set_tier(&request.api_key, tier).await;
-    
+
     Ok(StatusCode::OK)
 }
 
@@ -1316,10 +1371,15 @@ pub async fn get_usage_stats(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     match state.usage_tracker().get_stats(&api_key).await {
-        Some(stats) => Ok(Json(serde_json::to_value(&stats).unwrap())),
+        Some(stats) => Ok(Json(
+            serde_json::to_value(&stats).unwrap_or_else(|_| serde_json::json!({})),
+        )),
         None => Ok(Json(serde_json::json!({
             "api_key": api_key,
             "total_invocations": 0,
@@ -1334,13 +1394,18 @@ pub async fn get_billing_info(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     match state.usage_tracker().get_stats(&api_key).await {
         Some(stats) => {
             let billing = crate::usage_tracker::UsageTracker::calculate_bill(&stats);
-            Ok(Json(serde_json::to_value(&billing).unwrap()))
-        },
+            Ok(Json(
+                serde_json::to_value(&billing).unwrap_or_else(|_| serde_json::json!({})),
+            ))
+        }
         None => Ok(Json(serde_json::json!({
             "api_key": api_key,
             "total_cost": 0.0,
@@ -1350,11 +1415,9 @@ pub async fn get_billing_info(
 }
 
 /// GET /usage/all - Get usage stats for all API keys (admin)
-pub async fn get_all_usage_stats(
-    State(state): State<Arc<ApiServer>>,
-) -> Json<serde_json::Value> {
+pub async fn get_all_usage_stats(State(state): State<Arc<ApiServer>>) -> Json<serde_json::Value> {
     let all_stats = state.usage_tracker().get_all_stats().await;
-    
+
     let stats_with_billing: Vec<_> = all_stats
         .iter()
         .map(|stats| {
@@ -1372,7 +1435,7 @@ pub async fn get_all_usage_stats(
             })
         })
         .collect();
-    
+
     Json(serde_json::json!({
         "usage_stats": stats_with_billing,
         "total_customers": all_stats.len(),
@@ -1425,11 +1488,18 @@ pub async fn update_pricing(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     if let Some(pricing_mgr) = state.pricing() {
         let current = pricing_mgr.get_pricing().await;
-        
-        let new_invocation_price = request.price_per_invocation.unwrap_or(current.price_per_invocation);
-        let new_gb_second_price = request.price_per_gb_second.unwrap_or(current.price_per_gb_second);
-        
-        match pricing_mgr.update_pricing(new_invocation_price, new_gb_second_price, request.notes).await {
+
+        let new_invocation_price = request
+            .price_per_invocation
+            .unwrap_or(current.price_per_invocation);
+        let new_gb_second_price = request
+            .price_per_gb_second
+            .unwrap_or(current.price_per_gb_second);
+
+        match pricing_mgr
+            .update_pricing(new_invocation_price, new_gb_second_price, request.notes)
+            .await
+        {
             Ok(pricing) => Ok(Json(serde_json::json!({
                 "success": true,
                 "message": "Pricing updated successfully",
@@ -1465,23 +1535,26 @@ pub async fn get_pricing_history(
     if let Some(pricing_mgr) = state.pricing() {
         match pricing_mgr.get_pricing_history().await {
             Ok(history) => {
-                let formatted: Vec<_> = history.iter().map(|p| {
-                    serde_json::json!({
-                        "version": p.version,
-                        "price_per_invocation": p.price_per_invocation,
-                        "price_per_1m_invocations": p.price_per_invocation * 1_000_000.0,
-                        "price_per_gb_second": p.price_per_gb_second,
-                        "effective_date": p.effective_date,
-                        "notes": p.notes,
-                        "is_active": p.is_active,
+                let formatted: Vec<_> = history
+                    .iter()
+                    .map(|p| {
+                        serde_json::json!({
+                            "version": p.version,
+                            "price_per_invocation": p.price_per_invocation,
+                            "price_per_1m_invocations": p.price_per_invocation * 1_000_000.0,
+                            "price_per_gb_second": p.price_per_gb_second,
+                            "effective_date": p.effective_date,
+                            "notes": p.notes,
+                            "is_active": p.is_active,
+                        })
                     })
-                }).collect();
-                
+                    .collect();
+
                 Ok(Json(serde_json::json!({
                     "history": formatted,
                     "count": history.len(),
                 })))
-            },
+            }
             Err(e) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
@@ -1501,7 +1574,6 @@ pub async fn get_pricing_history(
     }
 }
 
-
 // ============================================================================
 // Trial Period Management
 // ============================================================================
@@ -1512,8 +1584,11 @@ pub async fn get_trial_status(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -1523,29 +1598,25 @@ pub async fn get_trial_status(
             }),
         ));
     }
-    
+
     if let Some(trial_mgr) = state.trial_manager() {
         match trial_mgr.get_trial_status(&api_key).await {
-            Ok(trial) => {
-                Ok(Json(serde_json::json!({
-                    "trial_active": trial.trial_active,
-                    "trial_valid": trial.is_valid(),
-                    "trial_start": trial.trial_start,
-                    "trial_end": trial.trial_end,
-                    "days_remaining": trial.days_remaining,
-                    "invocations_used": trial.invocations_used,
-                    "invocations_remaining": trial.invocations_remaining,
-                    "invocation_limit": 100_000,
-                    "expiration_reason": trial.expiration_reason(),
-                })))
-            }
-            Err(_) => {
-                Ok(Json(serde_json::json!({
-                    "trial_active": false,
-                    "trial_valid": false,
-                    "message": "No trial period found for this API key",
-                })))
-            }
+            Ok(trial) => Ok(Json(serde_json::json!({
+                "trial_active": trial.trial_active,
+                "trial_valid": trial.is_valid(),
+                "trial_start": trial.trial_start,
+                "trial_end": trial.trial_end,
+                "days_remaining": trial.days_remaining,
+                "invocations_used": trial.invocations_used,
+                "invocations_remaining": trial.invocations_remaining,
+                "invocation_limit": 100_000,
+                "expiration_reason": trial.expiration_reason(),
+            }))),
+            Err(_) => Ok(Json(serde_json::json!({
+                "trial_active": false,
+                "trial_valid": false,
+                "message": "No trial period found for this API key",
+            }))),
         }
     } else {
         Err((
@@ -1565,20 +1636,23 @@ pub async fn get_all_trials(
     if let Some(trial_mgr) = state.trial_manager() {
         match trial_mgr.get_all_active_trials().await {
             Ok(trials) => {
-                let formatted: Vec<_> = trials.iter().map(|t| {
-                    serde_json::json!({
-                        "api_key": t.api_key,
-                        "trial_active": t.trial_active,
-                        "trial_valid": t.is_valid(),
-                        "trial_start": t.trial_start,
-                        "trial_end": t.trial_end,
-                        "days_remaining": t.days_remaining,
-                        "invocations_used": t.invocations_used,
-                        "invocations_remaining": t.invocations_remaining,
-                        "expiration_reason": t.expiration_reason(),
+                let formatted: Vec<_> = trials
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "api_key": t.api_key,
+                            "trial_active": t.trial_active,
+                            "trial_valid": t.is_valid(),
+                            "trial_start": t.trial_start,
+                            "trial_end": t.trial_end,
+                            "days_remaining": t.days_remaining,
+                            "invocations_used": t.invocations_used,
+                            "invocations_remaining": t.invocations_remaining,
+                            "expiration_reason": t.expiration_reason(),
+                        })
                     })
-                }).collect();
-                
+                    .collect();
+
                 Ok(Json(serde_json::json!({
                     "trials": formatted,
                     "count": trials.len(),
@@ -1590,7 +1664,7 @@ pub async fn get_all_trials(
                     error: "TrialFetchFailed".to_string(),
                     message: format!("Failed to fetch trials: {}", e),
                 }),
-            ))
+            )),
         }
     } else {
         Err((
@@ -1603,7 +1677,6 @@ pub async fn get_all_trials(
     }
 }
 
-
 // ============================================================================
 // Tier Management
 // ============================================================================
@@ -1614,8 +1687,11 @@ pub async fn get_current_tier(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -1625,7 +1701,7 @@ pub async fn get_current_tier(
             }),
         ));
     }
-    
+
     if let Some(tier_mgr) = state.tier_manager() {
         match tier_mgr.get_user_tier(&api_key).await {
             Ok(user_tier) => {
@@ -1682,32 +1758,35 @@ pub async fn get_tier_plans(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     if let Some(tier_mgr) = state.tier_manager() {
         let tiers = tier_mgr.get_all_tiers().await;
-        
-        let plans: Vec<_> = tiers.iter().map(|t| {
-            serde_json::json!({
-                "tier": t.tier,
-                "name": t.name,
-                "description": t.description,
-                "pricing": {
-                    "price_per_invocation": t.price_per_invocation,
-                    "price_per_1m_invocations": t.price_per_invocation * 1_000_000.0,
-                    "price_per_gb_second": t.price_per_gb_second,
-                },
-                "limits": {
-                    "max_invocations_per_month": t.max_invocations_per_month,
-                    "max_memory_mb": t.max_memory_mb,
-                    "max_timeout_ms": t.max_timeout_ms,
-                    "max_concurrent_executions": t.max_concurrent_executions,
-                },
-                "features": {
-                    "support_level": t.support_level,
-                    "custom_domains": t.custom_domains,
-                    "advanced_monitoring": t.advanced_monitoring,
-                    "priority_execution": t.priority_execution,
-                }
+
+        let plans: Vec<_> = tiers
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "tier": t.tier,
+                    "name": t.name,
+                    "description": t.description,
+                    "pricing": {
+                        "price_per_invocation": t.price_per_invocation,
+                        "price_per_1m_invocations": t.price_per_invocation * 1_000_000.0,
+                        "price_per_gb_second": t.price_per_gb_second,
+                    },
+                    "limits": {
+                        "max_invocations_per_month": t.max_invocations_per_month,
+                        "max_memory_mb": t.max_memory_mb,
+                        "max_timeout_ms": t.max_timeout_ms,
+                        "max_concurrent_executions": t.max_concurrent_executions,
+                    },
+                    "features": {
+                        "support_level": t.support_level,
+                        "custom_domains": t.custom_domains,
+                        "advanced_monitoring": t.advanced_monitoring,
+                        "priority_execution": t.priority_execution,
+                    }
+                })
             })
-        }).collect();
-        
+            .collect();
+
         Ok(Json(serde_json::json!({
             "plans": plans,
             "count": tiers.len(),
@@ -1729,8 +1808,11 @@ pub async fn upgrade_tier(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -1740,42 +1822,50 @@ pub async fn upgrade_tier(
             }),
         ));
     }
-    
+
     // Parse request body
     let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
-        .map_err(|e| (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "InvalidRequest".to_string(),
-                message: format!("Failed to read request body: {}", e),
-            }),
-        ))?;
-    
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidRequest".to_string(),
+                    message: format!("Failed to read request body: {}", e),
+                }),
+            )
+        })?;
+
     #[derive(serde::Deserialize)]
     struct UpgradeRequest {
         tier: String,
     }
-    
-    let upgrade_req: UpgradeRequest = serde_json::from_slice(&bytes)
-        .map_err(|e| (
+
+    let upgrade_req: UpgradeRequest = serde_json::from_slice(&bytes).map_err(|e| {
+        (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "InvalidRequest".to_string(),
                 message: format!("Invalid JSON: {}", e),
             }),
-        ))?;
-    
+        )
+    })?;
+
     if let Some(tier_mgr) = state.tier_manager() {
-        let new_tier = nanolambda_storage::tier::TierLevel::from_str(&upgrade_req.tier)
-            .ok_or_else(|| (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "InvalidTier".to_string(),
-                    message: format!("Invalid tier: {}. Must be 'starter', 'pro', or 'enterprise'", upgrade_req.tier),
-                }),
-            ))?;
-        
+        let new_tier =
+            nanolambda_storage::tier::TierLevel::from_str(&upgrade_req.tier).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "InvalidTier".to_string(),
+                        message: format!(
+                            "Invalid tier: {}. Must be 'starter', 'pro', or 'enterprise'",
+                            upgrade_req.tier
+                        ),
+                    }),
+                )
+            })?;
+
         match tier_mgr.upgrade_tier(&api_key, new_tier).await {
             Ok(user_tier) => {
                 let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
@@ -1793,7 +1883,7 @@ pub async fn upgrade_tier(
                     error: "UpgradeFailed".to_string(),
                     message: format!("Failed to upgrade tier: {}", e),
                 }),
-            ))
+            )),
         }
     } else {
         Err((
@@ -1812,8 +1902,11 @@ pub async fn get_upgrade_recommendation(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -1823,39 +1916,35 @@ pub async fn get_upgrade_recommendation(
             }),
         ));
     }
-    
+
     if let Some(tier_mgr) = state.tier_manager() {
         match tier_mgr.get_upgrade_recommendation(&api_key).await {
-            Ok(Some(recommendation)) => {
-                Ok(Json(serde_json::json!({
-                    "success": true,
-                    "has_recommendation": true,
-                    "recommendation": {
-                        "current_tier": recommendation.current_tier.as_str(),
-                        "recommended_tier": recommendation.recommended_tier.as_str(),
-                        "urgency": recommendation.urgency,
-                        "usage_percent": recommendation.usage_percent,
-                        "current_usage": recommendation.current_usage,
-                        "current_limit": recommendation.current_limit,
-                        "reasons": recommendation.reasons,
-                        "estimated_savings": recommendation.estimated_savings,
-                    }
-                })))
-            }
-            Ok(None) => {
-                Ok(Json(serde_json::json!({
-                    "success": true,
-                    "has_recommendation": false,
-                    "message": "No upgrade recommended at this time"
-                })))
-            }
+            Ok(Some(recommendation)) => Ok(Json(serde_json::json!({
+                "success": true,
+                "has_recommendation": true,
+                "recommendation": {
+                    "current_tier": recommendation.current_tier.as_str(),
+                    "recommended_tier": recommendation.recommended_tier.as_str(),
+                    "urgency": recommendation.urgency,
+                    "usage_percent": recommendation.usage_percent,
+                    "current_usage": recommendation.current_usage,
+                    "current_limit": recommendation.current_limit,
+                    "reasons": recommendation.reasons,
+                    "estimated_savings": recommendation.estimated_savings,
+                }
+            }))),
+            Ok(None) => Ok(Json(serde_json::json!({
+                "success": true,
+                "has_recommendation": false,
+                "message": "No upgrade recommended at this time"
+            }))),
             Err(e) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: "RecommendationFailed".to_string(),
                     message: format!("Failed to get recommendation: {}", e),
                 }),
-            ))
+            )),
         }
     } else {
         Err((
@@ -1875,8 +1964,11 @@ pub async fn get_upgrade_preview(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -1886,31 +1978,35 @@ pub async fn get_upgrade_preview(
             }),
         ));
     }
-    
-    let target_tier_str = params.get("tier").ok_or_else(|| (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: "MissingParameter".to_string(),
-            message: "Query parameter 'tier' is required".to_string(),
-        }),
-    ))?;
-    
+
+    let target_tier_str = params.get("tier").ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "MissingParameter".to_string(),
+                message: "Query parameter 'tier' is required".to_string(),
+            }),
+        )
+    })?;
+
     if let Some(tier_mgr) = state.tier_manager() {
-        let target_tier = nanolambda_storage::tier::TierLevel::from_str(target_tier_str)
-            .ok_or_else(|| (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "InvalidTier".to_string(),
-                    message: format!("Invalid tier: {}", target_tier_str),
-                }),
-            ))?;
-        
+        let target_tier =
+            nanolambda_storage::tier::TierLevel::from_str(target_tier_str).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "InvalidTier".to_string(),
+                        message: format!("Invalid tier: {}", target_tier_str),
+                    }),
+                )
+            })?;
+
         // Get current and target tier configs
         match tier_mgr.get_user_tier(&api_key).await {
             Ok(user_tier) => {
                 let current_config = tier_mgr.get_tier_config(user_tier.tier).await;
                 let target_config = tier_mgr.get_tier_config(target_tier).await;
-                
+
                 // Calculate differences
                 let invocation_increase = if let (Some(current), Some(target)) = (
                     current_config.max_invocations_per_month,
@@ -1920,11 +2016,13 @@ pub async fn get_upgrade_preview(
                 } else {
                     0
                 };
-                
-                let memory_increase = target_config.max_memory_mb as i64 - current_config.max_memory_mb as i64;
+
+                let memory_increase =
+                    target_config.max_memory_mb as i64 - current_config.max_memory_mb as i64;
                 let timeout_increase = target_config.max_timeout_ms - current_config.max_timeout_ms;
-                let concurrent_increase = target_config.max_concurrent_executions as i64 - current_config.max_concurrent_executions as i64;
-                
+                let concurrent_increase = target_config.max_concurrent_executions as i64
+                    - current_config.max_concurrent_executions as i64;
+
                 // Build features comparison
                 let mut new_features = Vec::new();
                 if !current_config.custom_domains && target_config.custom_domains {
@@ -1939,7 +2037,7 @@ pub async fn get_upgrade_preview(
                 if current_config.support_level != target_config.support_level {
                     new_features.push("Enhanced support");
                 }
-                
+
                 Ok(Json(serde_json::json!({
                     "success": true,
                     "current": {
@@ -1985,7 +2083,7 @@ pub async fn get_upgrade_preview(
                     error: "PreviewFailed".to_string(),
                     message: format!("Failed to generate preview: {}", e),
                 }),
-            ))
+            )),
         }
     } else {
         Err((
@@ -2008,8 +2106,11 @@ pub async fn list_invoices(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2021,7 +2122,11 @@ pub async fn list_invoices(
     }
 
     // Get invoices from database
-    match state.invoice_manager.list_invoices(&api_key, Some(100), None).await {
+    match state
+        .invoice_manager
+        .list_invoices(&api_key, Some(100), None)
+        .await
+    {
         Ok(invoices) => Ok(Json(json!({
             "success": true,
             "invoices": invoices,
@@ -2044,8 +2149,11 @@ pub async fn get_invoice(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2071,7 +2179,10 @@ pub async fn get_invoice(
             }
 
             // Get line items
-            let line_items = state.invoice_manager.get_line_items(invoice_id).await
+            let line_items = state
+                .invoice_manager
+                .get_line_items(invoice_id)
+                .await
                 .unwrap_or_default();
 
             Ok(Json(json!({
@@ -2079,7 +2190,7 @@ pub async fn get_invoice(
                 "invoice": invoice,
                 "line_items": line_items,
             })))
-        },
+        }
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -2103,8 +2214,11 @@ pub async fn get_invoice_summary(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2138,8 +2252,11 @@ pub async fn sync_invoice(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2151,7 +2268,11 @@ pub async fn sync_invoice(
     }
 
     // Sync invoice from Stripe
-    match state.invoice_manager.sync_stripe_invoice(&stripe_invoice_id).await {
+    match state
+        .invoice_manager
+        .sync_stripe_invoice(&stripe_invoice_id)
+        .await
+    {
         Ok(Some(invoice)) => {
             // Verify the invoice belongs to this user
             if invoice.api_key != api_key {
@@ -2169,7 +2290,7 @@ pub async fn sync_invoice(
                 "invoice": invoice,
                 "message": "Invoice synced successfully",
             })))
-        },
+        }
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -2213,8 +2334,11 @@ pub async fn create_customer(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2224,60 +2348,70 @@ pub async fn create_customer(
             }),
         ));
     }
-    
+
     // Parse request body
     let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
-        .map_err(|e| (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "InvalidRequest".to_string(),
-                message: format!("Failed to read request body: {}", e),
-            }),
-        ))?;
-    
-    let req: CreateCustomerRequest = serde_json::from_slice(&bytes)
-        .map_err(|e| (
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidRequest".to_string(),
+                    message: format!("Failed to read request body: {}", e),
+                }),
+            )
+        })?;
+
+    let req: CreateCustomerRequest = serde_json::from_slice(&bytes).map_err(|e| {
+        (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "InvalidRequest".to_string(),
                 message: format!("Invalid JSON: {}", e),
             }),
-        ))?;
-    
+        )
+    })?;
+
     if let Some(payment_mgr) = state.payment_manager() {
-        let email = req.email.as_deref().ok_or_else(|| (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "InvalidRequest".to_string(),
-                message: "Email is required".to_string(),
-            }),
-        ))?;
-        
-        match payment_mgr.create_customer(&api_key, email, req.name.as_deref()).await {
+        let email = req.email.as_deref().ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidRequest".to_string(),
+                    message: "Email is required".to_string(),
+                }),
+            )
+        })?;
+
+        match payment_mgr
+            .create_customer(&api_key, email, req.name.as_deref())
+            .await
+        {
             Ok(customer_id) => {
                 // Get customer info from database
-                let customer = payment_mgr.get_customer(&api_key).await.map_err(|e| (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "DatabaseError".to_string(),
-                        message: format!("Failed to retrieve customer: {}", e),
-                    }),
-                ))?;
-                
+                let customer = payment_mgr.get_customer(&api_key).await.map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: "DatabaseError".to_string(),
+                            message: format!("Failed to retrieve customer: {}", e),
+                        }),
+                    )
+                })?;
+
                 Ok(Json(serde_json::json!({
                     "success": true,
                     "customer_id": customer_id,
                     "created_at": customer.map(|c| c.created_at).unwrap_or(0),
                 })))
-            },
+            }
             Err(e) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: "CustomerCreationFailed".to_string(),
                     message: format!("Failed to create customer: {}", e),
                 }),
-            ))
+            )),
         }
     } else {
         Err((
@@ -2296,8 +2430,11 @@ pub async fn get_customer_info(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2307,7 +2444,7 @@ pub async fn get_customer_info(
             }),
         ));
     }
-    
+
     if let Some(payment_mgr) = state.payment_manager() {
         match payment_mgr.get_customer(&api_key).await {
             Ok(Some(customer)) => Ok(Json(serde_json::json!({
@@ -2322,7 +2459,8 @@ pub async fn get_customer_info(
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
                     error: "CustomerNotFound".to_string(),
-                    message: "No customer record found. Please create a customer first.".to_string(),
+                    message: "No customer record found. Please create a customer first."
+                        .to_string(),
                 }),
             )),
             Err(e) => Err((
@@ -2331,7 +2469,7 @@ pub async fn get_customer_info(
                     error: "DatabaseError".to_string(),
                     message: format!("Failed to retrieve customer: {}", e),
                 }),
-            ))
+            )),
         }
     } else {
         Err((
@@ -2350,8 +2488,11 @@ pub async fn attach_payment_method(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2361,29 +2502,35 @@ pub async fn attach_payment_method(
             }),
         ));
     }
-    
+
     // Parse request body
     let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
-        .map_err(|e| (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "InvalidRequest".to_string(),
-                message: format!("Failed to read request body: {}", e),
-            }),
-        ))?;
-    
-    let req: AttachPaymentMethodRequest = serde_json::from_slice(&bytes)
-        .map_err(|e| (
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidRequest".to_string(),
+                    message: format!("Failed to read request body: {}", e),
+                }),
+            )
+        })?;
+
+    let req: AttachPaymentMethodRequest = serde_json::from_slice(&bytes).map_err(|e| {
+        (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "InvalidRequest".to_string(),
                 message: format!("Invalid JSON: {}", e),
             }),
-        ))?;
-    
+        )
+    })?;
+
     if let Some(payment_mgr) = state.payment_manager() {
-        match payment_mgr.attach_payment_method(&api_key, &req.payment_method_id).await {
+        match payment_mgr
+            .attach_payment_method(&api_key, &req.payment_method_id)
+            .await
+        {
             Ok(_) => Ok(Json(serde_json::json!({
                 "success": true,
                 "message": "Payment method attached successfully",
@@ -2395,7 +2542,7 @@ pub async fn attach_payment_method(
                     error: "PaymentMethodFailed".to_string(),
                     message: format!("Failed to attach payment method: {}", e),
                 }),
-            ))
+            )),
         }
     } else {
         Err((
@@ -2414,8 +2561,11 @@ pub async fn create_subscription(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2425,27 +2575,30 @@ pub async fn create_subscription(
             }),
         ));
     }
-    
+
     // Parse request body
     let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
-        .map_err(|e| (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "InvalidRequest".to_string(),
-                message: format!("Failed to read request body: {}", e),
-            }),
-        ))?;
-    
-    let req: CreateSubscriptionRequest = serde_json::from_slice(&bytes)
-        .map_err(|e| (
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidRequest".to_string(),
+                    message: format!("Failed to read request body: {}", e),
+                }),
+            )
+        })?;
+
+    let req: CreateSubscriptionRequest = serde_json::from_slice(&bytes).map_err(|e| {
+        (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "InvalidRequest".to_string(),
                 message: format!("Invalid JSON: {}", e),
             }),
-        ))?;
-    
+        )
+    })?;
+
     if let Some(payment_mgr) = state.payment_manager() {
         if let Some(tier_mgr) = state.tier_manager() {
             // Parse tier level
@@ -2454,34 +2607,41 @@ pub async fn create_subscription(
                 "starter" => TierLevel::Starter,
                 "pro" => TierLevel::Pro,
                 "enterprise" => TierLevel::Enterprise,
-                _ => return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse {
-                        error: "InvalidTier".to_string(),
-                        message: "Invalid tier. Must be 'starter', 'pro', or 'enterprise'".to_string(),
-                    }),
-                )),
+                _ => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(ErrorResponse {
+                            error: "InvalidTier".to_string(),
+                            message: "Invalid tier. Must be 'starter', 'pro', or 'enterprise'"
+                                .to_string(),
+                        }),
+                    ));
+                }
             };
-            
+
             // Get Stripe price IDs from environment
             use nanolambda_storage::payment::StripePriceIds;
-            let price_ids = StripePriceIds::from_env()
-                .map_err(|e| (
+            let price_ids = StripePriceIds::from_env().map_err(|e| {
+                (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(ErrorResponse {
                         error: "ConfigError".to_string(),
                         message: format!("Failed to load price configuration: {}", e),
                     }),
-                ))?;
-            
+                )
+            })?;
+
             // Create subscription
-            match payment_mgr.create_subscription(&api_key, &tier, &price_ids).await {
+            match payment_mgr
+                .create_subscription(&api_key, &tier, &price_ids)
+                .await
+            {
                 Ok(subscription) => {
                     // Assign tier to user
                     if let Err(e) = tier_mgr.assign_tier(&api_key, tier).await {
                         error!("Failed to assign tier after subscription: {}", e);
                     }
-                    
+
                     Ok(Json(serde_json::json!({
                         "success": true,
                         "subscription_id": subscription.id.to_string(),
@@ -2495,7 +2655,7 @@ pub async fn create_subscription(
                         error: "SubscriptionFailed".to_string(),
                         message: format!("Failed to create subscription: {}", e),
                     }),
-                ))
+                )),
             }
         } else {
             Err((
@@ -2523,8 +2683,11 @@ pub async fn cancel_subscription(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2534,7 +2697,7 @@ pub async fn cancel_subscription(
             }),
         ));
     }
-    
+
     if let Some(payment_mgr) = state.payment_manager() {
         match payment_mgr.cancel_subscription(&api_key).await {
             Ok(subscription) => Ok(Json(serde_json::json!({
@@ -2549,7 +2712,7 @@ pub async fn cancel_subscription(
                     error: "CancellationFailed".to_string(),
                     message: format!("Failed to cancel subscription: {}", e),
                 }),
-            ))
+            )),
         }
     } else {
         Err((
@@ -2573,26 +2736,32 @@ pub async fn stripe_webhook(
         let signature = headers
             .get("stripe-signature")
             .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "MissingSignature".to_string(),
-                    message: "Missing Stripe signature header".to_string(),
-                }),
-            ))?;
-        
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "MissingSignature".to_string(),
+                        message: "Missing Stripe signature header".to_string(),
+                    }),
+                )
+            })?;
+
         // Get webhook secret from environment
-        let webhook_secret = std::env::var("STRIPE_WEBHOOK_SECRET")
-            .map_err(|_| (
+        let webhook_secret = std::env::var("STRIPE_WEBHOOK_SECRET").map_err(|_| {
+            (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: "ConfigError".to_string(),
                     message: "Stripe webhook secret not configured".to_string(),
                 }),
-            ))?;
-        
+            )
+        })?;
+
         // Handle webhook event
-        match payment_mgr.handle_webhook(&body, signature, &webhook_secret).await {
+        match payment_mgr
+            .handle_webhook(&body, signature, &webhook_secret)
+            .await
+        {
             Ok(_) => Ok(Json(serde_json::json!({
                 "success": true,
                 "message": "Webhook processed successfully",
@@ -2625,8 +2794,11 @@ pub async fn report_metered_usage(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2636,35 +2808,41 @@ pub async fn report_metered_usage(
             }),
         ));
     }
-    
+
     #[derive(Deserialize)]
     struct ReportUsageRequest {
         quantity: i64,
         #[serde(default)]
         timestamp: Option<i64>,
     }
-    
+
     let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
-        .map_err(|e| (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "InvalidRequest".to_string(),
-                message: format!("Failed to read request body: {}", e),
-            }),
-        ))?;
-    
-    let req: ReportUsageRequest = serde_json::from_slice(&bytes)
-        .map_err(|e| (
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "InvalidRequest".to_string(),
+                    message: format!("Failed to read request body: {}", e),
+                }),
+            )
+        })?;
+
+    let req: ReportUsageRequest = serde_json::from_slice(&bytes).map_err(|e| {
+        (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "InvalidRequest".to_string(),
                 message: format!("Invalid JSON: {}", e),
             }),
-        ))?;
-    
+        )
+    })?;
+
     if let Some(payment_mgr) = state.payment_manager() {
-        match payment_mgr.report_usage(&api_key, req.quantity, req.timestamp).await {
+        match payment_mgr
+            .report_usage(&api_key, req.quantity, req.timestamp)
+            .await
+        {
             Ok(usage_record) => Ok(Json(serde_json::json!({
                 "success": true,
                 "usage_record_id": usage_record.id,
@@ -2677,7 +2855,7 @@ pub async fn report_metered_usage(
                     error: "UsageReportFailed".to_string(),
                     message: format!("Failed to report usage: {}", e),
                 }),
-            ))
+            )),
         }
     } else {
         Err((
@@ -2696,8 +2874,11 @@ pub async fn calculate_overage(
     req: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
-    let api_key = auth_ctx.as_ref().map(|ctx| ctx.api_key.clone()).unwrap_or_default();
-    
+    let api_key = auth_ctx
+        .as_ref()
+        .map(|ctx| ctx.api_key.clone())
+        .unwrap_or_default();
+
     if api_key.is_empty() {
         return Err((
             StatusCode::UNAUTHORIZED,
@@ -2707,7 +2888,7 @@ pub async fn calculate_overage(
             }),
         ));
     }
-    
+
     if let Some(payment_mgr) = state.payment_manager() {
         // Get current tier info
         if let Some(tier_mgr) = state.tier_manager() {
@@ -2717,15 +2898,18 @@ pub async fn calculate_overage(
                     let tier_config = tier_mgr.get_tier_config(user_tier.tier).await;
                     let tier_limit = tier_config.max_invocations_per_month;
                     let current_usage = user_tier.monthly_invocations;
-                    
-                    match payment_mgr.calculate_overage_cost(&api_key, current_usage, tier_limit).await {
+
+                    match payment_mgr
+                        .calculate_overage_cost(&api_key, current_usage, tier_limit)
+                        .await
+                    {
                         Ok(cost) => {
                             let overage = if let Some(limit) = tier_limit {
                                 std::cmp::max(0, current_usage - limit)
                             } else {
                                 0
                             };
-                            
+
                             Ok(Json(serde_json::json!({
                                 "success": true,
                                 "current_usage": current_usage,
@@ -2734,19 +2918,19 @@ pub async fn calculate_overage(
                                 "overage_cost": cost,
                                 "currency": "usd"
                             })))
-                        },
+                        }
                         Err(e) => Err((
                             StatusCode::INTERNAL_SERVER_ERROR,
                             Json(ErrorResponse {
                                 error: "CalculationFailed".to_string(),
                                 message: format!("Failed to calculate overage: {}", e),
                             }),
-                        ))
+                        )),
                     }
-                },
-                    Err(_) => {
-                        // No tier assigned, use trial limits or return 0
-                        Ok(Json(serde_json::json!({
+                }
+                Err(_) => {
+                    // No tier assigned, use trial limits or return 0
+                    Ok(Json(serde_json::json!({
                             "success": true,
                             "current_usage": 0,
                             "tier_limit": null,
@@ -2784,34 +2968,29 @@ pub async fn create_portal_session(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
 
-    let api_key = auth_ctx
-        .map(|ctx| ctx.api_key)
-        .ok_or_else(|| {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Unauthorized".to_string(),
-                    message: "API key required".to_string(),
-                }),
-            )
-        })?;
+    let api_key = auth_ctx.map(|ctx| ctx.api_key).ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "API key required".to_string(),
+            }),
+        )
+    })?;
 
     if let Some(payment_mgr) = state.payment_manager() {
         // Parse optional return URL from request body
-        let body_bytes = axum::body::to_bytes(
-            req.into_body(),
-            usize::MAX,
-        )
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "InvalidBody".to_string(),
-                    message: format!("Failed to read request body: {}", e),
-                }),
-            )
-        })?;
+        let body_bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "InvalidBody".to_string(),
+                        message: format!("Failed to read request body: {}", e),
+                    }),
+                )
+            })?;
 
         let return_url = if !body_bytes.is_empty() {
             #[derive(Deserialize)]
@@ -2873,17 +3052,15 @@ pub async fn check_usage_alerts(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
 
-    let api_key = auth_ctx
-        .map(|ctx| ctx.api_key)
-        .ok_or_else(|| {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Unauthorized".to_string(),
-                    message: "API key required".to_string(),
-                }),
-            )
-        })?;
+    let api_key = auth_ctx.map(|ctx| ctx.api_key).ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "API key required".to_string(),
+            }),
+        )
+    })?;
 
     if let Some(payment_mgr) = state.payment_manager() {
         match payment_mgr.check_usage_alerts(&api_key).await {
@@ -2937,17 +3114,15 @@ pub async fn get_usage_alerts(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let auth_ctx = req.extensions().get::<crate::auth::AuthContext>().cloned();
 
-    let api_key = auth_ctx
-        .map(|ctx| ctx.api_key)
-        .ok_or_else(|| {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse {
-                    error: "Unauthorized".to_string(),
-                    message: "API key required".to_string(),
-                }),
-            )
-        })?;
+    let api_key = auth_ctx.map(|ctx| ctx.api_key).ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+                message: "API key required".to_string(),
+            }),
+        )
+    })?;
 
     if let Some(payment_mgr) = state.payment_manager() {
         match payment_mgr.get_usage_alerts(&api_key).await {
@@ -2989,5 +3164,95 @@ pub async fn get_usage_alerts(
                 message: "Payment processing not available".to_string(),
             }),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn test_health_check() {
+        let response = health_check().await;
+        assert_eq!(response.0.status, "healthy");
+    }
+
+    #[test]
+    fn test_create_function_request_structure() {
+        let env_vars = HashMap::new();
+        let valid_request = CreateFunctionRequest {
+            name: "test_function".to_string(),
+            runtime: "python3.11".to_string(),
+            handler: "main.handler".to_string(),
+            code: "def handler(event, context): return event".to_string(),
+            memory_mb: 256,
+            timeout_ms: 30000,
+            environment: env_vars,
+        };
+
+        assert_eq!(valid_request.name, "test_function");
+        assert_eq!(valid_request.runtime, "python3.11");
+        assert_eq!(valid_request.memory_mb, 256);
+    }
+
+    #[test]
+    fn test_function_response_structure() {
+        let function_resp = FunctionResponse {
+            name: "my_function".to_string(),
+            runtime: "python3.11".to_string(),
+            handler: "main.handler".to_string(),
+            memory_mb: 256,
+            timeout_ms: 30000,
+            status: "active".to_string(),
+            created_at: 1234567890,
+            updated_at: 1234567890,
+        };
+
+        assert_eq!(function_resp.name, "my_function");
+        assert_eq!(function_resp.memory_mb, 256);
+        assert_eq!(function_resp.status, "active");
+    }
+
+    #[test]
+    fn test_error_response_structure() {
+        let error = ErrorResponse {
+            error: "ValidationError".to_string(),
+            message: "Invalid input".to_string(),
+        };
+
+        assert_eq!(error.error, "ValidationError");
+        assert_eq!(error.message, "Invalid input");
+    }
+
+    #[test]
+    fn test_health_response_structure() {
+        let health = HealthResponse {
+            status: "healthy".to_string(),
+            version: "1.0.0".to_string(),
+        };
+
+        assert_eq!(health.status, "healthy");
+    }
+
+    #[tokio::test]
+    async fn test_error_response_serialization() {
+        let error = ErrorResponse {
+            error: "NotFound".to_string(),
+            message: "Resource not found".to_string(),
+        };
+
+        let json = serde_json::to_string(&error).unwrap();
+        assert!(json.contains("NotFound"));
+        assert!(json.contains("Resource not found"));
+    }
+
+    #[test]
+    fn test_request_structures_are_sendable() {
+        // Verify key request types implement Send (required for async)
+        fn assert_send<T: Send>() {}
+        assert_send::<CreateFunctionRequest>();
+        assert_send::<ErrorResponse>();
+        assert_send::<HealthResponse>();
     }
 }

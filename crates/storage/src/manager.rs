@@ -2,10 +2,11 @@ use crate::error::{Result, StorageError};
 use crate::models::*;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 
@@ -190,36 +191,39 @@ impl StorageManager {
                     environment_json,
                     now,
                     "active",
-                    1, // reset to version 1
-                    true // mark as latest
+                    1,    // reset to version 1
+                    true  // mark as latest
                 ],
             )?;
-            info!("Recreated function '{}' with id {} at version 1 (was deleted)", config.name, id);
+            info!(
+                "Recreated function '{}' with id {} at version 1 (was deleted)",
+                config.name, id
+            );
             Ok(id)
         } else {
             // Create a new function at version 1
             conn.execute(
-            "INSERT INTO functions (
+                "INSERT INTO functions (
                 name, runtime, handler, code, code_hash,
                 memory_mb, timeout_ms, environment,
                 created_at, updated_at, status, version, is_latest
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![
-                config.name,
-                config.runtime,
-                config.handler,
-                config.code,
-                code_hash,
-                config.memory_mb as i64,
-                config.timeout_ms as i64,
-                environment_json,
-                now,
-                now,
-                "active",
-                1, // start at version 1
-                true // mark as latest
-            ],
-        )?;
+                params![
+                    config.name,
+                    config.runtime,
+                    config.handler,
+                    config.code,
+                    code_hash,
+                    config.memory_mb as i64,
+                    config.timeout_ms as i64,
+                    environment_json,
+                    now,
+                    now,
+                    "active",
+                    1,    // start at version 1
+                    true  // mark as latest
+                ],
+            )?;
 
             let id = conn.last_insert_rowid();
             info!("Created function '{}' with id {}", config.name, id);
@@ -261,7 +265,7 @@ impl StorageManager {
                         last_invoked_at: row.get(11)?,
                         invocation_count: row.get(12)?,
                         total_execution_time_ms: row.get(13)?,
-                        status: FunctionStatus::from_str(&row.get::<_, String>(14)?),
+                        status: FunctionStatus::from_str(&row.get::<_, String>(14)?).unwrap(),
                         version: row.get(15)?,
                         is_latest: row.get(16)?,
                     })
@@ -350,12 +354,11 @@ impl StorageManager {
         )?;
 
         // Get created_at from original function to preserve it
-        let created_at: i64 = conn
-            .query_row(
-                "SELECT created_at FROM functions WHERE name = ?1 ORDER BY version ASC LIMIT 1",
-                params![name],
-                |row| row.get(0),
-            )?;
+        let created_at: i64 = conn.query_row(
+            "SELECT created_at FROM functions WHERE name = ?1 ORDER BY version ASC LIMIT 1",
+            params![name],
+            |row| row.get(0),
+        )?;
 
         // Insert new version
         conn.execute(
@@ -374,18 +377,21 @@ impl StorageManager {
                 config.memory_mb as i64,
                 config.timeout_ms as i64,
                 environment_json,
-                created_at,  // preserve original creation time
+                created_at, // preserve original creation time
                 now,
                 "active",
                 new_version,
-                true,  // mark as latest
-                0,     // reset invocation count for new version
-                0      // reset execution time for new version
+                true, // mark as latest
+                0,    // reset invocation count for new version
+                0     // reset execution time for new version
             ],
         )?;
 
         let new_id = conn.last_insert_rowid();
-        info!("Published function '{}' version {} with id {}", name, new_version, new_id);
+        info!(
+            "Published function '{}' version {} with id {}",
+            name, new_version, new_id
+        );
         Ok(new_id)
     }
 
@@ -423,7 +429,7 @@ impl StorageManager {
                         last_invoked_at: row.get(11)?,
                         invocation_count: row.get(12)?,
                         total_execution_time_ms: row.get(13)?,
-                        status: FunctionStatus::from_str(&row.get::<_, String>(14)?),
+                        status: FunctionStatus::from_str(&row.get::<_, String>(14)?).unwrap(),
                         version: row.get(15)?,
                         is_latest: row.get(16)?,
                     })
@@ -470,7 +476,7 @@ impl StorageManager {
                     last_invoked_at: row.get(11)?,
                     invocation_count: row.get(12)?,
                     total_execution_time_ms: row.get(13)?,
-                    status: FunctionStatus::from_str(&row.get::<_, String>(14)?),
+                    status: FunctionStatus::from_str(&row.get::<_, String>(14)?).unwrap(),
                     version: row.get(15)?,
                     is_latest: row.get(16)?,
                 })
@@ -516,7 +522,7 @@ impl StorageManager {
                     last_invoked_at: row.get(11)?,
                     invocation_count: row.get(12)?,
                     total_execution_time_ms: row.get(13)?,
-                    status: FunctionStatus::from_str(&row.get::<_, String>(14)?),
+                    status: FunctionStatus::from_str(&row.get::<_, String>(14)?).unwrap(),
                     version: row.get(15)?,
                     is_latest: row.get(16)?,
                 })
@@ -583,7 +589,8 @@ impl StorageManager {
         let conn = self.pool.get()?;
 
         // Get basic stats from functions table
-        let function = self.get_function(name)?
+        let function = self
+            .get_function(name)?
             .ok_or_else(|| StorageError::FunctionNotFound(name.to_string()))?;
 
         // Get detailed stats from invocations table
@@ -622,8 +629,13 @@ impl StorageManager {
     }
 
     /// Get invocation history for a function
-    pub fn get_invocation_history(&self, function_name: &str, limit: usize) -> Result<Vec<InvocationRecord>> {
-        let function = self.get_function(function_name)?
+    pub fn get_invocation_history(
+        &self,
+        function_name: &str,
+        limit: usize,
+    ) -> Result<Vec<InvocationRecord>> {
+        let function = self
+            .get_function(function_name)?
             .ok_or_else(|| StorageError::FunctionNotFound(function_name.to_string()))?;
 
         let conn = self.pool.get()?;
@@ -641,7 +653,7 @@ impl StorageManager {
                 Ok(InvocationRecord {
                     function_id: row.get(0)?,
                     request_id: row.get(1)?,
-                    status: InvocationStatus::from_str(&row.get::<_, String>(2)?),
+                    status: InvocationStatus::from_str(&row.get::<_, String>(2)?).unwrap(),
                     started_at: row.get(3)?,
                     completed_at: row.get(4)?,
                     execution_time_ms: row.get(5)?,
@@ -671,18 +683,18 @@ impl StorageManager {
     }
 
     // API Key operations
-    
+
     /// Create a new API key
     pub fn create_api_key(&self, request: CreateApiKeyRequest) -> Result<ApiKey> {
         let conn = self.pool.get()?;
-        
+
         // Generate unique key
         let key = self.generate_api_key();
         let now = Self::current_timestamp();
-        
+
         // Convert permissions to JSON
         let permissions_json = serde_json::to_string(&request.permissions)?;
-        
+
         conn.execute(
             "INSERT INTO api_keys (key, name, permissions, created_at, expires_at, status)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -695,9 +707,9 @@ impl StorageManager {
                 ApiKeyStatus::Active.as_str()
             ],
         )?;
-        
+
         let id = conn.last_insert_rowid();
-        
+
         Ok(ApiKey {
             id,
             key,
@@ -709,20 +721,53 @@ impl StorageManager {
             last_used_at: None,
         })
     }
-    
+
     /// Get API key by key string
     pub fn get_api_key(&self, key: &str) -> Result<Option<ApiKey>> {
         let conn = self.pool.get()?;
-        
-        let result = conn.query_row(
-            "SELECT id, key, name, permissions, created_at, expires_at, status, last_used_at
+
+        let result = conn
+            .query_row(
+                "SELECT id, key, name, permissions, created_at, expires_at, status, last_used_at
              FROM api_keys WHERE key = ?1",
-            params![key],
-            |row| {
+                params![key],
+                |row| {
+                    let permissions_json: String = row.get(3)?;
+                    let permissions: Vec<String> =
+                        serde_json::from_str(&permissions_json).unwrap_or_default();
+
+                    Ok(ApiKey {
+                        id: row.get(0)?,
+                        key: row.get(1)?,
+                        name: row.get(2)?,
+                        permissions,
+                        created_at: row.get(4)?,
+                        expires_at: row.get(5)?,
+                        status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?).unwrap(),
+                        last_used_at: row.get(7)?,
+                    })
+                },
+            )
+            .optional()?;
+
+        Ok(result)
+    }
+
+    /// List all API keys
+    pub fn list_api_keys(&self) -> Result<Vec<ApiKey>> {
+        let conn = self.pool.get()?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, key, name, permissions, created_at, expires_at, status, last_used_at
+             FROM api_keys ORDER BY created_at DESC",
+        )?;
+
+        let keys = stmt
+            .query_map([], |row| {
                 let permissions_json: String = row.get(3)?;
-                let permissions: Vec<String> = serde_json::from_str(&permissions_json)
-                    .unwrap_or_default();
-                
+                let permissions: Vec<String> =
+                    serde_json::from_str(&permissions_json).unwrap_or_default();
+
                 Ok(ApiKey {
                     id: row.get(0)?,
                     key: row.get(1)?,
@@ -730,79 +775,49 @@ impl StorageManager {
                     permissions,
                     created_at: row.get(4)?,
                     expires_at: row.get(5)?,
-                    status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?),
+                    status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?).unwrap(),
                     last_used_at: row.get(7)?,
                 })
-            },
-        ).optional()?;
-        
-        Ok(result)
-    }
-    
-    /// List all API keys
-    pub fn list_api_keys(&self) -> Result<Vec<ApiKey>> {
-        let conn = self.pool.get()?;
-        
-        let mut stmt = conn.prepare(
-            "SELECT id, key, name, permissions, created_at, expires_at, status, last_used_at
-             FROM api_keys ORDER BY created_at DESC"
-        )?;
-        
-        let keys = stmt.query_map([], |row| {
-            let permissions_json: String = row.get(3)?;
-            let permissions: Vec<String> = serde_json::from_str(&permissions_json)
-                .unwrap_or_default();
-            
-            Ok(ApiKey {
-                id: row.get(0)?,
-                key: row.get(1)?,
-                name: row.get(2)?,
-                permissions,
-                created_at: row.get(4)?,
-                expires_at: row.get(5)?,
-                status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?),
-                last_used_at: row.get(7)?,
-            })
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-        
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
         Ok(keys)
     }
-    
+
     /// Revoke API key
     pub fn revoke_api_key(&self, id: i64) -> Result<()> {
         let conn = self.pool.get()?;
-        
+
         let updated = conn.execute(
             "UPDATE api_keys SET status = ?1 WHERE id = ?2",
             params![ApiKeyStatus::Revoked.as_str(), id],
         )?;
-        
+
         if updated == 0 {
             return Err(StorageError::NotFound);
         }
-        
+
         Ok(())
     }
-    
+
     /// Update last used timestamp
     pub fn update_api_key_last_used(&self, key: &str) -> Result<()> {
         let conn = self.pool.get()?;
         let now = Self::current_timestamp();
-        
+
         conn.execute(
             "UPDATE api_keys SET last_used_at = ?1 WHERE key = ?2",
             params![now, key],
         )?;
-        
+
         Ok(())
     }
-    
+
     /// Generate a secure API key
     fn generate_api_key(&self) -> String {
         let random_bytes: [u8; 32] = rand::random();
         let mut hasher = Sha256::new();
-        hasher.update(&random_bytes);
+        hasher.update(random_bytes);
         let result = hasher.finalize();
         format!("nl_{}", hex::encode(result))
     }
@@ -860,7 +875,9 @@ mod tests {
 
         // Update code
         config.code = "def handler(event):\n    return {'statusCode': 201}".to_string();
-        storage.update_function(&config.name, config.clone()).unwrap();
+        storage
+            .update_function(&config.name, config.clone())
+            .unwrap();
 
         // Verify update
         let function = storage.get_function(&config.name).unwrap().unwrap();
@@ -903,8 +920,12 @@ mod tests {
         storage.create_function(config.clone()).unwrap();
 
         // Update metrics
-        storage.update_invocation_metrics(&config.name, 100).unwrap();
-        storage.update_invocation_metrics(&config.name, 200).unwrap();
+        storage
+            .update_invocation_metrics(&config.name, 100)
+            .unwrap();
+        storage
+            .update_invocation_metrics(&config.name, 200)
+            .unwrap();
 
         let function = storage.get_function(&config.name).unwrap().unwrap();
         assert_eq!(function.invocation_count, 2);
@@ -920,20 +941,28 @@ mod tests {
 
         // Record some invocations
         for i in 0..5 {
-            storage.record_invocation(InvocationRecord {
-                function_id: id,
-                request_id: format!("req-{}", i),
-                status: if i < 4 { InvocationStatus::Success } else { InvocationStatus::Error },
-                started_at: StorageManager::current_timestamp(),
-                completed_at: Some(StorageManager::current_timestamp()),
-                execution_time_ms: Some(100),
-                memory_used_mb: Some(64),
-                cold_start: i == 0,
-                error_message: None,
-            }).unwrap();
+            storage
+                .record_invocation(InvocationRecord {
+                    function_id: id,
+                    request_id: format!("req-{}", i),
+                    status: if i < 4 {
+                        InvocationStatus::Success
+                    } else {
+                        InvocationStatus::Error
+                    },
+                    started_at: StorageManager::current_timestamp(),
+                    completed_at: Some(StorageManager::current_timestamp()),
+                    execution_time_ms: Some(100),
+                    memory_used_mb: Some(64),
+                    cold_start: i == 0,
+                    error_message: None,
+                })
+                .unwrap();
         }
 
-        storage.update_invocation_metrics(&config.name, 500).unwrap();
+        storage
+            .update_invocation_metrics(&config.name, 500)
+            .unwrap();
 
         let stats = storage.get_function_stats(&config.name).unwrap();
         assert_eq!(stats.invocation_count, 1);
@@ -941,4 +970,3 @@ mod tests {
         assert_eq!(stats.error_count, 1);
     }
 }
-

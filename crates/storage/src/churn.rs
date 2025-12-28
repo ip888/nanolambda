@@ -12,13 +12,13 @@ use tokio::sync::Mutex;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChurnRiskProfile {
     pub api_key: String,
-    pub risk_score: f64,                    // 0-100, higher = more risk
-    pub risk_level: String,                 // low/medium/high/critical
-    pub likelihood_to_churn: f64,           // 0-1 probability
+    pub risk_score: f64,          // 0-100, higher = more risk
+    pub risk_level: String,       // low/medium/high/critical
+    pub likelihood_to_churn: f64, // 0-1 probability
     pub days_until_predicted_churn: Option<i64>,
     pub primary_risk_factors: Vec<RiskFactor>,
     pub intervention_recommendations: Vec<Intervention>,
-    pub estimated_value_at_risk: i64,       // CLV in cents
+    pub estimated_value_at_risk: i64, // CLV in cents
     pub last_analyzed: String,
 }
 
@@ -26,8 +26,8 @@ pub struct ChurnRiskProfile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskFactor {
     pub factor: String,
-    pub severity: String,                   // low/medium/high/critical
-    pub impact_score: f64,                  // 0-100
+    pub severity: String,  // low/medium/high/critical
+    pub impact_score: f64, // 0-100
     pub description: String,
 }
 
@@ -35,21 +35,21 @@ pub struct RiskFactor {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Intervention {
     pub action: String,
-    pub priority: String,                   // low/medium/high/urgent
-    pub estimated_cost: i64,                // cents
-    pub expected_success_rate: f64,         // 0-1
-    pub timeline: String,                   // immediate/1-week/1-month
-    pub owner: String,                      // customer-success/sales/product
+    pub priority: String,           // low/medium/high/urgent
+    pub estimated_cost: i64,        // cents
+    pub expected_success_rate: f64, // 0-1
+    pub timeline: String,           // immediate/1-week/1-month
+    pub owner: String,              // customer-success/sales/product
 }
 
 /// Churn prediction for a time period
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChurnPrediction {
-    pub period: String,                     // next-week/next-month/next-quarter
+    pub period: String, // next-week/next-month/next-quarter
     pub predicted_churns: i64,
-    pub predicted_value_loss: i64,          // cents
-    pub at_risk_customers: Vec<String>,     // api_keys
-    pub confidence: f64,                    // 0-1
+    pub predicted_value_loss: i64,      // cents
+    pub at_risk_customers: Vec<String>, // api_keys
+    pub confidence: f64,                // 0-1
 }
 
 /// Historical churn event
@@ -69,7 +69,7 @@ pub struct ChurnEvent {
 pub struct PlatformChurnMetrics {
     pub total_customers: i64,
     pub at_risk_count: i64,
-    pub churn_rate_30d: f64,                // percentage
+    pub churn_rate_30d: f64, // percentage
     pub churn_rate_90d: f64,
     pub avg_risk_score: f64,
     pub total_value_at_risk: i64,
@@ -84,8 +84,8 @@ pub struct ChurnAnalyzer {
     churn_events: Arc<Mutex<Vec<ChurnEvent>>>,
     predictions: Arc<Mutex<HashMap<String, ChurnPrediction>>>,
     interventions_taken: Arc<Mutex<HashMap<String, Vec<Intervention>>>>,
-    
-    pool: SqlitePool,
+
+    _pool: SqlitePool,
 }
 
 impl ChurnAnalyzer {
@@ -96,7 +96,7 @@ impl ChurnAnalyzer {
             churn_events: Arc::new(Mutex::new(Vec::new())),
             predictions: Arc::new(Mutex::new(HashMap::new())),
             interventions_taken: Arc::new(Mutex::new(HashMap::new())),
-            pool,
+            _pool: pool,
         })
     }
 
@@ -108,8 +108,8 @@ impl ChurnAnalyzer {
         payment_issues: i64,
         support_tickets: i64,
         last_login_days_ago: i64,
-        feature_adoption_score: f64,        // 0-100
-        nps_score: Option<i64>,             // -100 to 100
+        feature_adoption_score: f64, // 0-100
+        nps_score: Option<i64>,      // -100 to 100
         predicted_ltv: i64,
     ) -> Result<ChurnRiskProfile> {
         let mut risk_factors = Vec::new();
@@ -130,9 +130,13 @@ impl ChurnAnalyzer {
         // Factor 2: Payment issues (25 points max)
         if payment_issues > 0 {
             let impact = (payment_issues as f64 * 8.0).min(25.0);
-            let severity = if payment_issues >= 3 { "critical" } 
-                          else if payment_issues >= 2 { "high" }
-                          else { "medium" };
+            let severity = if payment_issues >= 3 {
+                "critical"
+            } else if payment_issues >= 2 {
+                "high"
+            } else {
+                "medium"
+            };
             risk_score += impact;
             risk_factors.push(RiskFactor {
                 factor: "payment_failures".to_string(),
@@ -150,14 +154,21 @@ impl ChurnAnalyzer {
                 factor: "high_support_volume".to_string(),
                 severity: "medium".to_string(),
                 impact_score: impact,
-                description: format!("{} support tickets - possible product issues", support_tickets),
+                description: format!(
+                    "{} support tickets - possible product issues",
+                    support_tickets
+                ),
             });
         }
 
         // Factor 4: Low engagement (20 points max)
         if last_login_days_ago > 14 {
             let impact = ((last_login_days_ago - 14) as f64 * 2.0).min(20.0);
-            let severity = if last_login_days_ago > 30 { "high" } else { "medium" };
+            let severity = if last_login_days_ago > 30 {
+                "high"
+            } else {
+                "medium"
+            };
             risk_score += impact;
             risk_factors.push(RiskFactor {
                 factor: "low_engagement".to_string(),
@@ -175,22 +186,29 @@ impl ChurnAnalyzer {
                 factor: "low_feature_adoption".to_string(),
                 severity: "low".to_string(),
                 impact_score: impact,
-                description: format!("Using only {:.0}% of available features", feature_adoption_score),
+                description: format!(
+                    "Using only {:.0}% of available features",
+                    feature_adoption_score
+                ),
             });
         }
 
         // Factor 6: Poor NPS score (10 points max)
-        if let Some(nps) = nps_score {
-            if nps < 0 {
-                let impact = (nps.abs() as f64 / 10.0).min(10.0);
-                risk_score += impact;
-                risk_factors.push(RiskFactor {
-                    factor: "negative_nps".to_string(),
-                    severity: if nps < -50 { "high".to_string() } else { "medium".to_string() },
-                    impact_score: impact,
-                    description: format!("NPS score of {} indicates dissatisfaction", nps),
-                });
-            }
+        if let Some(nps) = nps_score
+            && nps < 0
+        {
+            let impact = (nps.abs() as f64 / 10.0).min(10.0);
+            risk_score += impact;
+            risk_factors.push(RiskFactor {
+                factor: "negative_nps".to_string(),
+                severity: if nps < -50 {
+                    "high".to_string()
+                } else {
+                    "medium".to_string()
+                },
+                impact_score: impact,
+                description: format!("NPS score of {} indicates dissatisfaction", nps),
+            });
         }
 
         // Determine risk level
@@ -216,11 +234,7 @@ impl ChurnAnalyzer {
         };
 
         // Generate intervention recommendations
-        let interventions = self.generate_interventions(
-            &risk_factors,
-            risk_score,
-            predicted_ltv,
-        );
+        let interventions = self.generate_interventions(&risk_factors, risk_score, predicted_ltv);
 
         let profile = ChurnRiskProfile {
             api_key: api_key.to_string(),
@@ -245,7 +259,7 @@ impl ChurnAnalyzer {
     fn generate_interventions(
         &self,
         risk_factors: &[RiskFactor],
-        risk_score: f64,
+        _risk_score: f64,
         predicted_ltv: i64,
     ) -> Vec<Intervention> {
         let mut interventions = Vec::new();
@@ -280,7 +294,8 @@ impl ChurnAnalyzer {
                         timeline: "immediate".to_string(),
                         owner: "sales".to_string(),
                     });
-                    if predicted_ltv > 500000 { // > $5,000
+                    if predicted_ltv > 500000 {
+                        // > $5,000
                         interventions.push(Intervention {
                             action: "Offer flexible payment terms or discount".to_string(),
                             priority: "urgent".to_string(),
@@ -302,7 +317,11 @@ impl ChurnAnalyzer {
                     });
                     interventions.push(Intervention {
                         action: "Assign dedicated account manager".to_string(),
-                        priority: if predicted_ltv > 1000000 { "high".to_string() } else { "medium".to_string() },
+                        priority: if predicted_ltv > 1000000 {
+                            "high".to_string()
+                        } else {
+                            "medium".to_string()
+                        },
                         estimated_cost: 200000, // $2000/month
                         expected_success_rate: 0.80,
                         timeline: "immediate".to_string(),
@@ -340,7 +359,11 @@ impl ChurnAnalyzer {
                 "negative_nps" => {
                     interventions.push(Intervention {
                         action: "Executive escalation for feedback session".to_string(),
-                        priority: if predicted_ltv > 1000000 { "urgent".to_string() } else { "high".to_string() },
+                        priority: if predicted_ltv > 1000000 {
+                            "urgent".to_string()
+                        } else {
+                            "high".to_string()
+                        },
                         estimated_cost: 100000, // $1000
                         expected_success_rate: 0.70,
                         timeline: "immediate".to_string(),
@@ -363,8 +386,13 @@ impl ChurnAnalyzer {
                 "low" => 3,
                 _ => 4,
             };
-            priority_order(&a.priority).cmp(&priority_order(&b.priority))
-                .then(b.expected_success_rate.partial_cmp(&a.expected_success_rate).unwrap())
+            priority_order(&a.priority)
+                .cmp(&priority_order(&b.priority))
+                .then(
+                    b.expected_success_rate
+                        .partial_cmp(&a.expected_success_rate)
+                        .unwrap(),
+                )
         });
 
         interventions
@@ -407,7 +435,7 @@ impl ChurnAnalyzer {
     /// Generate churn prediction for a period
     pub async fn predict_churn(&self, period: &str) -> Result<ChurnPrediction> {
         let profiles = self.risk_profiles.lock().await;
-        
+
         let threshold = match period {
             "next-week" => 70.0,
             "next-month" => 50.0,
@@ -415,17 +443,14 @@ impl ChurnAnalyzer {
             _ => 50.0,
         };
 
-        let at_risk: Vec<_> = profiles.values()
+        let at_risk: Vec<_> = profiles
+            .values()
             .filter(|p| p.risk_score >= threshold)
             .collect();
 
         let predicted_churns = at_risk.len() as i64;
-        let predicted_value_loss: i64 = at_risk.iter()
-            .map(|p| p.estimated_value_at_risk)
-            .sum();
-        let at_risk_customers: Vec<String> = at_risk.iter()
-            .map(|p| p.api_key.clone())
-            .collect();
+        let predicted_value_loss: i64 = at_risk.iter().map(|p| p.estimated_value_at_risk).sum();
+        let at_risk_customers: Vec<String> = at_risk.iter().map(|p| p.api_key.clone()).collect();
 
         // Confidence based on data quality and sample size
         let confidence = if predicted_churns > 10 {
@@ -457,9 +482,7 @@ impl ChurnAnalyzer {
         let events = self.churn_events.lock().await;
 
         let total_customers = profiles.len() as i64;
-        let at_risk_count = profiles.values()
-            .filter(|p| p.risk_score >= 50.0)
-            .count() as i64;
+        let at_risk_count = profiles.values().filter(|p| p.risk_score >= 50.0).count() as i64;
 
         let avg_risk_score = if total_customers > 0 {
             profiles.values().map(|p| p.risk_score).sum::<f64>() / total_customers as f64
@@ -467,14 +490,16 @@ impl ChurnAnalyzer {
             0.0
         };
 
-        let total_value_at_risk: i64 = profiles.values()
+        let total_value_at_risk: i64 = profiles
+            .values()
             .filter(|p| p.risk_score >= 50.0)
             .map(|p| p.estimated_value_at_risk)
             .sum();
 
         // Calculate churn rates
         let now = chrono::Utc::now();
-        let churns_30d = events.iter()
+        let churns_30d = events
+            .iter()
             .filter(|e| {
                 if let Ok(date) = chrono::NaiveDate::parse_from_str(&e.churned_date, "%Y-%m-%d") {
                     (now.date_naive() - date).num_days() <= 30
@@ -484,7 +509,8 @@ impl ChurnAnalyzer {
             })
             .count() as i64;
 
-        let churns_90d = events.iter()
+        let churns_90d = events
+            .iter()
             .filter(|e| {
                 if let Ok(date) = chrono::NaiveDate::parse_from_str(&e.churned_date, "%Y-%m-%d") {
                     (now.date_naive() - date).num_days() <= 90
@@ -514,7 +540,8 @@ impl ChurnAnalyzer {
             }
         }
 
-        let mut top_risk_factors: Vec<RiskFactor> = factor_counts.iter()
+        let mut top_risk_factors: Vec<RiskFactor> = factor_counts
+            .iter()
             .map(|(factor, count)| RiskFactor {
                 factor: factor.clone(),
                 severity: "medium".to_string(),
@@ -545,7 +572,8 @@ impl ChurnAnalyzer {
         intervention: Intervention,
     ) -> Result<()> {
         let mut interventions = self.interventions_taken.lock().await;
-        interventions.entry(api_key.to_string())
+        interventions
+            .entry(api_key.to_string())
             .or_insert_with(Vec::new)
             .push(intervention);
         Ok(())

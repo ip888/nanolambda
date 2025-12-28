@@ -8,21 +8,21 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Semaphore, RwLock};
 use std::time::{Duration, Instant};
+use tokio::sync::{RwLock, Semaphore};
 
 /// Configuration for concurrency limits
 #[derive(Debug, Clone)]
 pub struct ConcurrencyConfig {
     /// Maximum concurrent executions globally
     pub max_global_concurrent: usize,
-    
+
     /// Maximum concurrent executions per function
     pub max_per_function: usize,
-    
+
     /// Maximum size of request queue
     pub max_queue_size: usize,
-    
+
     /// Timeout for waiting in queue
     pub queue_timeout: Duration,
 }
@@ -43,19 +43,19 @@ impl Default for ConcurrencyConfig {
 pub struct FunctionConcurrencyStats {
     /// Current number of running invocations
     pub current_running: usize,
-    
+
     /// Number of requests currently queued
     pub current_queued: usize,
-    
+
     /// Total requests processed
     pub total_processed: u64,
-    
+
     /// Total requests rejected (queue full)
     pub total_rejected: u64,
-    
+
     /// Total requests timed out in queue
     pub total_timeouts: u64,
-    
+
     /// Average wait time in queue (ms)
     pub avg_queue_wait_ms: f64,
 }
@@ -64,10 +64,10 @@ pub struct FunctionConcurrencyStats {
 struct FunctionConcurrency {
     /// Semaphore for per-function limit
     semaphore: Arc<Semaphore>,
-    
+
     /// Statistics
     stats: FunctionConcurrencyStats,
-    
+
     /// Last activity timestamp
     last_used: Instant,
 }
@@ -93,10 +93,10 @@ impl FunctionConcurrency {
 pub struct ConcurrencyController {
     /// Configuration
     config: ConcurrencyConfig,
-    
+
     /// Global semaphore for all invocations
     global_semaphore: Arc<Semaphore>,
-    
+
     /// Per-function concurrency tracking
     function_limits: Arc<RwLock<HashMap<String, FunctionConcurrency>>>,
 }
@@ -110,36 +110,39 @@ impl ConcurrencyController {
             function_limits: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    
+
     /// Acquire permits for function execution (global + per-function)
     /// Returns a guard that releases permits when dropped
     pub async fn acquire(&self, function_name: &str) -> Result<ConcurrencyGuard, ConcurrencyError> {
         let start_time = Instant::now();
-        
+
         // Check queue size first (before acquiring any permits)
         {
             let limits = self.function_limits.read().await;
-            if let Some(func_limit) = limits.get(function_name) {
-                if func_limit.stats.current_queued >= self.config.max_queue_size {
-                    return Err(ConcurrencyError::QueueFull);
-                }
+            if let Some(func_limit) = limits.get(function_name)
+                && func_limit.stats.current_queued >= self.config.max_queue_size
+            {
+                return Err(ConcurrencyError::QueueFull);
             }
         }
-        
+
         // Increment queue counter
         {
             let mut limits = self.function_limits.write().await;
-            let func_limit = limits.entry(function_name.to_string())
+            let func_limit = limits
+                .entry(function_name.to_string())
                 .or_insert_with(|| FunctionConcurrency::new(self.config.max_per_function));
             func_limit.stats.current_queued += 1;
             func_limit.last_used = Instant::now();
         }
-        
+
         // Try to acquire global permit with timeout
         let global_permit = match tokio::time::timeout(
             self.config.queue_timeout,
-            self.global_semaphore.clone().acquire_owned()
-        ).await {
+            self.global_semaphore.clone().acquire_owned(),
+        )
+        .await
+        {
             Ok(Ok(permit)) => permit,
             Ok(Err(_)) => {
                 self.update_stats_timeout(function_name).await;
@@ -150,20 +153,23 @@ impl ConcurrencyController {
                 return Err(ConcurrencyError::Timeout);
             }
         };
-        
+
         // Get per-function semaphore
         let per_function_semaphore = {
             let limits = self.function_limits.read().await;
-            limits.get(function_name)
+            limits
+                .get(function_name)
                 .map(|f| f.semaphore.clone())
                 .unwrap_or_else(|| Arc::new(Semaphore::new(self.config.max_per_function)))
         };
-        
+
         // Try to acquire per-function permit with timeout
         let function_permit = match tokio::time::timeout(
             self.config.queue_timeout,
-            per_function_semaphore.acquire_owned()
-        ).await {
+            per_function_semaphore.acquire_owned(),
+        )
+        .await
+        {
             Ok(Ok(permit)) => permit,
             Ok(Err(_)) => {
                 drop(global_permit); // Release global permit
@@ -176,7 +182,7 @@ impl ConcurrencyController {
                 return Err(ConcurrencyError::Timeout);
             }
         };
-        
+
         // Update statistics
         let queue_wait_ms = start_time.elapsed().as_millis() as f64;
         {
@@ -185,13 +191,15 @@ impl ConcurrencyController {
                 func_limit.stats.current_queued = func_limit.stats.current_queued.saturating_sub(1);
                 func_limit.stats.current_running += 1;
                 func_limit.stats.total_processed += 1;
-                
+
                 // Update average queue wait time
-                let total_wait = func_limit.stats.avg_queue_wait_ms * (func_limit.stats.total_processed - 1) as f64;
-                func_limit.stats.avg_queue_wait_ms = (total_wait + queue_wait_ms) / func_limit.stats.total_processed as f64;
+                let total_wait = func_limit.stats.avg_queue_wait_ms
+                    * (func_limit.stats.total_processed - 1) as f64;
+                func_limit.stats.avg_queue_wait_ms =
+                    (total_wait + queue_wait_ms) / func_limit.stats.total_processed as f64;
             }
         }
-        
+
         Ok(ConcurrencyGuard {
             function_name: function_name.to_string(),
             _global_permit: global_permit,
@@ -199,7 +207,7 @@ impl ConcurrencyController {
             controller: self.function_limits.clone(),
         })
     }
-    
+
     /// Update statistics for timeout
     async fn update_stats_timeout(&self, function_name: &str) {
         let mut limits = self.function_limits.write().await;
@@ -208,26 +216,31 @@ impl ConcurrencyController {
             func_limit.stats.total_timeouts += 1;
         }
     }
-    
+
     /// Get statistics for a function
-    pub async fn get_function_stats(&self, function_name: &str) -> Option<FunctionConcurrencyStats> {
+    pub async fn get_function_stats(
+        &self,
+        function_name: &str,
+    ) -> Option<FunctionConcurrencyStats> {
         let limits = self.function_limits.read().await;
         limits.get(function_name).map(|f| f.stats.clone())
     }
-    
+
     /// Get statistics for all functions
     pub async fn get_all_stats(&self) -> HashMap<String, FunctionConcurrencyStats> {
         let limits = self.function_limits.read().await;
-        limits.iter()
+        limits
+            .iter()
             .map(|(name, func)| (name.clone(), func.stats.clone()))
             .collect()
     }
-    
+
     /// Get global statistics
     pub fn get_global_stats(&self) -> GlobalConcurrencyStats {
         GlobalConcurrencyStats {
             max_global_concurrent: self.config.max_global_concurrent,
-            current_global_running: self.config.max_global_concurrent - self.global_semaphore.available_permits(),
+            current_global_running: self.config.max_global_concurrent
+                - self.global_semaphore.available_permits(),
             max_per_function: self.config.max_per_function,
             max_queue_size: self.config.max_queue_size,
         }
@@ -259,7 +272,8 @@ impl Drop for ConcurrencyGuard {
         tokio::spawn(async move {
             let mut limits = controller.write().await;
             if let Some(func_limit) = limits.get_mut(&function_name) {
-                func_limit.stats.current_running = func_limit.stats.current_running.saturating_sub(1);
+                func_limit.stats.current_running =
+                    func_limit.stats.current_running.saturating_sub(1);
             }
         });
         // Permits are automatically released when _global_permit and _function_permit are dropped
@@ -271,13 +285,13 @@ impl Drop for ConcurrencyGuard {
 pub enum ConcurrencyError {
     #[error("Global concurrency limit reached")]
     GlobalLimitReached,
-    
+
     #[error("Function concurrency limit reached")]
     FunctionLimitReached,
-    
+
     #[error("Request queue is full")]
     QueueFull,
-    
+
     #[error("Request timed out waiting in queue")]
     Timeout,
 }
@@ -294,11 +308,11 @@ mod tests {
             ..Default::default()
         };
         let controller = ConcurrencyController::new(config);
-        
+
         // Acquire 2 permits (should succeed)
         let _guard1 = controller.acquire("test").await.unwrap();
         let _guard2 = controller.acquire("test").await.unwrap();
-        
+
         // Third should timeout/fail
         let result = controller.acquire("test").await;
         assert!(result.is_err());
@@ -312,15 +326,15 @@ mod tests {
             ..Default::default()
         };
         let controller = ConcurrencyController::new(config);
-        
+
         // Acquire 2 permits for same function (should succeed)
         let _guard1 = controller.acquire("func1").await.unwrap();
         let _guard2 = controller.acquire("func1").await.unwrap();
-        
+
         // Third for same function should fail
         let result = controller.acquire("func1").await;
         assert!(result.is_err());
-        
+
         // But different function should succeed
         let _guard3 = controller.acquire("func2").await.unwrap();
     }

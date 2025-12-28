@@ -1,0 +1,191 @@
+╔═══════════════════════════════════════════════════════════════╗
+║           NanoLambda Test Suite - Quick Reference            ║
+╚═══════════════════════════════════════════════════════════════╝
+
+🚀 QUICK START (60 seconds)
+─────────────────────────────────────────────────────────────────
+cd /workspaces/nanolambda/test-suite
+./run-all-tests.sh
+open http://localhost:8080/dashboard
+
+
+📋 ALL COMMANDS
+─────────────────────────────────────────────────────────────────
+./run-all-tests.sh              # Full test suite (~30 min)
+./run-tests.sh python sanity    # Python quick test (5 min)
+./run-tests.sh nodejs load      # Node.js load test (10 min)
+./run-tests.sh java integration # Java integration test
+./run-tests.sh mixed integration # All languages together
+
+./stress-test.sh                # High-load test (1 hour)
+                                # Tests: 10K req/min, 50 functions
+
+./continuous-monitor.sh start   # Start 24/7 monitoring
+./continuous-monitor.sh status  # Check monitoring status
+./continuous-monitor.sh stop    # Stop monitoring
+
+./show-results.sh               # View latest results
+./show-results.sh 20250101      # View specific run
+./show-results.sh --open        # Open dashboard
+
+./cleanup.sh                    # Interactive cleanup
+./cleanup.sh --functions        # Delete test functions only
+./cleanup.sh --results          # Delete old results
+./cleanup.sh --all              # Clean everything
+./cleanup.sh --full-reset       # Nuclear option (includes DB)
+
+
+📁 STRUCTURE
+─────────────────────────────────────────────────────────────────
+test-suite/
+├── Scripts (8)
+│   ├── run-all-tests.sh      ⭐ Master runner
+│   ├── run-tests.sh           Individual tests
+│   ├── stress-test.sh         High-load testing
+│   ├── continuous-monitor.sh  24/7 monitoring
+│   ├── show-results.sh        Results viewer
+│   └── cleanup.sh             Cleanup utility
+│
+├── Functions (6)
+│   ├── python/
+│   │   ├── rest-api/          CRUD operations
+│   │   └── data-processing/   ETL & analytics
+│   ├── nodejs/
+│   │   ├── express-api/       Express-style API
+│   │   └── stream-processor/  Real-time streams
+│   └── java/
+│       ├── spring-boot-api/   Enterprise API
+│       └── batch-processor/   Batch processing
+│
+└── Documentation (3)
+    ├── README.md              Quick start
+    ├── COMPREHENSIVE_GUIDE.md Complete reference (500 lines)
+    └── IMPLEMENTATION_SUMMARY.md This implementation
+
+
+🎯 TEST SCENARIOS
+─────────────────────────────────────────────────────────────────
+1. Sanity Check      5 min    30 invocations    100% success
+2. Production Load  30 min   600 invocations     99% success
+3. Stress Test      1 hour 10,000 invocations    95% success
+4. 24/7 Monitor   Infinite Variable load     Auto-recovery
+
+
+📊 EXPECTED METRICS
+─────────────────────────────────────────────────────────────────
+Metric              Sanity    Load      Stress    Monitor
+────────────────────────────────────────────────────────────────
+Throughput          10/s     50-200/s   100+/s    Variable
+Avg Latency        <100ms    <500ms    <1000ms    <500ms
+Success Rate        100%      >99%       >95%      >99%
+Duration           5 min     30 min     1 hour     24/7
+
+
+🔍 VIEWING RESULTS
+─────────────────────────────────────────────────────────────────
+Dashboard:  http://localhost:8080/dashboard
+CLI:        ./show-results.sh
+Logs:       results/latest/*/output.log
+Metrics:    curl http://localhost:8080/api/v1/metrics
+
+
+🧹 CLEANUP
+─────────────────────────────────────────────────────────────────
+Interactive:    ./cleanup.sh
+Quick clean:    ./cleanup.sh --all
+Full reset:     ./cleanup.sh --full-reset
+Stop monitor:   ./cleanup.sh --monitoring
+
+
+🎓 DOCUMENTATION
+─────────────────────────────────────────────────────────────────
+Quick Start:     test-suite/README.md
+Complete Guide:  test-suite/COMPREHENSIVE_GUIDE.md (500 lines)
+Manual Tests:    docs/REAL_WORLD_TESTING_GUIDE.md
+Implementation:  test-suite/IMPLEMENTATION_SUMMARY.md
+
+
+⚡ EXAMPLE WORKFLOWS
+─────────────────────────────────────────────────────────────────
+# Daily check
+./run-all-tests.sh && ./show-results.sh
+
+# Before production
+./run-all-tests.sh
+./stress-test.sh
+./continuous-monitor.sh start  # Let run for 24h
+./show-results.sh
+
+# CI/CD integration
+./run-all-tests.sh
+if ./show-results.sh | grep -q "100%"; then
+    echo "✓ Tests passed"
+else
+    exit 1
+fi
+
+# Development testing
+./run-tests.sh python sanity    # Quick Python test
+./run-tests.sh nodejs sanity    # Quick Node.js test
+./run-tests.sh java sanity      # Quick Java test
+
+
+🐛 TROUBLESHOOTING
+─────────────────────────────────────────────────────────────────
+Server not running:
+    curl http://localhost:8080/health
+    cargo run --release
+
+Tests failing:
+    ./show-results.sh
+    cat results/latest/*/output.log
+
+Clean slate:
+    ./cleanup.sh --full-reset
+    cargo run --release
+
+
+📦 FUNCTION EXAMPLES
+─────────────────────────────────────────────────────────────────
+Python REST API:
+    {"method": "GET", "path": "/users/1"}
+    
+Python Data Processing:
+    {"operation": "analyze", "data": [10, 20, 30]}
+    
+Node.js Express API:
+    {"method": "GET", "path": "/items"}
+    
+Node.js Stream Processor:
+    {"operation": "process", "stream": [{"value": 100}]}
+    
+Java Spring Boot API:
+    {"method": "GET", "path": "/products"}
+    
+Java Batch Processor:
+    {"operation": "process", "batch": [{"value": 10}]}
+
+
+✨ KEY FEATURES
+─────────────────────────────────────────────────────────────────
+✅ Zero configuration - just run
+✅ Real data only - no fake samples
+✅ Multi-language support (Python/Node.js/Java)
+✅ Automated deployment & testing
+✅ Dashboard integration
+✅ 24/7 monitoring capability
+✅ High-load stress testing
+✅ Easy cleanup
+✅ Comprehensive documentation
+✅ Production-ready
+
+
+🎯 QUICK WINS
+─────────────────────────────────────────────────────────────────
+1. ./run-all-tests.sh           # Run everything
+2. ./show-results.sh            # See results
+3. Open dashboard               # Visual metrics
+4. ./cleanup.sh --all           # Clean up
+
+
+Need help? Check COMPREHENSIVE_GUIDE.md for complete documentation!

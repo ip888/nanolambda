@@ -122,12 +122,10 @@ enum NodeResponse {
         ready: bool,
     },
     Success {
-        success: bool,
         result: String,
         execution_ms: u64,
     },
     Error {
-        success: bool,
         error: String,
         stack: String,
         #[serde(default)]
@@ -161,13 +159,15 @@ impl NodeProcess {
             .spawn()
             .map_err(|e| NodeError::SpawnFailed(e.to_string()))?;
 
-        let stdin = child.stdin.take().ok_or_else(|| {
-            NodeError::SpawnFailed("Failed to capture stdin".to_string())
-        })?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| NodeError::SpawnFailed("Failed to capture stdin".to_string()))?;
 
-        let stdout = child.stdout.take().ok_or_else(|| {
-            NodeError::SpawnFailed("Failed to capture stdout".to_string())
-        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| NodeError::SpawnFailed("Failed to capture stdout".to_string()))?;
 
         let mut process = NodeProcess {
             child,
@@ -307,8 +307,8 @@ impl NodeProcess {
     pub fn is_healthy(&mut self) -> bool {
         match self.child.try_wait() {
             Ok(Some(_status)) => false, // Process has exited
-            Ok(None) => true,            // Process is still running
-            Err(_) => false,             // Error checking process status
+            Ok(None) => true,           // Process is still running
+            Err(_) => false,            // Error checking process status
         }
     }
 
@@ -372,7 +372,9 @@ mod tests {
     use crate::nodejs::detect_nodejs;
 
     fn get_node_path() -> Option<String> {
-        detect_nodejs().ok().map(|(path, _)| path.to_string_lossy().to_string())
+        detect_nodejs()
+            .ok()
+            .map(|(path, _)| path.to_string_lossy().to_string())
     }
 
     #[test]
@@ -391,11 +393,8 @@ mod tests {
             };
         "#;
 
-        let mut process = NodeProcess::new(
-            &node_path,
-            function_code,
-            "test_hash".to_string(),
-        ).unwrap();
+        let mut process =
+            NodeProcess::new(&node_path, function_code, "test_hash".to_string()).unwrap();
 
         let event = serde_json::json!({ "name": "World" });
         let result = process.invoke(&event).unwrap();
@@ -425,20 +424,14 @@ mod tests {
             };
         "#;
 
-        let mut process = NodeProcess::new(
-            &node_path,
-            function_code,
-            "test_hash".to_string(),
-        ).unwrap();
+        let mut process =
+            NodeProcess::new(&node_path, function_code, "test_hash".to_string()).unwrap();
 
         let event = serde_json::json!({ "value": 21 });
         let result = process.invoke(&event).unwrap();
 
         assert!(result.success);
-        assert_eq!(
-            result.result.unwrap(),
-            serde_json::json!({ "result": 42 })
-        );
+        assert_eq!(result.result.unwrap(), serde_json::json!({ "result": 42 }));
     }
 
     #[test]
@@ -457,11 +450,8 @@ mod tests {
             };
         "#;
 
-        let mut process = NodeProcess::new(
-            &node_path,
-            function_code,
-            "test_hash".to_string(),
-        ).unwrap();
+        let mut process =
+            NodeProcess::new(&node_path, function_code, "test_hash".to_string()).unwrap();
 
         let event = serde_json::json!({});
         let result = process.invoke(&event).unwrap();
@@ -489,14 +479,13 @@ mod tests {
             };
         "#;
 
-        let mut process = NodeProcess::new(
-            &node_path,
-            function_code,
-            "test_hash".to_string(),
-        ).unwrap();
+        let mut process =
+            NodeProcess::new(&node_path, function_code, "test_hash".to_string()).unwrap();
 
         // First invocation
-        let result1 = process.invoke(&serde_json::json!({ "value": "first" })).unwrap();
+        let result1 = process
+            .invoke(&serde_json::json!({ "value": "first" }))
+            .unwrap();
         assert!(result1.success);
         assert_eq!(
             result1.result.unwrap(),
@@ -504,7 +493,9 @@ mod tests {
         );
 
         // Second invocation (counter should increment)
-        let result2 = process.invoke(&serde_json::json!({ "value": "second" })).unwrap();
+        let result2 = process
+            .invoke(&serde_json::json!({ "value": "second" }))
+            .unwrap();
         assert!(result2.success);
         assert_eq!(
             result2.result.unwrap(),

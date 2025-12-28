@@ -1,49 +1,29 @@
 //! Language runtime management
 
 pub mod executor;
-pub mod pool;
-pub mod python;
-pub mod nodejs;
 pub mod java;
 pub mod metrics;
-pub mod types;
+pub mod nodejs;
+pub mod pool;
+pub mod python;
 pub mod runtime_trait;
+pub mod types;
 
 // Re-export main types
 pub use executor::{
-    PythonExecutor,
-    FunctionConfig,
-    ExecutionResult,
-    ExecutionMetrics,
-    ExecutorError,
+    ExecutionMetrics, ExecutionResult, ExecutorError, FunctionConfig, PythonExecutor,
 };
 
-pub use pool::{
-    ProcessPool,
-    ProcessStats,
-    PoolError,
-};
+pub use pool::{PoolError, ProcessPool, ProcessStats};
 
-pub use metrics::{
-    ProcessMetrics,
-    MetricsError,
-};
+pub use metrics::{MetricsError, ProcessMetrics};
 
 pub use types::{
-    Language,
-    RuntimeInfo,
-    RuntimeCapabilities,
-    InvocationResult,
-    GenericFunctionConfig,
+    GenericFunctionConfig, InvocationResult, Language, RuntimeCapabilities, RuntimeInfo,
 };
 
-pub use runtime_trait::{
-    Runtime,
-};
+pub use runtime_trait::Runtime;
 
-pub use nodejs::{
-    NodeJSExecutor,
-    NodeProcess,
-    NodeError,
-    NodeVersion,
-};
+pub use nodejs::{NodeError, NodeJSExecutor, NodeProcess, NodeVersion};
+
+pub use java::{JavaError, JavaExecutor};

@@ -1,12 +1,12 @@
 // Annual Billing API Handlers
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
 use tracing::error;
 
 use crate::{ApiServer, handlers::ErrorResponse};
@@ -30,22 +30,20 @@ pub async fn get_annual_pricing(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     if let Some(annual_mgr) = state.annual_billing_manager() {
         match annual_mgr.get_billing_breakdown(&tier).await {
-            Ok(breakdown) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "breakdown": {
-                        "tier": breakdown.tier,
-                        "monthly_price": breakdown.monthly_price,
-                        "annual_regular_price": breakdown.annual_regular_price,
-                        "discount_percentage": breakdown.discount_percentage,
-                        "discount_amount": breakdown.discount_amount,
-                        "annual_discounted_price": breakdown.annual_discounted_price,
-                        "monthly_effective_price": breakdown.monthly_effective_price,
-                        "savings_per_month": breakdown.savings_per_month,
-                        "total_annual_savings": breakdown.total_annual_savings,
-                    }
-                })))
-            }
+            Ok(breakdown) => Ok(Json(json!({
+                "success": true,
+                "breakdown": {
+                    "tier": breakdown.tier,
+                    "monthly_price": breakdown.monthly_price,
+                    "annual_regular_price": breakdown.annual_regular_price,
+                    "discount_percentage": breakdown.discount_percentage,
+                    "discount_amount": breakdown.discount_amount,
+                    "annual_discounted_price": breakdown.annual_discounted_price,
+                    "monthly_effective_price": breakdown.monthly_effective_price,
+                    "savings_per_month": breakdown.savings_per_month,
+                    "total_annual_savings": breakdown.total_annual_savings,
+                }
+            }))),
             Err(e) => {
                 error!("Failed to get annual pricing: {}", e);
                 Err((
@@ -109,9 +107,9 @@ pub async fn upgrade_to_annual(
                         error: "already_annual".to_string(),
                         message: "User already has an active annual plan".to_string(),
                     }),
-                ))
+                ));
             }
-            Ok(None) => {},
+            Ok(None) => {}
             Err(e) => {
                 error!("Failed to check annual plan: {}", e);
                 return Err((
@@ -125,22 +123,20 @@ pub async fn upgrade_to_annual(
         }
 
         match annual_mgr.upgrade_to_annual(&api_key, &req.tier).await {
-            Ok(plan) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "plan": {
-                        "id": plan.id,
-                        "tier": plan.tier,
-                        "annual_price": plan.annual_price,
-                        "monthly_equivalent": plan.monthly_equivalent,
-                        "discount_percentage": plan.discount_percentage,
-                        "billing_start_date": plan.billing_start_date,
-                        "billing_end_date": plan.billing_end_date,
-                        "auto_renew": plan.auto_renew,
-                        "status": plan.status,
-                    }
-                })))
-            }
+            Ok(plan) => Ok(Json(json!({
+                "success": true,
+                "plan": {
+                    "id": plan.id,
+                    "tier": plan.tier,
+                    "annual_price": plan.annual_price,
+                    "monthly_equivalent": plan.monthly_equivalent,
+                    "discount_percentage": plan.discount_percentage,
+                    "billing_start_date": plan.billing_start_date,
+                    "billing_end_date": plan.billing_end_date,
+                    "auto_renew": plan.auto_renew,
+                    "status": plan.status,
+                }
+            }))),
             Err(e) => {
                 error!("Failed to upgrade to annual: {}", e);
                 Err((
@@ -184,29 +180,25 @@ pub async fn get_annual_plan(
 
     if let Some(annual_mgr) = state.annual_billing_manager() {
         match annual_mgr.get_annual_plan(&api_key).await {
-            Ok(Some(plan)) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "plan": {
-                        "id": plan.id,
-                        "tier": plan.tier,
-                        "annual_price": plan.annual_price,
-                        "monthly_equivalent": plan.monthly_equivalent,
-                        "discount_percentage": plan.discount_percentage,
-                        "billing_start_date": plan.billing_start_date,
-                        "billing_end_date": plan.billing_end_date,
-                        "auto_renew": plan.auto_renew,
-                        "status": plan.status,
-                    }
-                })))
-            }
-            Ok(None) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "plan": null,
-                    "message": "No active annual plan"
-                })))
-            }
+            Ok(Some(plan)) => Ok(Json(json!({
+                "success": true,
+                "plan": {
+                    "id": plan.id,
+                    "tier": plan.tier,
+                    "annual_price": plan.annual_price,
+                    "monthly_equivalent": plan.monthly_equivalent,
+                    "discount_percentage": plan.discount_percentage,
+                    "billing_start_date": plan.billing_start_date,
+                    "billing_end_date": plan.billing_end_date,
+                    "auto_renew": plan.auto_renew,
+                    "status": plan.status,
+                }
+            }))),
+            Ok(None) => Ok(Json(json!({
+                "success": true,
+                "plan": null,
+                "message": "No active annual plan"
+            }))),
             Err(e) => {
                 error!("Failed to get annual plan: {}", e);
                 Err((
@@ -250,29 +242,25 @@ pub async fn get_annual_subscription_usage(
 
     if let Some(annual_mgr) = state.annual_billing_manager() {
         match annual_mgr.get_annual_subscription_usage(&api_key).await {
-            Ok(Some(usage)) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "usage": {
-                        "tier": usage.tier,
-                        "billing_period": usage.billing_period,
-                        "days_remaining": usage.days_remaining,
-                        "percentage_used": format!("{:.1}", usage.percentage_used),
-                        "renewal_date": usage.renewal_date,
-                        "next_charge_amount": usage.next_charge_amount,
-                        "can_downgrade": usage.can_downgrade,
-                    }
-                })))
-            }
-            Ok(None) => {
-                Err((
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "no_annual_plan".to_string(),
-                        message: "User does not have an active annual plan".to_string(),
-                    }),
-                ))
-            }
+            Ok(Some(usage)) => Ok(Json(json!({
+                "success": true,
+                "usage": {
+                    "tier": usage.tier,
+                    "billing_period": usage.billing_period,
+                    "days_remaining": usage.days_remaining,
+                    "percentage_used": format!("{:.1}", usage.percentage_used),
+                    "renewal_date": usage.renewal_date,
+                    "next_charge_amount": usage.next_charge_amount,
+                    "can_downgrade": usage.can_downgrade,
+                }
+            }))),
+            Ok(None) => Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "no_annual_plan".to_string(),
+                    message: "User does not have an active annual plan".to_string(),
+                }),
+            )),
             Err(e) => {
                 error!("Failed to get annual subscription usage: {}", e);
                 Err((
@@ -321,25 +309,23 @@ pub async fn downgrade_from_annual(
         })?;
 
     if let Some(annual_mgr) = state.annual_billing_manager() {
-        let reason = req.reason.unwrap_or_else(|| "User initiated downgrade".to_string());
+        let reason = req
+            .reason
+            .unwrap_or_else(|| "User initiated downgrade".to_string());
 
         match annual_mgr.downgrade_from_annual(&api_key, &reason).await {
-            Ok(true) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "message": "Successfully downgraded to monthly billing",
-                    "effective_immediately": true
-                })))
-            }
-            Ok(false) => {
-                Err((
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "no_annual_plan".to_string(),
-                        message: "No active annual plan found to downgrade".to_string(),
-                    }),
-                ))
-            }
+            Ok(true) => Ok(Json(json!({
+                "success": true,
+                "message": "Successfully downgraded to monthly billing",
+                "effective_immediately": true
+            }))),
+            Ok(false) => Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "no_annual_plan".to_string(),
+                    message: "No active annual plan found to downgrade".to_string(),
+                }),
+            )),
             Err(e) => {
                 error!("Failed to downgrade from annual: {}", e);
                 Err((
@@ -368,19 +354,17 @@ pub async fn get_annual_billing_stats(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     if let Some(annual_mgr) = state.annual_billing_manager() {
         match annual_mgr.get_annual_billing_stats().await {
-            Ok(stats) => {
-                Ok(Json(json!({
-                    "success": true,
-                    "stats": {
-                        "total_annual_subscribers": stats.total_annual_subscribers,
-                        "total_annual_revenue": stats.total_annual_revenue,
-                        "mrr_equivalent": stats.mrr_equivalent,
-                        "average_discount_taken": format!("{:.1}", stats.average_discount_taken),
-                        "retention_rate": format!("{:.1}", stats.retention_rate),
-                        "churn_rate": format!("{:.1}", stats.churn_rate),
-                    }
-                })))
-            }
+            Ok(stats) => Ok(Json(json!({
+                "success": true,
+                "stats": {
+                    "total_annual_subscribers": stats.total_annual_subscribers,
+                    "total_annual_revenue": stats.total_annual_revenue,
+                    "mrr_equivalent": stats.mrr_equivalent,
+                    "average_discount_taken": format!("{:.1}", stats.average_discount_taken),
+                    "retention_rate": format!("{:.1}", stats.retention_rate),
+                    "churn_rate": format!("{:.1}", stats.churn_rate),
+                }
+            }))),
             Err(e) => {
                 error!("Failed to get annual billing stats: {}", e);
                 Err((

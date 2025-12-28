@@ -14,14 +14,14 @@ pub struct CustomerCLV {
     pub api_key: String,
     pub tier: String,
     pub account_age_days: i64,
-    pub total_revenue_to_date: i64,        // Total revenue in cents
-    pub avg_monthly_revenue: i64,          // Average monthly revenue
-    pub predicted_lifetime_months: i64,    // Expected remaining lifetime
-    pub predicted_ltv: i64,                // Predicted lifetime value
-    pub historical_ltv: i64,               // Actual revenue to date
-    pub retention_probability: f64,        // 0-1, likelihood of retention
-    pub clv_segment: String,               // low/medium/high/premium
-    pub revenue_trend: String,             // increasing/stable/declining
+    pub total_revenue_to_date: i64,     // Total revenue in cents
+    pub avg_monthly_revenue: i64,       // Average monthly revenue
+    pub predicted_lifetime_months: i64, // Expected remaining lifetime
+    pub predicted_ltv: i64,             // Predicted lifetime value
+    pub historical_ltv: i64,            // Actual revenue to date
+    pub retention_probability: f64,     // 0-1, likelihood of retention
+    pub clv_segment: String,            // low/medium/high/premium
+    pub revenue_trend: String,          // increasing/stable/declining
     pub months_active: i64,
     pub last_payment_date: Option<String>,
     pub next_expected_payment: Option<String>,
@@ -30,7 +30,7 @@ pub struct CustomerCLV {
 /// CLV segment breakdown for cohort analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CLVSegment {
-    pub segment_name: String,              // low/medium/high/premium
+    pub segment_name: String, // low/medium/high/premium
     pub customer_count: i64,
     pub avg_clv: i64,
     pub total_value: i64,
@@ -47,14 +47,14 @@ pub struct RevenuePrediction {
     pub predicted_next_month: i64,
     pub predicted_6_months: i64,
     pub predicted_12_months: i64,
-    pub confidence_level: f64,             // 0-1, prediction confidence
-    pub factors: Vec<String>,              // Factors affecting prediction
+    pub confidence_level: f64, // 0-1, prediction confidence
+    pub factors: Vec<String>,  // Factors affecting prediction
 }
 
 /// Cohort analysis for CLV tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CLVCohort {
-    pub cohort_month: String,              // YYYY-MM format
+    pub cohort_month: String, // YYYY-MM format
     pub customer_count: i64,
     pub avg_clv: i64,
     pub retention_rate: f64,
@@ -68,8 +68,8 @@ pub struct PlatformCLVSummary {
     pub total_customers: i64,
     pub avg_clv: i64,
     pub total_predicted_value: i64,
-    pub high_value_customers: i64,         // CLV > $10,000
-    pub at_risk_high_value: i64,           // High CLV but low retention
+    pub high_value_customers: i64, // CLV > $10,000
+    pub at_risk_high_value: i64,   // High CLV but low retention
     pub top_clv_tier: String,
     pub clv_segments: Vec<CLVSegment>,
 }
@@ -80,10 +80,10 @@ pub struct CLVManager {
     customer_clvs: Arc<Mutex<HashMap<String, CustomerCLV>>>,
     revenue_predictions: Arc<Mutex<HashMap<String, RevenuePrediction>>>,
     cohorts: Arc<Mutex<HashMap<String, CLVCohort>>>,
-    
+
     // Configuration
-    discount_rate: f64,                     // Time value of money (default: 10%)
-    pool: SqlitePool,
+    discount_rate: f64, // Time value of money (default: 10%)
+    _pool: SqlitePool,
 }
 
 impl CLVManager {
@@ -94,7 +94,7 @@ impl CLVManager {
             revenue_predictions: Arc::new(Mutex::new(HashMap::new())),
             cohorts: Arc::new(Mutex::new(HashMap::new())),
             discount_rate: 0.10, // 10% annual discount rate
-            pool,
+            _pool: pool,
         })
     }
 
@@ -105,11 +105,11 @@ impl CLVManager {
         tier: &str,
         account_age_days: i64,
         total_revenue: i64,
-        monthly_revenues: Vec<i64>,  // Last 6 months
+        monthly_revenues: Vec<i64>, // Last 6 months
         retention_probability: f64,
     ) -> Result<CustomerCLV> {
         let months_active = (account_age_days as f64 / 30.0).ceil() as i64;
-        
+
         // Calculate average monthly revenue
         let avg_monthly_revenue = if !monthly_revenues.is_empty() {
             monthly_revenues.iter().sum::<i64>() / monthly_revenues.len() as i64
@@ -119,9 +119,12 @@ impl CLVManager {
 
         // Calculate revenue trend
         let revenue_trend = if monthly_revenues.len() >= 3 {
-            let recent = monthly_revenues[monthly_revenues.len() - 2..].iter().sum::<i64>() / 2;
+            let recent = monthly_revenues[monthly_revenues.len() - 2..]
+                .iter()
+                .sum::<i64>()
+                / 2;
             let older = monthly_revenues[0..2].iter().sum::<i64>() / 2;
-            
+
             if recent > older * 110 / 100 {
                 "increasing".to_string()
             } else if recent < older * 90 / 100 {
@@ -142,7 +145,7 @@ impl CLVManager {
         } else if retention_probability > 0.4 {
             12 // 1 year for fair retention
         } else {
-            6  // 6 months for low retention
+            6 // 6 months for low retention
         };
 
         // Adjust based on trend
@@ -155,7 +158,7 @@ impl CLVManager {
         // Calculate predicted LTV using discounted cash flow
         let mut predicted_ltv = total_revenue; // Start with historical
         let monthly_discount = (1.0 + self.discount_rate).powf(1.0 / 12.0);
-        
+
         for month in 1..=predicted_lifetime_months {
             let discount_factor = 1.0 / monthly_discount.powi(month as i32);
             let monthly_value = (avg_monthly_revenue as f64 * discount_factor) as i64;
@@ -166,11 +169,11 @@ impl CLVManager {
         let clv_segment = if predicted_ltv >= 1_000_000 {
             "premium".to_string() // $10,000+
         } else if predicted_ltv >= 500_000 {
-            "high".to_string()    // $5,000+
+            "high".to_string() // $5,000+
         } else if predicted_ltv >= 100_000 {
-            "medium".to_string()  // $1,000+
+            "medium".to_string() // $1,000+
         } else {
-            "low".to_string()     // < $1,000
+            "low".to_string() // < $1,000
         };
 
         let clv = CustomerCLV {
@@ -238,7 +241,7 @@ impl CLVManager {
 
         // Calculate predictions
         let base_revenue = (current_monthly_revenue as f64 * retention_factor) as i64;
-        
+
         let predicted_next_month = (base_revenue as f64 * growth_factor) as i64;
         let predicted_6_months = (base_revenue as f64 * growth_factor.powi(6) * 6.0) as i64;
         let predicted_12_months = (base_revenue as f64 * growth_factor.powi(12) * 12.0) as i64;
@@ -266,16 +269,17 @@ impl CLVManager {
     /// Get CLV segments breakdown
     pub async fn get_clv_segments(&self) -> Result<Vec<CLVSegment>> {
         let clvs = self.customer_clvs.lock().await;
-        
+
         let mut segments: HashMap<String, Vec<&CustomerCLV>> = HashMap::new();
         for clv in clvs.values() {
-            segments.entry(clv.clv_segment.clone())
-                .or_insert_with(Vec::new)
+            segments
+                .entry(clv.clv_segment.clone())
+                .or_default()
                 .push(clv);
         }
 
         let total_value: i64 = clvs.values().map(|c| c.predicted_ltv).sum();
-        let total_customers = clvs.len() as i64;
+        let _total_customers = clvs.len() as i64;
 
         let mut result = Vec::new();
         for (segment_name, customers) in segments {
@@ -292,7 +296,11 @@ impl CLVManager {
                 0
             };
             let avg_retention = if customer_count > 0 {
-                customers.iter().map(|c| c.retention_probability).sum::<f64>() / customer_count as f64
+                customers
+                    .iter()
+                    .map(|c| c.retention_probability)
+                    .sum::<f64>()
+                    / customer_count as f64
             } else {
                 0.0
             };
@@ -322,7 +330,7 @@ impl CLVManager {
     /// Get platform-wide CLV summary
     pub async fn get_platform_clv_summary(&self) -> Result<PlatformCLVSummary> {
         let clvs = self.customer_clvs.lock().await;
-        
+
         let total_customers = clvs.len() as i64;
         let total_predicted_value: i64 = clvs.values().map(|c| c.predicted_ltv).sum();
         let avg_clv = if total_customers > 0 {
@@ -332,12 +340,14 @@ impl CLVManager {
         };
 
         // High value customers (>$10,000 LTV = >1,000,000 cents)
-        let high_value_customers = clvs.values()
+        let high_value_customers = clvs
+            .values()
             .filter(|c| c.predicted_ltv >= 1_000_000)
             .count() as i64;
 
         // At-risk high value (high CLV but low retention)
-        let at_risk_high_value = clvs.values()
+        let at_risk_high_value = clvs
+            .values()
             .filter(|c| c.predicted_ltv >= 1_000_000 && c.retention_probability < 0.5)
             .count() as i64;
 
@@ -346,7 +356,8 @@ impl CLVManager {
         for clv in clvs.values() {
             *tier_values.entry(clv.tier.clone()).or_insert(0) += clv.predicted_ltv;
         }
-        let top_clv_tier = tier_values.iter()
+        let top_clv_tier = tier_values
+            .iter()
             .max_by_key(|(_, value)| *value)
             .map(|(tier, _)| tier.clone())
             .unwrap_or_else(|| "none".to_string());
@@ -395,10 +406,10 @@ impl CLVManager {
     pub async fn get_cohorts(&self) -> Result<Vec<CLVCohort>> {
         let cohorts = self.cohorts.lock().await;
         let mut result: Vec<CLVCohort> = cohorts.values().cloned().collect();
-        
+
         // Sort by cohort month (most recent first)
         result.sort_by(|a, b| b.cohort_month.cmp(&a.cohort_month));
-        
+
         Ok(result)
     }
 }

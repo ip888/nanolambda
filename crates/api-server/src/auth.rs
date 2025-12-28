@@ -13,20 +13,18 @@ use std::sync::Arc;
 pub struct AuthContext {
     pub api_key_id: i64,
     pub permissions: Vec<String>,
-    pub api_key: String,  // Store the actual API key for rate limiting
+    pub api_key: String, // Store the actual API key for rate limiting
 }
 
 /// Extract API key from Authorization header
 fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
     let auth_header = headers.get("Authorization")?;
     let auth_str = auth_header.to_str().ok()?;
-    
+
     // Format: "Bearer nl_<hash>"
-    if let Some(token) = auth_str.strip_prefix("Bearer ") {
-        Some(token.to_string())
-    } else {
-        None
-    }
+    auth_str
+        .strip_prefix("Bearer ")
+        .map(|token| token.to_string())
 }
 
 /// Authentication middleware
@@ -36,41 +34,40 @@ pub async fn auth_middleware(
     next: Next,
 ) -> Result<Response, AuthError> {
     let headers = req.headers();
-    
+
     // Extract token from header
-    let token = extract_bearer_token(headers)
-        .ok_or(AuthError::MissingToken)?;
-    
+    let token = extract_bearer_token(headers).ok_or(AuthError::MissingToken)?;
+
     // Validate token
     let api_key = storage
         .get_api_key(&token)
         .map_err(|_| AuthError::InvalidToken)?
         .ok_or(AuthError::InvalidToken)?;
-    
+
     // Check if key is active
     if api_key.status != ApiKeyStatus::Active {
         return Err(AuthError::RevokedToken);
     }
-    
+
     // Check if key is expired
     if let Some(expires_at) = api_key.expires_at {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
-        
+
         if now > expires_at {
             return Err(AuthError::ExpiredToken);
         }
     }
-    
+
     // Update last used timestamp (non-blocking)
     let storage_clone = storage.clone();
     let token_clone = token.clone();
     tokio::spawn(async move {
         let _ = storage_clone.update_api_key_last_used(&token_clone);
     });
-    
+
     // Add auth context to request extensions
     let auth_context = AuthContext {
         api_key_id: api_key.id,
@@ -78,7 +75,7 @@ pub async fn auth_middleware(
         api_key: token.clone(),
     };
     req.extensions_mut().insert(auth_context);
-    
+
     Ok(next.run(req).await)
 }
 
@@ -98,25 +95,16 @@ impl IntoResponse for AuthError {
                 StatusCode::UNAUTHORIZED,
                 "Missing authorization token. Include 'Authorization: Bearer <token>' header.",
             ),
-            AuthError::InvalidToken => (
-                StatusCode::UNAUTHORIZED,
-                "Invalid or unknown API key",
-            ),
-            AuthError::RevokedToken => (
-                StatusCode::FORBIDDEN,
-                "API key has been revoked",
-            ),
-            AuthError::ExpiredToken => (
-                StatusCode::FORBIDDEN,
-                "API key has expired",
-            ),
+            AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or unknown API key"),
+            AuthError::RevokedToken => (StatusCode::FORBIDDEN, "API key has been revoked"),
+            AuthError::ExpiredToken => (StatusCode::FORBIDDEN, "API key has expired"),
         };
-        
+
         let body = json!({
             "error": message,
             "status": status.as_u16(),
         });
-        
+
         (status, axum::Json(body)).into_response()
     }
 }
@@ -125,7 +113,7 @@ impl IntoResponse for AuthError {
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
-    
+
     #[test]
     fn test_extract_bearer_token() {
         let mut headers = HeaderMap::new();
@@ -133,26 +121,23 @@ mod tests {
             "Authorization",
             HeaderValue::from_static("Bearer nl_abc123"),
         );
-        
+
         let token = extract_bearer_token(&headers);
         assert_eq!(token, Some("nl_abc123".to_string()));
     }
-    
+
     #[test]
     fn test_extract_missing_bearer() {
         let headers = HeaderMap::new();
         let token = extract_bearer_token(&headers);
         assert!(token.is_none());
     }
-    
+
     #[test]
     fn test_extract_invalid_format() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "Authorization",
-            HeaderValue::from_static("Basic abc123"),
-        );
-        
+        headers.insert("Authorization", HeaderValue::from_static("Basic abc123"));
+
         let token = extract_bearer_token(&headers);
         assert!(token.is_none());
     }

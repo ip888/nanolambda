@@ -1,10 +1,6 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 use crate::ApiServer;
@@ -66,11 +62,7 @@ pub async fn record_payment_failure(
     })?;
 
     let status = retry_manager
-        .record_payment_failure(
-            api_key_str,
-            payload.amount_cents,
-            &payload.failure_reason,
-        )
+        .record_payment_failure(api_key_str, payload.amount_cents, &payload.failure_reason)
         .await
         .map_err(|e| {
             (
@@ -304,18 +296,15 @@ pub async fn get_platform_metrics(
         )
     })?;
 
-    let metrics = retry_manager
-        .get_platform_metrics()
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "get_metrics_failed".to_string(),
-                    message: format!("Failed to get platform metrics: {}", e),
-                }),
-            )
-        })?;
+    let metrics = retry_manager.get_platform_metrics().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "get_metrics_failed".to_string(),
+                message: format!("Failed to get platform metrics: {}", e),
+            }),
+        )
+    })?;
 
     Ok(Json(json!({
         "success": true,
@@ -338,18 +327,15 @@ pub async fn get_past_due_customers(
         )
     })?;
 
-    let customers = retry_manager
-        .get_past_due_customers()
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "get_past_due_failed".to_string(),
-                    message: format!("Failed to get past due customers: {}", e),
-                }),
-            )
-        })?;
+    let customers = retry_manager.get_past_due_customers().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "get_past_due_failed".to_string(),
+                message: format!("Failed to get past due customers: {}", e),
+            }),
+        )
+    })?;
 
     Ok(Json(json!({
         "success": true,

@@ -2,7 +2,8 @@
 use crate::error::{Result, StorageError};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use sqlx::{SqlitePool, Row};
+use sqlx::{Row, SqlitePool};
+use std::str::FromStr;
 
 const STRIPE_API_BASE: &str = "https://api.stripe.com/v1";
 
@@ -20,13 +21,17 @@ impl DiscountType {
             DiscountType::Fixed => "fixed",
         }
     }
-    
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+}
+
+impl FromStr for DiscountType {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "percentage" => DiscountType::Percentage,
             "fixed" => DiscountType::Fixed,
             _ => DiscountType::Percentage,
-        }
+        })
     }
 }
 
@@ -175,20 +180,20 @@ impl DiscountManager {
     ) -> Result<DiscountCode> {
         let now = Utc::now().timestamp();
         let code_upper = code.to_uppercase();
-        
+
         // Validate amount
-        if discount_type == DiscountType::Percentage && (amount < 1 || amount > 100) {
+        if discount_type == DiscountType::Percentage && !(1..=100).contains(&amount) {
             return Err(StorageError::InvalidConfig(
-                "Percentage discount must be between 1 and 100".to_string()
+                "Percentage discount must be between 1 and 100".to_string(),
             ));
         }
-        
+
         if discount_type == DiscountType::Fixed && amount < 1 {
             return Err(StorageError::InvalidConfig(
-                "Fixed discount must be positive".to_string()
+                "Fixed discount must be positive".to_string(),
             ));
         }
-        
+
         let id = sqlx::query(
             r#"
             INSERT INTO discount_codes (
@@ -232,7 +237,7 @@ impl DiscountManager {
     /// Get discount code by code string
     pub async fn get_discount_by_code(&self, code: &str) -> Result<Option<DiscountCode>> {
         let code_upper = code.to_uppercase();
-        
+
         let row = sqlx::query(
             r#"
             SELECT id, code, discount_type, amount, description, 
@@ -250,7 +255,7 @@ impl DiscountManager {
         Ok(row.map(|r| DiscountCode {
             id: r.get("id"),
             code: r.get("code"),
-            discount_type: DiscountType::from_str(r.get("discount_type")),
+            discount_type: DiscountType::from_str(r.get("discount_type")).unwrap(),
             amount: r.get("amount"),
             description: r.get("description"),
             max_uses: r.get("max_uses"),
@@ -282,7 +287,7 @@ impl DiscountManager {
         Ok(row.map(|r| DiscountCode {
             id: r.get("id"),
             code: r.get("code"),
-            discount_type: DiscountType::from_str(r.get("discount_type")),
+            discount_type: DiscountType::from_str(r.get("discount_type")).unwrap(),
             amount: r.get("amount"),
             description: r.get("description"),
             max_uses: r.get("max_uses"),
@@ -313,7 +318,7 @@ impl DiscountManager {
             .map(|r| DiscountCode {
                 id: r.get("id"),
                 code: r.get("code"),
-                discount_type: DiscountType::from_str(r.get("discount_type")),
+                discount_type: DiscountType::from_str(r.get("discount_type")).unwrap(),
                 amount: r.get("amount"),
                 description: r.get("description"),
                 max_uses: r.get("max_uses"),
@@ -328,11 +333,7 @@ impl DiscountManager {
     }
 
     /// Validate a discount code for use
-    pub async fn validate_discount(
-        &self,
-        code: &str,
-        amount: i64,
-    ) -> Result<DiscountValidation> {
+    pub async fn validate_discount(&self, code: &str, amount: i64) -> Result<DiscountValidation> {
         let discount = match self.get_discount_by_code(code).await? {
             Some(d) => d,
             None => {
@@ -356,34 +357,32 @@ impl DiscountManager {
         }
 
         // Check if expired
-        if let Some(expires_at) = discount.expires_at {
-            if Utc::now().timestamp() > expires_at {
-                return Ok(DiscountValidation {
-                    valid: false,
-                    discount_code: Some(discount),
-                    error_message: Some("Discount code has expired".to_string()),
-                    calculated_discount: 0,
-                });
-            }
+        if let Some(expires_at) = discount.expires_at
+            && Utc::now().timestamp() > expires_at
+        {
+            return Ok(DiscountValidation {
+                valid: false,
+                discount_code: Some(discount),
+                error_message: Some("Discount code has expired".to_string()),
+                calculated_discount: 0,
+            });
         }
 
         // Check usage limits
-        if let Some(max_uses) = discount.max_uses {
-            if discount.current_uses >= max_uses {
-                return Ok(DiscountValidation {
-                    valid: false,
-                    discount_code: Some(discount),
-                    error_message: Some("Discount code has reached maximum usage".to_string()),
-                    calculated_discount: 0,
-                });
-            }
+        if let Some(max_uses) = discount.max_uses
+            && discount.current_uses >= max_uses
+        {
+            return Ok(DiscountValidation {
+                valid: false,
+                discount_code: Some(discount),
+                error_message: Some("Discount code has reached maximum usage".to_string()),
+                calculated_discount: 0,
+            });
         }
 
         // Calculate discount amount
         let calculated_discount = match discount.discount_type {
-            DiscountType::Percentage => {
-                (amount * discount.amount) / 100
-            }
+            DiscountType::Percentage => (amount * discount.amount) / 100,
             DiscountType::Fixed => {
                 discount.amount.min(amount) // Can't discount more than the amount
             }
@@ -406,10 +405,12 @@ impl DiscountManager {
     ) -> Result<DiscountUsage> {
         // Validate first
         let validation = self.validate_discount(code, original_amount).await?;
-        
+
         if !validation.valid {
             return Err(StorageError::InvalidConfig(
-                validation.error_message.unwrap_or_else(|| "Invalid discount code".to_string())
+                validation
+                    .error_message
+                    .unwrap_or_else(|| "Invalid discount code".to_string()),
             ));
         }
 
@@ -527,7 +528,7 @@ impl DiscountManager {
     /// Deactivate a discount code
     pub async fn deactivate_discount(&self, code: &str) -> Result<()> {
         let now = Utc::now().timestamp();
-        
+
         sqlx::query(
             r#"
             UPDATE discount_codes 
@@ -547,7 +548,7 @@ impl DiscountManager {
     /// Reactivate a discount code
     pub async fn reactivate_discount(&self, code: &str) -> Result<()> {
         let now = Utc::now().timestamp();
-        
+
         sqlx::query(
             r#"
             UPDATE discount_codes 
@@ -566,15 +567,15 @@ impl DiscountManager {
 
     /// Create a Stripe coupon for this discount
     pub async fn create_stripe_coupon(&self, discount_code_id: i64) -> Result<String> {
-        let discount = self.get_discount_by_id(discount_code_id).await?
+        let discount = self
+            .get_discount_by_id(discount_code_id)
+            .await?
             .ok_or_else(|| StorageError::NotFound)?;
 
         let client = reqwest::Client::new();
-        
+
         // Build form data
-        let mut form_data = vec![
-            ("name", discount.code.clone()),
-        ];
+        let mut form_data = vec![("name", discount.code.clone())];
 
         match discount.discount_type {
             DiscountType::Percentage => {
@@ -603,10 +604,14 @@ impl DiscountManager {
             .map_err(|e| StorageError::ExternalApiError(e.to_string()))?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(StorageError::ExternalApiError(
-                format!("Stripe API error: {}", error_text)
-            ));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(StorageError::ExternalApiError(format!(
+                "Stripe API error: {}",
+                error_text
+            )));
         }
 
         let stripe_coupon: serde_json::Value = response
@@ -651,23 +656,28 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        
-        let mgr = DiscountManager::new("sk_test_key".to_string(), pool).await.unwrap();
-        
+
+        let mgr = DiscountManager::new("sk_test_key".to_string(), pool)
+            .await
+            .unwrap();
+
         // Create 20% discount
-        let discount = mgr.create_discount(
-            "SAVE20".to_string(),
-            DiscountType::Percentage,
-            20,
-            "20% off".to_string(),
-            None,
-            None,
-            None
-        ).await.unwrap();
-        
+        let discount = mgr
+            .create_discount(
+                "SAVE20".to_string(),
+                DiscountType::Percentage,
+                20,
+                "20% off".to_string(),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
         // Validate discount on $100 order
         let validation = mgr.validate_discount(&discount.code, 10000).await.unwrap();
-        
+
         assert!(validation.valid);
         assert_eq!(validation.calculated_discount, 2000); // $20
     }
@@ -679,23 +689,28 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        
-        let mgr = DiscountManager::new("sk_test_key".to_string(), pool).await.unwrap();
-        
+
+        let mgr = DiscountManager::new("sk_test_key".to_string(), pool)
+            .await
+            .unwrap();
+
         // Create $10 discount
-        let discount = mgr.create_discount(
-            "SAVE10".to_string(),
-            DiscountType::Fixed,
-            1000,
-            "$10 off".to_string(),
-            None,
-            None,
-            None
-        ).await.unwrap();
-        
+        let discount = mgr
+            .create_discount(
+                "SAVE10".to_string(),
+                DiscountType::Fixed,
+                1000,
+                "$10 off".to_string(),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
         // Validate discount on $100 order
         let validation = mgr.validate_discount(&discount.code, 10000).await.unwrap();
-        
+
         assert!(validation.valid);
         assert_eq!(validation.calculated_discount, 1000); // $10
     }
@@ -707,24 +722,29 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        
-        let mgr = DiscountManager::new("sk_test_key".to_string(), pool).await.unwrap();
-        
+
+        let mgr = DiscountManager::new("sk_test_key".to_string(), pool)
+            .await
+            .unwrap();
+
         // Create expired discount (expired yesterday)
         let yesterday = Utc::now().timestamp() - (24 * 60 * 60);
-        let discount = mgr.create_discount(
-            "EXPIRED".to_string(),
-            DiscountType::Percentage,
-            50,
-            "Expired discount".to_string(),
-            None,
-            Some(yesterday),
-            None
-        ).await.unwrap();
-        
+        let discount = mgr
+            .create_discount(
+                "EXPIRED".to_string(),
+                DiscountType::Percentage,
+                50,
+                "Expired discount".to_string(),
+                None,
+                Some(yesterday),
+                None,
+            )
+            .await
+            .unwrap();
+
         // Should be invalid
         let validation = mgr.validate_discount(&discount.code, 10000).await.unwrap();
-        
+
         assert!(!validation.valid);
         assert!(validation.error_message.unwrap().contains("expired"));
     }
