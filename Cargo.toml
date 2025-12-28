@@ -13,7 +13,6 @@ categories = ["virtualization", "web-programming"]
 members = [
     "crates/api-server",
     "crates/runtime",
-    "crates/scheduler",
     "crates/storage",
     "benchmarks",
 ]
@@ -89,7 +88,6 @@ reqwest = { version = "0.12", features = ["json"] }
 # Workspace crates
 nanolambda-api = { path = "crates/api-server" }
 nanolambda-runtime = { path = "crates/runtime" }
-nanolambda-scheduler = { path = "crates/scheduler" }
 nanolambda-storage = { path = "crates/storage" }
 
 [dev-dependencies]

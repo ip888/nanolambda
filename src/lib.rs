@@ -4,7 +4,6 @@
 
 pub use nanolambda_api as api;
 pub use nanolambda_runtime as runtime;
-pub use nanolambda_scheduler as scheduler;
 pub use nanolambda_storage as storage;
 
 /// Project version

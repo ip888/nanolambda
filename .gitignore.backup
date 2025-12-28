@@ -43,22 +43,3 @@ logs/
 # Temporary files
 tmp/
 temp/
-
-# Database files
-*.db
-*.db-*
-nanolambda.db*
-*.db.usage.db
-
-# Test results
-test-suite/results/
-test-results.txt
-
-# Additional logs
-tier_test.log
-test_server.log
-test_output.log
-server.log
-server_debug.log
-final_test.log
-

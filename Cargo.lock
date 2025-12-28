@@ -2309,7 +2309,6 @@ dependencies = [
  "mockall",
  "nanolambda-api",
  "nanolambda-runtime",
- "nanolambda-scheduler",
  "nanolambda-storage",
  "reqwest 0.12.24",
  "serde",
@@ -2373,16 +2372,6 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "nanolambda-scheduler"
-version = "0.1.0"
-dependencies = [
- "anyhow",
  "thiserror",
  "tokio",
  "tracing",
