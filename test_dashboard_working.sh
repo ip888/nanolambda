@@ -11,9 +11,30 @@ cargo run --bin nanolambda-server -- --port 8080 > /tmp/nanolambda.log 2>&1 &
 SERVER_PID=$!
 echo "Server PID: $SERVER_PID"
 
-# Wait for server to start
+# Wait for server to start with health check
 echo "⏳ Waiting for server to start..."
-sleep 6
+MAX_ATTEMPTS=30
+ATTEMPT=0
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+  if curl -s http://localhost:8080/health > /dev/null 2>&1; then
+    echo "✅ Server is healthy!"
+    break
+  fi
+  ATTEMPT=$((ATTEMPT + 1))
+  echo -n "."
+  sleep 1
+done
+
+if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+  echo ""
+  echo "❌ Server failed to start after 30 seconds"
+  echo "Server logs:"
+  tail -20 /tmp/nanolambda.log
+  kill $SERVER_PID 2>/dev/null
+  exit 1
+fi
+
+echo ""
 
 # Create API key
 echo "🔑 Creating API key..."
@@ -23,6 +44,10 @@ API_KEY=$(curl -s -X POST http://localhost:8080/auth/keys \
 
 if [ -z "$API_KEY" ] || [ "$API_KEY" == "null" ]; then
   echo "❌ Failed to create API key"
+  echo "Response was: $(curl -s -X POST http://localhost:8080/auth/keys -H "Content-Type: application/json" -d '{"name":"dashboard-test"}')"
+  echo ""
+  echo "Server logs:"
+  tail -20 /tmp/nanolambda.log
   kill $SERVER_PID 2>/dev/null
   exit 1
 fi
