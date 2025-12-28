@@ -1,7 +1,6 @@
 //! Integration tests for Task 7 - Storage + Runtime Integration
 
 use nanolambda_api::ApiServer;
-use serde_json::json;
 use std::sync::Arc;
 
 #[tokio::test]

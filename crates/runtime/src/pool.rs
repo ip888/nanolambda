@@ -150,11 +150,27 @@ while True:
         request = json.loads(line)
         event = request.get('event', {{}})
         
+        # Create a minimal context object (AWS Lambda-compatible)
+        class Context:
+            def __init__(self):
+                self.function_name = "nanolambda_function"
+                self.function_version = "1"
+                self.invoked_function_arn = "arn:aws:lambda:us-east-1:000000000000:function:nanolambda"
+                self.memory_limit_in_mb = "128"
+                self.aws_request_id = "00000000-0000-0000-0000-000000000000"
+                self.log_group_name = "/aws/lambda/nanolambda"
+                self.log_stream_name = "2024/01/01/[$LATEST]00000000000000000000000000000000"
+                
+            def get_remaining_time_in_millis(self):
+                return 30000  # 30 seconds
+        
+        context = Context()
+        
         start_time = time.time()
         
-        # Execute the handler (only pass event, not context)
+        # Execute the handler with event and context
         try:
-            result = handler_func(event)
+            result = handler_func(event, context)
             execution_time = (time.time() - start_time) * 1000
             
             response = {{

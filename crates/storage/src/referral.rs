@@ -667,6 +667,12 @@ mod tests {
             .await
             .unwrap();
 
+        // Initialize discount_codes table (required by referral_rewards foreign key)
+        use crate::discount::DiscountManager;
+        let _ = DiscountManager::new("test_key".to_string(), pool.clone())
+            .await
+            .unwrap();
+
         let mgr = ReferralManager::new(pool).await.unwrap();
 
         let code = mgr

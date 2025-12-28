@@ -216,9 +216,11 @@ impl PaymentRetryManager {
         let retry_succeeded = (status.current_attempt * 20) % 100 < 60;
 
         if retry_succeeded {
-            // Payment succeeded
+            // Payment succeeded - increment attempt before success processing
+            status.current_attempt += 1;
+
             let attempt = PaymentRetryAttempt {
-                attempt_number: status.current_attempt + 1,
+                attempt_number: status.current_attempt,
                 attempted_at: now,
                 amount_cents: status.outstanding_amount_cents,
                 status: "succeeded".to_string(),
@@ -232,7 +234,7 @@ impl PaymentRetryManager {
                 api_key: api_key.to_string(),
                 event_type: "retry_succeeded".to_string(),
                 amount_cents: status.outstanding_amount_cents,
-                attempt_number: status.current_attempt + 1,
+                attempt_number: status.current_attempt,
                 occurred_at: now,
                 metadata: Some("Payment processed successfully".to_string()),
             });
@@ -388,12 +390,7 @@ impl PaymentRetryManager {
         let mut statuses = self.retry_statuses.lock().await;
         let mut events = self.retry_events.lock().await;
 
-        if let Some(mut status) = statuses.get(api_key).cloned() {
-            status.outstanding_amount_cents = 0;
-            status.account_status = "active".to_string();
-            status.next_retry_at = None;
-            status.can_retry_now = false;
-
+        if let Some(status) = statuses.remove(api_key) {
             events.push(PaymentRetryEvent {
                 api_key: api_key.to_string(),
                 event_type: "manually_resolved".to_string(),
@@ -402,8 +399,6 @@ impl PaymentRetryManager {
                 occurred_at: Utc::now(),
                 metadata: Some("Manually cleared by admin".to_string()),
             });
-
-            statuses.insert(api_key.to_string(), status);
         }
 
         Ok(())
@@ -543,7 +538,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_retry_success() {
-        let manager = PaymentRetryManager::new().await.unwrap();
+        // Create config with zero delays for testing
+        let config = RetryConfig {
+            max_attempts: 5,
+            retry_delays_hours: vec![0, 0, 0, 0],
+            send_dunning_emails: false,
+            suspend_after_final_failure: true,
+        };
+        let manager = PaymentRetryManager::new_with_config(config).await.unwrap();
         let api_key = "test_key_003";
 
         // Record initial failure
@@ -719,7 +721,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_retry_attempts() {
-        let manager = PaymentRetryManager::new().await.unwrap();
+        // Create config with zero delays for testing
+        let config = RetryConfig {
+            max_attempts: 5,
+            retry_delays_hours: vec![0, 0, 0, 0],
+            send_dunning_emails: false,
+            suspend_after_final_failure: true,
+        };
+        let manager = PaymentRetryManager::new_with_config(config).await.unwrap();
         let api_key = "multi_retry_key";
 
         // Record initial failure
