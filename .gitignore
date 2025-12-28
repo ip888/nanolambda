@@ -62,3 +62,7 @@ server.log
 server_debug.log
 final_test.log
 
+# Internal/Confidential Documentation
+# Business strategy, competitive analysis, financial planning
+/internal/
+
