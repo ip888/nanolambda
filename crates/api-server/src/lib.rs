@@ -6,6 +6,7 @@ use axum::{
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tower_http::cors::{CorsLayer, Any};
 use tracing::info;
 
 pub mod analytics_handlers;
@@ -587,7 +588,16 @@ impl ApiServer {
             .route("/health", get(handlers::health_check))
             .with_state(state);
 
-        let app = Router::new().merge(protected_routes).merge(public_routes);
+        // Add CORS middleware to allow requests from the website
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+
+        let app = Router::new()
+            .merge(protected_routes)
+            .merge(public_routes)
+            .layer(cors);
 
         info!("Starting API server on 0.0.0.0:8080");
         let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;

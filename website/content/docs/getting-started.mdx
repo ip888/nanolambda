@@ -1,0 +1,151 @@
+---
+title: Getting Started
+description: Get up and running with NanoLambda in 5 minutes
+---
+
+# Getting Started
+
+Deploy your first serverless function in under 5 minutes.
+
+## Prerequisites
+
+- Basic knowledge of Python, Node.js, or Java
+- An HTTP client (curl, Postman, or your browser)
+
+## Quick Start
+
+### 1. Start the Server
+
+```bash
+# Clone the repository
+git clone https://github.com/ip888/nanolambda.git
+cd nanolambda
+
+# Build and run
+cargo build --release
+./target/release/nanolambda-server
+```
+
+Server will start on `http://localhost:8080`
+
+### 2. Create an API Key
+
+```bash
+curl -X POST http://localhost:8080/auth/keys \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-key"}'
+```
+
+**Response:**
+```json
+{
+  "key": "nl_abc123...",
+  "name": "my-key"
+}
+```
+
+Save this API key - you'll need it for all requests!
+
+### 3. Deploy Your First Function
+
+#### Python Example
+
+```bash
+curl -X POST http://localhost:8080/functions \
+  -H "Authorization: Bearer nl_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "hello-python",
+    "runtime": "python3.12",
+    "handler": "handler",
+    "code": "def handler(event, context):\n    name = event.get(\"name\", \"World\")\n    return {\"message\": f\"Hello, {name}!\"}"
+  }'
+```
+
+#### Node.js Example
+
+```bash
+curl -X POST http://localhost:8080/functions \
+  -H "Authorization: Bearer nl_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "hello-node",
+    "runtime": "nodejs22",
+    "handler": "handler",
+    "code": "exports.handler = async (event) => { return { message: `Hello, ${event.name || \"World\"}!` }; };"
+  }'
+```
+
+### 4. Invoke Your Function
+
+```bash
+curl -X POST http://localhost:8080/functions/hello-python/invoke \
+  -H "Authorization: Bearer nl_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Alice"}'
+```
+
+**Response:**
+```json
+{
+  "result": {
+    "message": "Hello, Alice!"
+  },
+  "execution_time_ms": 0,
+  "memory_used_mb": 11.5,
+  "cold_start": false
+}
+```
+
+🎉 **That's it!** You just deployed and executed a serverless function with **0ms warm start latency**.
+
+## What's Next?
+
+- [API Reference](/docs/api-reference) - Complete API documentation
+- [Handler Guide](/docs/handler-parameters) - Understanding event and context
+- [Language Support](/docs/languages) - Python, Node.js, and Java details
+- [Examples](/docs/examples) - Real-world use cases
+
+## Key Concepts
+
+### Functions
+A function is a piece of code that runs in response to an HTTP request. It receives an `event` (input data) and `context` (execution metadata).
+
+### Runtimes
+NanoLambda supports:
+- **Python 3.12** (production-ready)
+- **Node.js 22** (production-ready)
+- **Java 21** (experimental)
+
+### Cold Starts vs Warm Starts
+- **Cold Start:** First invocation, runtime needs to initialize
+- **Warm Start:** Subsequent invocations, process is already running
+
+NanoLambda achieves **0ms warm starts** through process pooling!
+
+## Troubleshooting
+
+### Server won't start
+```bash
+# Check if port 8080 is in use
+lsof -i :8080
+
+# Use different port
+NANOLAMBDA_PORT=3000 ./target/release/nanolambda-server
+```
+
+### Function creation fails
+- Ensure your code syntax is valid
+- Check runtime is supported
+- Verify API key is correct
+
+### Slow performance
+- First invocation is always slower (cold start)
+- Subsequent calls should be 0-2ms
+- Check system resources (CPU, memory)
+
+## Need Help?
+
+- [GitHub Issues](https://github.com/ip888/nanolambda/issues)
+- [Discussions](https://github.com/ip888/nanolambda/discussions)
+- [API Reference](/docs/api-reference)

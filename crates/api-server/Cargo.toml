@@ -7,6 +7,7 @@ description = "Lambda-compatible REST API server"
 [dependencies]
 # Web framework
 axum = { workspace = true }
+tower-http = { version = "0.6", features = ["cors"] }
 
 # Async runtime
 tokio = { workspace = true }

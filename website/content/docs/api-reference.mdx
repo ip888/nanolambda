@@ -1,0 +1,347 @@
+---
+title: API Reference
+description: Complete REST API documentation for NanoLambda
+---
+
+# API Reference
+
+Complete reference for the NanoLambda REST API.
+
+## Base URL
+
+```
+http://localhost:8080
+```
+
+## Authentication
+
+All requests (except health check) require an API key in the `Authorization` header:
+
+```bash
+Authorization: Bearer nl_abc123...
+```
+
+---
+
+## Endpoints
+
+### Health Check
+
+Check if the server is running.
+
+**Request:**
+```http
+GET /health
+```
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "version": "0.1.0"
+}
+```
+
+---
+
+### Create API Key
+
+Generate a new API key for authentication.
+
+**Request:**
+```http
+POST /auth/keys
+Content-Type: application/json
+
+{
+  "name": "my-key"
+}
+```
+
+**Response:**
+```json
+{
+  "key": "nl_2ebccd82678efa5a8c9ce6dcbe4336022b5f63f52a95ba178bf8fe832900ea55",
+  "name": "my-key",
+  "created_at": "2025-12-30T12:00:00Z"
+}
+```
+
+---
+
+### Create Function
+
+Deploy a new serverless function.
+
+**Request:**
+```http
+POST /functions
+Authorization: Bearer {api_key}
+Content-Type: application/json
+
+{
+  "name": "my-function",
+  "runtime": "python3.12",
+  "handler": "handler",
+  "code": "def handler(event, context):\n    return {\"result\": 42}",
+  "memory_mb": 128,
+  "timeout_seconds": 30
+}
+```
+
+**Parameters:**
+- `name` (required): Function name (alphanumeric, dashes, underscores)
+- `runtime` (required): `python3.12`, `nodejs22`, or `java21`
+- `handler` (required): Entry point function name
+- `code` (required): Source code as string
+- `memory_mb` (optional): Memory limit (default: 128)
+- `timeout_seconds` (optional): Timeout in seconds (default: 30)
+
+**Response:**
+```json
+{
+  "name": "my-function",
+  "runtime": "python3.12",
+  "handler": "handler",
+  "memory_mb": 128,
+  "timeout_seconds": 30,
+  "created_at": "2025-12-30T12:00:00Z"
+}
+```
+
+---
+
+### Get Function
+
+Retrieve function details.
+
+**Request:**
+```http
+GET /functions/{name}
+Authorization: Bearer {api_key}
+```
+
+**Response:**
+```json
+{
+  "name": "my-function",
+  "runtime": "python3.12",
+  "handler": "handler",
+  "memory_mb": 128,
+  "timeout_seconds": 30,
+  "created_at": "2025-12-30T12:00:00Z",
+  "updated_at": "2025-12-30T12:00:00Z"
+}
+```
+
+---
+
+### List Functions
+
+Get all functions.
+
+**Request:**
+```http
+GET /functions
+Authorization: Bearer {api_key}
+```
+
+**Response:**
+```json
+{
+  "functions": [
+    {
+      "name": "my-function",
+      "runtime": "python3.12",
+      "created_at": "2025-12-30T12:00:00Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+### Update Function
+
+Update an existing function.
+
+**Request:**
+```http
+PUT /functions/{name}
+Authorization: Bearer {api_key}
+Content-Type: application/json
+
+{
+  "code": "def handler(event, context):\n    return {\"updated\": True}",
+  "memory_mb": 256
+}
+```
+
+**Response:**
+```json
+{
+  "name": "my-function",
+  "runtime": "python3.12",
+  "memory_mb": 256,
+  "updated_at": "2025-12-30T12:30:00Z"
+}
+```
+
+---
+
+### Delete Function
+
+Remove a function.
+
+**Request:**
+```http
+DELETE /functions/{name}
+Authorization: Bearer {api_key}
+```
+
+**Response:**
+```http
+204 No Content
+```
+
+---
+
+### Invoke Function
+
+Execute a function with input data.
+
+**Request:**
+```http
+POST /functions/{name}/invoke
+Authorization: Bearer {api_key}
+Content-Type: application/json
+
+{
+  "name": "Alice",
+  "age": 30
+}
+```
+
+**Response:**
+```json
+{
+  "result": {
+    "message": "Hello, Alice!"
+  },
+  "execution_time_ms": 0,
+  "memory_used_mb": 11.5,
+  "cold_start": false
+}
+```
+
+---
+
+## Error Responses
+
+All errors return appropriate HTTP status codes with JSON body:
+
+**400 Bad Request:**
+```json
+{
+  "error": "Invalid request",
+  "details": "Function name is required"
+}
+```
+
+**401 Unauthorized:**
+```json
+{
+  "error": "Unauthorized",
+  "details": "Invalid or missing API key"
+}
+```
+
+**404 Not Found:**
+```json
+{
+  "error": "Not found",
+  "details": "Function 'my-function' does not exist"
+}
+```
+
+**500 Internal Server Error:**
+```json
+{
+  "error": "Internal server error",
+  "details": "Failed to execute function"
+}
+```
+
+---
+
+## Rate Limits
+
+**Free Tier:**
+- 100 requests/minute
+- 1,000 requests/hour
+- 1M requests/month
+
+**Pro Tier:**
+- 1,000 requests/minute
+- 100,000 requests/hour
+- 10M requests/month
+
+**Headers:**
+```http
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1703952000
+```
+
+---
+
+## SDKs
+
+### Python SDK
+
+```python
+from nanolambda import Client
+
+client = Client(api_key="nl_abc123...")
+
+# Create function
+client.functions.create(
+    name="hello",
+    runtime="python3.12",
+    handler="handler",
+    code="def handler(event, context): return {'hello': 'world'}"
+)
+
+# Invoke
+result = client.functions.invoke("hello", {"name": "Alice"})
+print(result)
+```
+
+### Node.js SDK
+
+```javascript
+const { NanoLambda } = require('nanolambda');
+
+const client = new NanoLambda({ apiKey: 'nl_abc123...' });
+
+// Create function
+await client.functions.create({
+  name: 'hello',
+  runtime: 'nodejs22',
+  handler: 'handler',
+  code: 'exports.handler = async (event) => ({ hello: "world" })'
+});
+
+// Invoke
+const result = await client.functions.invoke('hello', { name: 'Alice' });
+console.log(result);
+```
+
+---
+
+## Need Help?
+
+- [Getting Started Guide](/docs/getting-started)
+- [GitHub Issues](https://github.com/ip888/nanolambda/issues)
+- [Examples](/docs/examples)

@@ -158,6 +158,7 @@ while True:
                 self.invoked_function_arn = "arn:aws:lambda:us-east-1:000000000000:function:nanolambda"
                 self.memory_limit_in_mb = "128"
                 self.aws_request_id = "00000000-0000-0000-0000-000000000000"
+                self.request_id = self.aws_request_id
                 self.log_group_name = "/aws/lambda/nanolambda"
                 self.log_stream_name = "2024/01/01/[$LATEST]00000000000000000000000000000000"
                 
