@@ -9,10 +9,6 @@ license = "MIT"
 [lints]
 workspace = true
 
-# VMM crate legitimately requires unsafe code for WASM sandboxing
-[lints.rust]
-unsafe_code = "allow"
-
 # =============================================================================
 # BUSINESS DECISION: Why a Custom VMM?
 #

@@ -1,3 +1,6 @@
+// VMM crate requires unsafe code for WASM sandboxing (wasmtime FFI)
+#![allow(unsafe_code)]
+
 //! # NanoVM: Virtual Machine Monitor for Ultra-Fast Serverless Execution
 //!
 //! [![Rust](https://img.shields.io/badge/rust-1.93+-orange.svg)]()
