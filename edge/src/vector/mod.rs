@@ -3,4 +3,4 @@
 pub mod durable_object;
 pub mod hnsw;
 
-pub use hnsw::{HnswIndex, HnswConfig, DistanceMetric};
+pub use hnsw::{DistanceMetric, HnswConfig, HnswIndex};

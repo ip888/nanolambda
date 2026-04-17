@@ -162,10 +162,7 @@ pub async fn completions(
         .map_err(|e| EdgeError::AiError(format!("Text generation failed: {e}")))?;
 
     // Parse the result
-    let generated_text = result["response"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let generated_text = result["response"].as_str().unwrap_or("").to_string();
 
     // Estimate token usage
     let prompt_tokens = (body.prompt.len() / 4) as u32;
@@ -185,11 +182,7 @@ pub async fn completions(
 }
 
 /// Chat completions (OpenAI-compatible format)
-pub async fn chat(
-    mut req: Request,
-    env: &Env,
-    auth: &AuthContext,
-) -> Result<Response, EdgeError> {
+pub async fn chat(mut req: Request, env: &Env, auth: &AuthContext) -> Result<Response, EdgeError> {
     if !auth.has_permission(&Permission::AiAccess) {
         return Err(EdgeError::AuthorizationDenied(
             "Missing ai:access permission".to_string(),
@@ -272,10 +265,7 @@ pub async fn chat(
         .map_err(|e| EdgeError::AiError(format!("Chat completion failed: {e}")))?;
 
     // Return in OpenAI-compatible format
-    let response_text = result["response"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let response_text = result["response"].as_str().unwrap_or("").to_string();
 
     let response = serde_json::json!({
         "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),

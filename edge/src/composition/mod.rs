@@ -70,14 +70,9 @@ pub enum CompositionNode {
         if_false: Option<Box<CompositionNode>>,
     },
     /// Transform/map data
-    Transform {
-        expression: String,
-    },
+    Transform { expression: String },
     /// Wait for external event
-    Wait {
-        event: String,
-        timeout: Duration,
-    },
+    Wait { event: String, timeout: Duration },
 }
 
 /// A complete composition (workflow)
@@ -270,7 +265,13 @@ impl CompositionEngine {
         node: &'a CompositionNode,
         context: &'a mut CompositionContext,
         error_strategy: &'a ErrorStrategy,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<serde_json::Value, Vec<CompositionError>>> + Send + 'a>> {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<serde_json::Value, Vec<CompositionError>>>
+                + Send
+                + 'a,
+        >,
+    > {
         Box::pin(async move {
             match node {
                 CompositionNode::Function(func_id) => {
@@ -288,8 +289,14 @@ impl CompositionEngine {
                     if_true,
                     if_false,
                 } => {
-                    self.execute_conditional(condition, if_true, if_false.as_deref(), context, error_strategy)
-                        .await
+                    self.execute_conditional(
+                        condition,
+                        if_true,
+                        if_false.as_deref(),
+                        context,
+                        error_strategy,
+                    )
+                    .await
                 }
                 CompositionNode::Transform { expression } => {
                     self.execute_transform(expression, context).await
@@ -309,7 +316,9 @@ impl CompositionEngine {
         error_strategy: &ErrorStrategy,
     ) -> Result<serde_json::Value, Vec<CompositionError>> {
         let start = Instant::now();
-        self.stats.function_invocations.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .function_invocations
+            .fetch_add(1, Ordering::Relaxed);
 
         let function = self.functions.get(func_id).ok_or_else(|| {
             vec![CompositionError {
@@ -402,7 +411,10 @@ impl CompositionEngine {
                 execution_id: context.execution_id.clone(),
             };
 
-            match self.execute_node(node, &mut node_context, error_strategy).await {
+            match self
+                .execute_node(node, &mut node_context, error_strategy)
+                .await
+            {
                 Ok(output) => results.push(output),
                 Err(e) => errors.extend(e),
             }
@@ -431,7 +443,8 @@ impl CompositionEngine {
         if condition_result {
             self.execute_node(if_true, context, error_strategy).await
         } else if let Some(false_branch) = if_false {
-            self.execute_node(false_branch, context, error_strategy).await
+            self.execute_node(false_branch, context, error_strategy)
+                .await
         } else {
             context.trace.push(TraceEntry {
                 node: format!("conditional: {}", condition),
@@ -455,8 +468,16 @@ impl CompositionEngine {
 
         // Simple JSONPath-like transform (would use proper library in production)
         let result = match expression {
-            "$.data" => context.data.get("data").cloned().unwrap_or(serde_json::Value::Null),
-            "$.items" => context.data.get("items").cloned().unwrap_or(serde_json::Value::Null),
+            "$.data" => context
+                .data
+                .get("data")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+            "$.items" => context
+                .data
+                .get("items")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
             "$.first" => {
                 if let Some(arr) = context.data.as_array() {
                     arr.first().cloned().unwrap_or(serde_json::Value::Null)
@@ -551,14 +572,16 @@ impl CompositionEngine {
     fn evaluate_condition(&self, condition: &str, data: &serde_json::Value) -> bool {
         // Simple condition evaluation (would use proper expression language)
         match condition {
-            "$.success" => data.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
+            "$.success" => data
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
             "$.error" => data.get("error").is_some(),
-            "$.items.length > 0" => {
-                data.get("items")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| !arr.is_empty())
-                    .unwrap_or(false)
-            }
+            "$.items.length > 0" => data
+                .get("items")
+                .and_then(|v| v.as_array())
+                .map(|arr| !arr.is_empty())
+                .unwrap_or(false),
             _ => true,
         }
     }

@@ -7,16 +7,14 @@
 //! - DELETE /search/index - Remove documents from index
 
 use serde::{Deserialize, Serialize};
-use worker::{Env, Request, Response};
 use std::collections::HashMap;
+use worker::{Env, Request, Response};
 
-use crate::search::{
-    TokenizedDocument,
-    HybridSearch, HybridResult, VectorResult,
-    Reranker, RerankerConfig, RerankerDocument, RankedResult,
-    FusionMethod,
-};
 use crate::error::EdgeError;
+use crate::search::{
+    FusionMethod, HybridResult, HybridSearch, RankedResult, Reranker, RerankerConfig,
+    RerankerDocument, TokenizedDocument, VectorResult,
+};
 use crate::types::{AuthContext, Permission};
 
 /// Request to index documents for BM25
@@ -86,7 +84,9 @@ pub struct VectorResultInput {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
-fn default_top_k() -> usize { 10 }
+fn default_top_k() -> usize {
+    10
+}
 
 /// Response from hybrid search
 #[derive(Debug, Serialize)]
@@ -170,14 +170,22 @@ pub async fn index_documents(
     }
 
     // Get or create BM25 index from KV
-    let namespace = if body.namespace.is_empty() { "default" } else { &body.namespace };
+    let namespace = if body.namespace.is_empty() {
+        "default"
+    } else {
+        &body.namespace
+    };
     let index_key = format!("bm25:{}:{}", auth.user_id, namespace);
-    
-    let kv = env.kv("SESSIONS")
+
+    let kv = env
+        .kv("SESSIONS")
         .map_err(|e| EdgeError::Internal(format!("KV binding error: {e}")))?;
-    
-    let mut hybrid = match kv.get(&index_key).text().await
-        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))? 
+
+    let mut hybrid = match kv
+        .get(&index_key)
+        .text()
+        .await
+        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))?
     {
         Some(json) => HybridSearch::from_json(&json)
             .map_err(|e| EdgeError::Internal(format!("Index deserialize error: {e}")))?,
@@ -189,18 +197,15 @@ pub async fn index_documents(
     // Index documents
     let mut indexed = 0;
     for doc in body.documents {
-        let tokenized = TokenizedDocument::with_metadata(
-            doc.id,
-            doc.text,
-            doc.metadata,
-            &bm25_config,
-        );
+        let tokenized =
+            TokenizedDocument::with_metadata(doc.id, doc.text, doc.metadata, &bm25_config);
         hybrid.bm25_index_mut().add_document(tokenized);
         indexed += 1;
     }
 
     // Save index
-    let index_json = hybrid.to_json()
+    let index_json = hybrid
+        .to_json()
         .map_err(|e| EdgeError::Internal(format!("Index serialize error: {e}")))?;
     kv.put(&index_key, &index_json)
         .map_err(|e| EdgeError::Internal(format!("KV put error: {e}")))?
@@ -243,14 +248,22 @@ pub async fn hybrid_search(
     }
 
     // Get BM25 index from KV
-    let namespace = if body.namespace.is_empty() { "default" } else { &body.namespace };
+    let namespace = if body.namespace.is_empty() {
+        "default"
+    } else {
+        &body.namespace
+    };
     let index_key = format!("bm25:{}:{}", auth.user_id, namespace);
-    
-    let kv = env.kv("SESSIONS")
+
+    let kv = env
+        .kv("SESSIONS")
         .map_err(|e| EdgeError::Internal(format!("KV binding error: {e}")))?;
-    
-    let mut hybrid = match kv.get(&index_key).text().await
-        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))? 
+
+    let mut hybrid = match kv
+        .get(&index_key)
+        .text()
+        .await
+        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))?
     {
         Some(json) => HybridSearch::from_json(&json)
             .map_err(|e| EdgeError::Internal(format!("Index deserialize error: {e}")))?,
@@ -273,7 +286,8 @@ pub async fn hybrid_search(
     }
 
     // Convert vector results
-    let vector_results: Vec<VectorResult> = body.vector_results
+    let vector_results: Vec<VectorResult> = body
+        .vector_results
         .into_iter()
         .map(|r| VectorResult {
             id: r.id,
@@ -325,17 +339,28 @@ pub async fn rerank(
     // Build reranker config
     let mut config = RerankerConfig::default();
     if let Some(cfg) = body.config {
-        if let Some(w) = cfg.semantic_weight { config.semantic_weight = w; }
-        if let Some(w) = cfg.keyword_weight { config.keyword_weight = w; }
-        if let Some(w) = cfg.recency_weight { config.recency_weight = w; }
-        if let Some(w) = cfg.popularity_weight { config.popularity_weight = w; }
-        if let Some(m) = cfg.min_score { config.min_score = m; }
+        if let Some(w) = cfg.semantic_weight {
+            config.semantic_weight = w;
+        }
+        if let Some(w) = cfg.keyword_weight {
+            config.keyword_weight = w;
+        }
+        if let Some(w) = cfg.recency_weight {
+            config.recency_weight = w;
+        }
+        if let Some(w) = cfg.popularity_weight {
+            config.popularity_weight = w;
+        }
+        if let Some(m) = cfg.min_score {
+            config.min_score = m;
+        }
     }
 
     let reranker = Reranker::with_config(config);
 
     // Convert documents
-    let documents: Vec<RerankerDocument> = body.documents
+    let documents: Vec<RerankerDocument> = body
+        .documents
         .into_iter()
         .map(|d| {
             let mut doc = RerankerDocument::new(d.id, d.text, d.initial_score);
@@ -397,14 +422,22 @@ pub async fn remove_documents(
         .await
         .map_err(|e| EdgeError::InvalidRequest(format!("Invalid request body: {e}")))?;
 
-    let namespace = if body.namespace.is_empty() { "default" } else { &body.namespace };
+    let namespace = if body.namespace.is_empty() {
+        "default"
+    } else {
+        &body.namespace
+    };
     let index_key = format!("bm25:{}:{}", auth.user_id, namespace);
-    
-    let kv = env.kv("SESSIONS")
+
+    let kv = env
+        .kv("SESSIONS")
         .map_err(|e| EdgeError::Internal(format!("KV binding error: {e}")))?;
-    
-    let mut hybrid = match kv.get(&index_key).text().await
-        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))? 
+
+    let mut hybrid = match kv
+        .get(&index_key)
+        .text()
+        .await
+        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))?
     {
         Some(json) => HybridSearch::from_json(&json)
             .map_err(|e| EdgeError::Internal(format!("Index deserialize error: {e}")))?,
@@ -419,7 +452,8 @@ pub async fn remove_documents(
     }
 
     // Save updated index
-    let index_json = hybrid.to_json()
+    let index_json = hybrid
+        .to_json()
         .map_err(|e| EdgeError::Internal(format!("Index serialize error: {e}")))?;
     kv.put(&index_key, &index_json)
         .map_err(|e| EdgeError::Internal(format!("KV put error: {e}")))?
@@ -431,5 +465,6 @@ pub async fn remove_documents(
         "success": true,
         "removed_count": removed,
         "namespace": namespace
-    })).map_err(EdgeError::from)
+    }))
+    .map_err(EdgeError::from)
 }

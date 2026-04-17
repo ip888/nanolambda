@@ -43,6 +43,11 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   RUST_TOOLCHAIN: "1.93"
+  CARGO_HOME: /home/runner/.cargo
+  CARGO_INCREMENTAL: 0
+  # Override .cargo/config.toml mold linker (not available on CI runners)
+  CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: "cc"
+  CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: ""
 
 jobs:
   # ---------------------------------------------------------------------------

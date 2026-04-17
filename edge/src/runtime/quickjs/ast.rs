@@ -36,7 +36,7 @@ pub enum TokenType {
     Null,
     Undefined,
     Identifier(String),
-    
+
     // Keywords
     Const,
     Let,
@@ -74,7 +74,7 @@ pub enum TokenType {
     Delete,
     Void,
     Yield,
-    
+
     // Punctuation
     LeftParen,
     RightParen,
@@ -87,18 +87,18 @@ pub enum TokenType {
     Colon,
     Dot,
     QuestionMark,
-    OptionalChain,  // ?.
+    OptionalChain,   // ?.
     NullishCoalesce, // ??
-    Spread,         // ...
-    Arrow,          // =>
-    
+    Spread,          // ...
+    Arrow,           // =>
+
     // Operators
     Plus,
     Minus,
     Star,
     Slash,
     Percent,
-    StarStar,       // **
+    StarStar, // **
     PlusPlus,
     MinusMinus,
     Equals,
@@ -124,13 +124,13 @@ pub enum TokenType {
     LeftShift,
     RightShift,
     UnsignedRightShift,
-    
+
     // Template literals
     TemplateHead(String),
     TemplateMiddle(String),
     TemplateTail(String),
     TemplateNoSubstitution(String),
-    
+
     // End of file
     Eof,
 }
@@ -147,7 +147,7 @@ pub struct Token {
 pub enum AstNode {
     // Program
     Program(Vec<AstNode>),
-    
+
     // Declarations
     VariableDeclaration {
         kind: VariableKind,
@@ -165,7 +165,7 @@ pub enum AstNode {
         super_class: Option<Box<AstNode>>,
         body: Vec<AstNode>,
     },
-    
+
     // Expressions
     Literal(LiteralValue),
     Identifier(String),
@@ -238,7 +238,7 @@ pub enum AstNode {
         argument: Option<Box<AstNode>>,
         delegate: bool,
     },
-    
+
     // Statements
     BlockStatement(Vec<AstNode>),
     ExpressionStatement(Box<AstNode>),
@@ -363,38 +363,74 @@ pub enum LiteralValue {
 /// Binary operators
 #[derive(Debug, Clone, Copy)]
 pub enum BinaryOperator {
-    Add, Sub, Mul, Div, Mod, Exp,
-    Equal, NotEqual, StrictEqual, StrictNotEqual,
-    LessThan, LessThanOrEqual, GreaterThan, GreaterThanOrEqual,
-    BitwiseAnd, BitwiseOr, BitwiseXor,
-    LeftShift, RightShift, UnsignedRightShift,
-    In, InstanceOf,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Exp,
+    Equal,
+    NotEqual,
+    StrictEqual,
+    StrictNotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    LeftShift,
+    RightShift,
+    UnsignedRightShift,
+    In,
+    InstanceOf,
 }
 
 /// Unary operators
 #[derive(Debug, Clone, Copy)]
 pub enum UnaryOperator {
-    Minus, Plus, Not, BitwiseNot, TypeOf, Void, Delete,
+    Minus,
+    Plus,
+    Not,
+    BitwiseNot,
+    TypeOf,
+    Void,
+    Delete,
 }
 
 /// Update operators
 #[derive(Debug, Clone, Copy)]
 pub enum UpdateOperator {
-    Increment, Decrement,
+    Increment,
+    Decrement,
 }
 
 /// Assignment operators
 #[derive(Debug, Clone, Copy)]
 pub enum AssignmentOperator {
-    Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign,
-    AndAssign, OrAssign, XorAssign, LeftShiftAssign, RightShiftAssign,
-    NullishAssign, AndAssignLogical, OrAssignLogical,
+    Assign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    AndAssign,
+    OrAssign,
+    XorAssign,
+    LeftShiftAssign,
+    RightShiftAssign,
+    NullishAssign,
+    AndAssignLogical,
+    OrAssignLogical,
 }
 
 /// Logical operators
 #[derive(Debug, Clone, Copy)]
 pub enum LogicalOperator {
-    And, Or, NullishCoalesce,
+    And,
+    Or,
+    NullishCoalesce,
 }
 
 /// Switch case
@@ -424,7 +460,11 @@ impl<'a> Lexer<'a> {
         Self {
             source,
             chars: source.char_indices().peekable(),
-            position: Position { line: 1, column: 1, offset: 0 },
+            position: Position {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
         }
     }
 
@@ -776,31 +816,52 @@ impl<'a> Lexer<'a> {
 
     fn scan_plus(&mut self) -> TokenType {
         match self.chars.peek() {
-            Some(&(_, '+')) => { self.chars.next(); TokenType::PlusPlus }
-            Some(&(_, '=')) => { self.chars.next(); TokenType::PlusEquals }
+            Some(&(_, '+')) => {
+                self.chars.next();
+                TokenType::PlusPlus
+            }
+            Some(&(_, '=')) => {
+                self.chars.next();
+                TokenType::PlusEquals
+            }
             _ => TokenType::Plus,
         }
     }
 
     fn scan_minus(&mut self) -> TokenType {
         match self.chars.peek() {
-            Some(&(_, '-')) => { self.chars.next(); TokenType::MinusMinus }
-            Some(&(_, '=')) => { self.chars.next(); TokenType::MinusEquals }
+            Some(&(_, '-')) => {
+                self.chars.next();
+                TokenType::MinusMinus
+            }
+            Some(&(_, '=')) => {
+                self.chars.next();
+                TokenType::MinusEquals
+            }
             _ => TokenType::Minus,
         }
     }
 
     fn scan_star(&mut self) -> TokenType {
         match self.chars.peek() {
-            Some(&(_, '*')) => { self.chars.next(); TokenType::StarStar }
-            Some(&(_, '=')) => { self.chars.next(); TokenType::StarEquals }
+            Some(&(_, '*')) => {
+                self.chars.next();
+                TokenType::StarStar
+            }
+            Some(&(_, '=')) => {
+                self.chars.next();
+                TokenType::StarEquals
+            }
             _ => TokenType::Star,
         }
     }
 
     fn scan_slash(&mut self) -> TokenType {
         match self.chars.peek() {
-            Some(&(_, '=')) => { self.chars.next(); TokenType::SlashEquals }
+            Some(&(_, '=')) => {
+                self.chars.next();
+                TokenType::SlashEquals
+            }
             _ => TokenType::Slash,
         }
     }
@@ -820,7 +881,10 @@ impl<'a> Lexer<'a> {
                     TokenType::DoubleEquals
                 }
             }
-            Some(&(_, '>')) => { self.chars.next(); TokenType::Arrow }
+            Some(&(_, '>')) => {
+                self.chars.next();
+                TokenType::Arrow
+            }
             _ => TokenType::Equals,
         }
     }
@@ -842,15 +906,24 @@ impl<'a> Lexer<'a> {
 
     fn scan_less(&mut self) -> TokenType {
         match self.chars.peek() {
-            Some(&(_, '=')) => { self.chars.next(); TokenType::LessThanEquals }
-            Some(&(_, '<')) => { self.chars.next(); TokenType::LeftShift }
+            Some(&(_, '=')) => {
+                self.chars.next();
+                TokenType::LessThanEquals
+            }
+            Some(&(_, '<')) => {
+                self.chars.next();
+                TokenType::LeftShift
+            }
             _ => TokenType::LessThan,
         }
     }
 
     fn scan_greater(&mut self) -> TokenType {
         match self.chars.peek() {
-            Some(&(_, '=')) => { self.chars.next(); TokenType::GreaterThanEquals }
+            Some(&(_, '=')) => {
+                self.chars.next();
+                TokenType::GreaterThanEquals
+            }
             Some(&(_, '>')) => {
                 self.chars.next();
                 if let Some(&(_, '>')) = self.chars.peek() {
@@ -866,14 +939,20 @@ impl<'a> Lexer<'a> {
 
     fn scan_ampersand(&mut self) -> TokenType {
         match self.chars.peek() {
-            Some(&(_, '&')) => { self.chars.next(); TokenType::DoubleAmpersand }
+            Some(&(_, '&')) => {
+                self.chars.next();
+                TokenType::DoubleAmpersand
+            }
             _ => TokenType::Ampersand,
         }
     }
 
     fn scan_pipe(&mut self) -> TokenType {
         match self.chars.peek() {
-            Some(&(_, '|')) => { self.chars.next(); TokenType::DoublePipe }
+            Some(&(_, '|')) => {
+                self.chars.next();
+                TokenType::DoublePipe
+            }
             _ => TokenType::Pipe,
         }
     }
@@ -884,8 +963,14 @@ impl<'a> Lexer<'a> {
 
     fn scan_question(&mut self) -> TokenType {
         match self.chars.peek() {
-            Some(&(_, '?')) => { self.chars.next(); TokenType::NullishCoalesce }
-            Some(&(_, '.')) => { self.chars.next(); TokenType::OptionalChain }
+            Some(&(_, '?')) => {
+                self.chars.next();
+                TokenType::NullishCoalesce
+            }
+            Some(&(_, '.')) => {
+                self.chars.next();
+                TokenType::OptionalChain
+            }
             _ => TokenType::QuestionMark,
         }
     }
@@ -898,59 +983,135 @@ mod tests {
     #[test]
     fn test_lexer_identifiers() {
         let mut lexer = Lexer::new("const foo let bar");
-        
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Const));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "foo"));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Let));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "bar"));
+
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::Const
+        ));
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "foo")
+        );
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::Let
+        ));
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "bar")
+        );
     }
 
     #[test]
     fn test_lexer_numbers() {
         let mut lexer = Lexer::new("42 3.14 1e10 0xFF");
-        
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Number(n) if (n - 42.0).abs() < 0.001));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Number(n) if (n - 3.14).abs() < 0.001));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Number(n) if (n - 1e10).abs() < 1.0));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Number(n) if (n - 255.0).abs() < 0.001));
+
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::Number(n) if (n - 42.0).abs() < 0.001)
+        );
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::Number(n) if (n - 3.14).abs() < 0.001)
+        );
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::Number(n) if (n - 1e10).abs() < 1.0)
+        );
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::Number(n) if (n - 255.0).abs() < 0.001)
+        );
     }
 
     #[test]
     fn test_lexer_strings() {
         let mut lexer = Lexer::new(r#""hello" 'world'"#);
-        
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::String(s) if s == "hello"));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::String(s) if s == "world"));
+
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::String(s) if s == "hello")
+        );
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::String(s) if s == "world")
+        );
     }
 
     #[test]
     fn test_lexer_operators() {
         let mut lexer = Lexer::new("+ ++ += - -- -= * ** *= / /= === !== => ?? ?.");
-        
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Plus));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::PlusPlus));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::PlusEquals));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Minus));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::MinusMinus));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::MinusEquals));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Star));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::StarStar));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::StarEquals));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Slash));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::SlashEquals));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::TripleEquals));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::BangDoubleEquals));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Arrow));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::NullishCoalesce));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::OptionalChain));
+
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::Plus
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::PlusPlus
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::PlusEquals
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::Minus
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::MinusMinus
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::MinusEquals
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::Star
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::StarStar
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::StarEquals
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::Slash
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::SlashEquals
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::TripleEquals
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::BangDoubleEquals
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::Arrow
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::NullishCoalesce
+        ));
+        assert!(matches!(
+            lexer.next_token().unwrap().token_type,
+            TokenType::OptionalChain
+        ));
     }
 
     #[test]
     fn test_lexer_comments() {
         let mut lexer = Lexer::new("foo // comment\nbar /* block */ baz");
-        
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "foo"));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "bar"));
-        assert!(matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "baz"));
+
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "foo")
+        );
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "bar")
+        );
+        assert!(
+            matches!(lexer.next_token().unwrap().token_type, TokenType::Identifier(s) if s == "baz")
+        );
     }
 }

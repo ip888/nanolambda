@@ -79,12 +79,12 @@ pub struct CachePolicy {
 impl Default for CachePolicy {
     fn default() -> Self {
         Self {
-            default_ttl_ms: 60_000, // 1 minute
-            stale_window_ms: 30_000, // 30 seconds
-            max_entry_size: 5 * 1024 * 1024, // 5MB
+            default_ttl_ms: 60_000,            // 1 minute
+            stale_window_ms: 30_000,           // 30 seconds
+            max_entry_size: 5 * 1024 * 1024,   // 5MB
             max_total_size: 128 * 1024 * 1024, // 128MB
             adaptive_ttl: true,
-            min_ttl_ms: 10_000, // 10 seconds
+            min_ttl_ms: 10_000,   // 10 seconds
             max_ttl_ms: 3600_000, // 1 hour
         }
     }
@@ -150,10 +150,7 @@ impl RequestCoalescer {
 
     /// Complete a request
     pub fn complete(&mut self, key: &str) -> u32 {
-        self.pending
-            .remove(key)
-            .map(|p| p.waiters)
-            .unwrap_or(0)
+        self.pending.remove(key).map(|p| p.waiters).unwrap_or(0)
     }
 
     /// Get waiter count
@@ -258,11 +255,7 @@ impl AdaptiveTtl {
             return self.policy.default_ttl_ms;
         }
 
-        let hit_rate = self
-            .hit_rates
-            .get(key)
-            .map(|t| t.hit_rate())
-            .unwrap_or(0.5);
+        let hit_rate = self.hit_rates.get(key).map(|t| t.hit_rate()).unwrap_or(0.5);
 
         // Higher hit rate = longer TTL
         let range = self.policy.max_ttl_ms - self.policy.min_ttl_ms;

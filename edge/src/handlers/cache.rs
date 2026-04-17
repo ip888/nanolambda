@@ -7,8 +7,8 @@
 //! - GET /cache/stats - Get cache statistics
 
 use serde::{Deserialize, Serialize};
-use worker::{Env, Request, Response};
 use std::collections::HashMap;
+use worker::{Env, Request, Response};
 
 use crate::cache::{CacheConfig, CacheEntry, SemanticCache};
 use crate::error::EdgeError;
@@ -117,14 +117,22 @@ pub async fn query_cache(
     }
 
     // Get or create cache from KV
-    let namespace = if body.namespace.is_empty() { "default" } else { &body.namespace };
+    let namespace = if body.namespace.is_empty() {
+        "default"
+    } else {
+        &body.namespace
+    };
     let cache_key = format!("cache:{}:{}", auth.user_id, namespace);
-    
-    let kv = env.kv("SESSIONS")
+
+    let kv = env
+        .kv("SESSIONS")
         .map_err(|e| EdgeError::Internal(format!("KV binding error: {e}")))?;
-    
-    let mut cache = match kv.get(&cache_key).text().await
-        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))? 
+
+    let mut cache = match kv
+        .get(&cache_key)
+        .text()
+        .await
+        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))?
     {
         Some(json) => SemanticCache::from_json(&json)
             .map_err(|e| EdgeError::Internal(format!("Cache deserialize error: {e}")))?,
@@ -140,7 +148,8 @@ pub async fn query_cache(
     let result = cache.query(&body.embedding);
 
     // Save updated cache (for hit count tracking)
-    let cache_json = cache.to_json()
+    let cache_json = cache
+        .to_json()
         .map_err(|e| EdgeError::Internal(format!("Cache serialize error: {e}")))?;
     kv.put(&cache_key, &cache_json)
         .map_err(|e| EdgeError::Internal(format!("KV put error: {e}")))?
@@ -198,14 +207,22 @@ pub async fn store_cache(
     }
 
     // Get or create cache from KV
-    let namespace = if body.namespace.is_empty() { "default" } else { &body.namespace };
+    let namespace = if body.namespace.is_empty() {
+        "default"
+    } else {
+        &body.namespace
+    };
     let cache_key = format!("cache:{}:{}", auth.user_id, namespace);
-    
-    let kv = env.kv("SESSIONS")
+
+    let kv = env
+        .kv("SESSIONS")
         .map_err(|e| EdgeError::Internal(format!("KV binding error: {e}")))?;
-    
-    let mut cache = match kv.get(&cache_key).text().await
-        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))? 
+
+    let mut cache = match kv
+        .get(&cache_key)
+        .text()
+        .await
+        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))?
     {
         Some(json) => SemanticCache::from_json(&json)
             .map_err(|e| EdgeError::Internal(format!("Cache deserialize error: {e}")))?,
@@ -229,7 +246,8 @@ pub async fn store_cache(
     cache.insert(entry);
 
     // Save cache
-    let cache_json = cache.to_json()
+    let cache_json = cache
+        .to_json()
         .map_err(|e| EdgeError::Internal(format!("Cache serialize error: {e}")))?;
     kv.put(&cache_key, &cache_json)
         .map_err(|e| EdgeError::Internal(format!("KV put error: {e}")))?
@@ -260,10 +278,11 @@ pub async fn clear_cache(
 
     let namespace = namespace.unwrap_or("default");
     let cache_key = format!("cache:{}:{}", auth.user_id, namespace);
-    
-    let kv = env.kv("SESSIONS")
+
+    let kv = env
+        .kv("SESSIONS")
         .map_err(|e| EdgeError::Internal(format!("KV binding error: {e}")))?;
-    
+
     // Delete the cache
     kv.delete(&cache_key)
         .await
@@ -273,7 +292,8 @@ pub async fn clear_cache(
         "success": true,
         "namespace": namespace,
         "message": "Cache cleared"
-    })).map_err(EdgeError::from)
+    }))
+    .map_err(EdgeError::from)
 }
 
 /// Get cache statistics
@@ -290,12 +310,16 @@ pub async fn cache_stats(
 
     let namespace = namespace.unwrap_or("default");
     let cache_key = format!("cache:{}:{}", auth.user_id, namespace);
-    
-    let kv = env.kv("SESSIONS")
+
+    let kv = env
+        .kv("SESSIONS")
         .map_err(|e| EdgeError::Internal(format!("KV binding error: {e}")))?;
-    
-    let cache = match kv.get(&cache_key).text().await
-        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))? 
+
+    let cache = match kv
+        .get(&cache_key)
+        .text()
+        .await
+        .map_err(|e| EdgeError::Internal(format!("KV get error: {e}")))?
     {
         Some(json) => SemanticCache::from_json(&json)
             .map_err(|e| EdgeError::Internal(format!("Cache deserialize error: {e}")))?,
@@ -321,15 +345,26 @@ pub async fn cache_stats(
 fn uuid_v4() -> String {
     use rand::Rng;
     let mut rng = rand::rng();
-    
+
     let bytes: [u8; 16] = rng.random();
-    
+
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5],
-        (bytes[6] & 0x0f) | 0x40, bytes[7],
-        (bytes[8] & 0x3f) | 0x80, bytes[9],
-        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        (bytes[6] & 0x0f) | 0x40,
+        bytes[7],
+        (bytes[8] & 0x3f) | 0x80,
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15]
     )
 }

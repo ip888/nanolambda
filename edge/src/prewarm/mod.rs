@@ -470,7 +470,9 @@ impl PreWarmingEngine {
     pub fn record_accuracy(&mut self, function_id: &str, predicted: f64, actual: u64) {
         let error = (predicted - actual as f64).abs() / predicted.max(1.0);
         if error < 0.2 {
-            self.stats.accurate_predictions.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .accurate_predictions
+                .fetch_add(1, Ordering::Relaxed);
         }
     }
 

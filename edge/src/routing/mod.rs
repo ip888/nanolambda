@@ -636,7 +636,9 @@ impl RequestCoalescer {
         if let Some(existing) = pending.get(key) {
             if existing.started_at.elapsed() < self.window {
                 existing.count.fetch_add(1, Ordering::Relaxed);
-                self.stats.coalesced_requests.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .coalesced_requests
+                    .fetch_add(1, Ordering::Relaxed);
                 return CoalesceResult::Coalesced;
             }
         }

@@ -4,8 +4,7 @@ use worker::{Env, Request, Response};
 
 use crate::error::EdgeError;
 use crate::types::{
-    AuthContext, Permission, VectorDeleteRequest, VectorQueryRequest,
-    VectorUpsertRequest,
+    AuthContext, Permission, VectorDeleteRequest, VectorQueryRequest, VectorUpsertRequest,
 };
 
 /// Upsert vectors into the index
@@ -74,11 +73,7 @@ pub async fn upsert(
 }
 
 /// Query vectors from the index
-pub async fn query(
-    mut req: Request,
-    env: &Env,
-    auth: &AuthContext,
-) -> Result<Response, EdgeError> {
+pub async fn query(mut req: Request, env: &Env, auth: &AuthContext) -> Result<Response, EdgeError> {
     if !auth.has_permission(&Permission::VectorsRead) {
         return Err(EdgeError::AuthorizationDenied(
             "Missing vectors:read permission".to_string(),

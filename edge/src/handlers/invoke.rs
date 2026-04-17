@@ -6,7 +6,7 @@ use worker::{Context, Env, Request, Response};
 
 use crate::error::EdgeError;
 use crate::handlers::functions::fetch_function;
-use crate::runtime::quickjs::{QuickJsConfig, QuickJsEngine, JsVal};
+use crate::runtime::quickjs::{JsVal, QuickJsConfig, QuickJsEngine};
 use crate::types::{AuthContext, InvokeRequest, InvokeResponse, InvokeStatus, Permission, Runtime};
 
 /// Invoke a function
@@ -48,8 +48,13 @@ pub async fn invoke_function(
     // Execute based on runtime
     let result = match function.runtime {
         Runtime::JavaScript => {
-            execute_javascript(&function.code, &function.handler, &invoke_req.payload, timeout_ms)
-                .await
+            execute_javascript(
+                &function.code,
+                &function.handler,
+                &invoke_req.payload,
+                timeout_ms,
+            )
+            .await
         }
         Runtime::Python => {
             // Python via Pyodide - future implementation
@@ -126,26 +131,24 @@ async fn execute_javascript(
                 }))
             } else {
                 Err(EdgeError::ExecutionFailed(
-                    js_result.error.unwrap_or_else(|| "Unknown error".to_string())
+                    js_result
+                        .error
+                        .unwrap_or_else(|| "Unknown error".to_string()),
                 ))
             }
         }
-        Err(e) => {
-            match e {
-                crate::runtime::quickjs::QuickJsError::Timeout { elapsed_ms } => {
-                    Err(EdgeError::Timeout(elapsed_ms as u64))
-                }
-                crate::runtime::quickjs::QuickJsError::OutOfMemory { used, limit } => {
-                    Err(EdgeError::ExecutionFailed(format!(
-                        "Out of memory: used {} bytes of {} limit",
-                        used, limit
-                    )))
-                }
-                other => {
-                    Err(EdgeError::ExecutionFailed(other.to_string()))
-                }
+        Err(e) => match e {
+            crate::runtime::quickjs::QuickJsError::Timeout { elapsed_ms } => {
+                Err(EdgeError::Timeout(elapsed_ms as u64))
             }
-        }
+            crate::runtime::quickjs::QuickJsError::OutOfMemory { used, limit } => {
+                Err(EdgeError::ExecutionFailed(format!(
+                    "Out of memory: used {} bytes of {} limit",
+                    used, limit
+                )))
+            }
+            other => Err(EdgeError::ExecutionFailed(other.to_string())),
+        },
     }
 }
 

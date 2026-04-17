@@ -12,13 +12,13 @@ pub async fn get_usage(
     auth: &AuthContext,
 ) -> Result<Response, EdgeError> {
     let url = req.url()?;
-    
+
     // Parse query parameters for time range
     let params: std::collections::HashMap<String, String> = url
         .query_pairs()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
-    
+
     let start_date = params
         .get("start")
         .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
@@ -29,17 +29,17 @@ pub async fn get_usage(
             chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
                 .expect("Current month's first day is always valid")
         });
-    
+
     let end_date = params
         .get("end")
         .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
         .unwrap_or_else(|| chrono::Utc::now().date_naive());
-    
+
     // In a real implementation, we would:
     // 1. Query a time-series database or aggregated metrics
     // 2. Use Analytics Engine for detailed usage data
     // For now, return a placeholder structure
-    
+
     let usage = serde_json::json!({
         "user_id": auth.user_id,
         "period": {
@@ -71,7 +71,7 @@ pub async fn get_usage(
         },
         "note": "Full usage tracking requires Analytics Engine integration"
     });
-    
+
     Response::from_json(&usage).map_err(EdgeError::from)
 }
 
@@ -85,7 +85,7 @@ pub async fn get_summary(_env: &Env, auth: &AuthContext) -> Result<Response, Edg
         .and_hms_opt(0, 0, 0)
         .expect("Midnight is always valid")
         .and_utc();
-    
+
     let summary = serde_json::json!({
         "user_id": auth.user_id,
         "billing_period": {
@@ -121,7 +121,7 @@ pub async fn get_summary(_env: &Env, auth: &AuthContext) -> Result<Response, Edg
             "concurrent_invocations": auth.rate_limit.concurrent_invocations
         }
     });
-    
+
     Response::from_json(&summary).map_err(EdgeError::from)
 }
 

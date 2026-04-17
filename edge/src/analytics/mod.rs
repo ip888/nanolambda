@@ -21,7 +21,7 @@
 //!
 //! ```rust,ignore
 //! let analytics = AnalyticsEngine::new(env)?;
-//! 
+//!
 //! // Write an event
 //! analytics.write_event(AnalyticsEvent {
 //!     blob1: Some("function_invoke".to_string()),
@@ -32,8 +32,8 @@
 //!
 //! // Query data
 //! let results = analytics.query(
-//!     "SELECT blob2 as function_id, SUM(double1) as total_ms 
-//!      FROM events WHERE blob1 = 'function_invoke' 
+//!     "SELECT blob2 as function_id, SUM(double1) as total_ms
+//!      FROM events WHERE blob1 = 'function_invoke'
 //!      GROUP BY blob2"
 //! ).await?;
 //! ```
@@ -43,7 +43,7 @@ use std::collections::HashMap;
 use worker::{Env, Result as WorkerResult};
 
 /// Analytics event structure
-/// 
+///
 /// Maps to Cloudflare Analytics Engine schema:
 /// - blob1-20: String fields for dimensions/labels
 /// - double1-20: Numeric fields for metrics
@@ -51,50 +51,52 @@ use worker::{Env, Result as WorkerResult};
 pub struct AnalyticsEvent {
     // String fields (dimensions)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob1: Option<String>,  // event_type
+    pub blob1: Option<String>, // event_type
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob2: Option<String>,  // function_id
+    pub blob2: Option<String>, // function_id
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob3: Option<String>,  // user_id / api_key_hash
+    pub blob3: Option<String>, // user_id / api_key_hash
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob4: Option<String>,  // region / colo
+    pub blob4: Option<String>, // region / colo
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob5: Option<String>,  // status (success/error)
+    pub blob5: Option<String>, // status (success/error)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob6: Option<String>,  // runtime (js/python/wasm)
+    pub blob6: Option<String>, // runtime (js/python/wasm)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob7: Option<String>,  // version
+    pub blob7: Option<String>, // version
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob8: Option<String>,  // error_type
+    pub blob8: Option<String>, // error_type
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob9: Option<String>,  // country
+    pub blob9: Option<String>, // country
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blob10: Option<String>, // path
-    
+
     // Numeric fields (metrics)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub double1: Option<f64>,   // duration_ms
+    pub double1: Option<f64>, // duration_ms
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub double2: Option<f64>,   // memory_mb
+    pub double2: Option<f64>, // memory_mb
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub double3: Option<f64>,   // cpu_time_ms
+    pub double3: Option<f64>, // cpu_time_ms
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub double4: Option<f64>,   // response_bytes
+    pub double4: Option<f64>, // response_bytes
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub double5: Option<f64>,   // request_bytes
+    pub double5: Option<f64>, // request_bytes
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub double6: Option<f64>,   // cold_start (1.0 or 0.0)
+    pub double6: Option<f64>, // cold_start (1.0 or 0.0)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub double7: Option<f64>,   // error_count
+    pub double7: Option<f64>, // error_count
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub double8: Option<f64>,   // retry_count
-    
+    pub double8: Option<f64>, // retry_count
+
     /// Sampling interval (1 = no sampling, 10 = 1/10 sampled)
     #[serde(rename = "_sample_interval", default = "default_sample")]
     pub sample_interval: u32,
 }
 
-fn default_sample() -> u32 { 1 }
+fn default_sample() -> u32 {
+    1
+}
 
 /// Pre-defined event types
 #[derive(Debug, Clone, Copy)]
@@ -158,7 +160,7 @@ impl AnalyticsEngine {
     }
 
     /// Write a single event to Analytics Engine
-    /// 
+    ///
     /// Events are written asynchronously and may be batched by Cloudflare.
     pub async fn write_event(&self, env: &Env, event: AnalyticsEvent) -> WorkerResult<()> {
         // In production, this would use the Analytics Engine binding
@@ -169,11 +171,11 @@ impl AnalyticsEngine {
             event.blob2.as_deref().unwrap_or("unknown"),
             event.double1.unwrap_or(0.0)
         );
-        
+
         // Actual implementation would be:
         // let analytics = env.analytics(&self.binding_name)?;
         // analytics.write_data_point(event)?;
-        
+
         Ok(())
     }
 
@@ -286,7 +288,11 @@ impl AnalyticsEngine {
         hit: bool,
         size_bytes: Option<u64>,
     ) -> WorkerResult<()> {
-        let event_type = if hit { EventType::CacheHit } else { EventType::CacheMiss };
+        let event_type = if hit {
+            EventType::CacheHit
+        } else {
+            EventType::CacheMiss
+        };
         let event = AnalyticsEvent {
             blob1: Some(event_type.as_str().to_string()),
             blob2: Some(cache_key.to_string()),
@@ -343,7 +349,8 @@ impl AnalyticsQueryBuilder {
 
     /// Add WHERE clause
     pub fn where_eq(mut self, column: &str, value: &str) -> Self {
-        self.where_clauses.push(format!("{} = '{}'", column, value.replace('\'', "''")));
+        self.where_clauses
+            .push(format!("{} = '{}'", column, value.replace('\'', "''")));
         self
     }
 
@@ -379,7 +386,7 @@ impl AnalyticsQueryBuilder {
     /// Build the SQL query
     pub fn build(&self) -> String {
         let mut query = String::new();
-        
+
         // SELECT
         query.push_str("SELECT ");
         if self.select.is_empty() {
@@ -387,11 +394,11 @@ impl AnalyticsQueryBuilder {
         } else {
             query.push_str(&self.select.join(", "));
         }
-        
+
         // FROM
         query.push_str(" FROM ");
         query.push_str(&self.from);
-        
+
         // WHERE
         let mut conditions = self.where_clauses.clone();
         if let Some((start, end)) = &self.time_range {
@@ -402,13 +409,13 @@ impl AnalyticsQueryBuilder {
             query.push_str(" WHERE ");
             query.push_str(&conditions.join(" AND "));
         }
-        
+
         // GROUP BY
         if !self.group_by.is_empty() {
             query.push_str(" GROUP BY ");
             query.push_str(&self.group_by.join(", "));
         }
-        
+
         // ORDER BY
         if let Some((column, desc)) = &self.order_by {
             query.push_str(" ORDER BY ");
@@ -417,12 +424,12 @@ impl AnalyticsQueryBuilder {
                 query.push_str(" DESC");
             }
         }
-        
+
         // LIMIT
         if let Some(limit) = self.limit {
             query.push_str(&format!(" LIMIT {}", limit));
         }
-        
+
         query
     }
 }
@@ -440,7 +447,11 @@ impl AnalyticsQueries {
     /// Get function invocation counts by function
     pub fn invocations_by_function(limit: u32) -> String {
         AnalyticsQueryBuilder::new()
-            .select(&["blob2 as function_id", "COUNT(*) as invocations", "AVG(double1) as avg_duration_ms"])
+            .select(&[
+                "blob2 as function_id",
+                "COUNT(*) as invocations",
+                "AVG(double1) as avg_duration_ms",
+            ])
             .event_type(EventType::FunctionInvoke)
             .group_by(&["blob2"])
             .order_by("invocations", true)
@@ -455,7 +466,7 @@ impl AnalyticsQueries {
                 "blob2 as function_id",
                 "COUNT(*) as total",
                 "SUM(CASE WHEN blob5 = 'error' THEN 1 ELSE 0 END) as errors",
-                "SUM(CASE WHEN blob5 = 'error' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as error_rate"
+                "SUM(CASE WHEN blob5 = 'error' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as error_rate",
             ])
             .event_type(EventType::FunctionInvoke)
             .group_by(&["blob2"])
@@ -470,7 +481,7 @@ impl AnalyticsQueries {
             .select(&[
                 "PERCENTILE_CONT(double1, 0.5) as p50_ms",
                 "PERCENTILE_CONT(double1, 0.95) as p95_ms",
-                "PERCENTILE_CONT(double1, 0.99) as p99_ms"
+                "PERCENTILE_CONT(double1, 0.99) as p99_ms",
             ])
             .event_type(EventType::FunctionInvoke)
             .build()
@@ -482,7 +493,7 @@ impl AnalyticsQueries {
             .select(&[
                 "COUNT(*) as total",
                 "SUM(double6) as cold_starts",
-                "SUM(double6) * 100.0 / COUNT(*) as cold_start_rate"
+                "SUM(double6) * 100.0 / COUNT(*) as cold_start_rate",
             ])
             .event_type(EventType::FunctionInvoke)
             .build()
@@ -518,7 +529,7 @@ mod tests {
             .group_by(&["blob1"])
             .limit(10)
             .build();
-        
+
         assert!(query.contains("SELECT blob1, COUNT(*)"));
         assert!(query.contains("WHERE blob1 = 'test'"));
         assert!(query.contains("GROUP BY blob1"));
@@ -540,7 +551,7 @@ mod tests {
             double1: Some(42.5),
             ..Default::default()
         };
-        
+
         let json = serde_json::to_string(&event).expect("Should serialize");
         assert!(json.contains("\"blob1\":\"test\""));
         assert!(json.contains("\"double1\":42.5"));

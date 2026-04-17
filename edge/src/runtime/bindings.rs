@@ -72,7 +72,7 @@ impl JsBindings {
 
     /// btoa - encode to base64
     fn btoa(args: Vec<JsValue>) -> JsResult<JsValue> {
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let input = args
             .first()
@@ -85,7 +85,7 @@ impl JsBindings {
 
     /// atob - decode from base64
     fn atob(args: Vec<JsValue>) -> JsResult<JsValue> {
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
 
         let input = args
             .first()
@@ -104,9 +104,9 @@ impl JsBindings {
 
     /// JSON.stringify
     fn json_stringify(args: Vec<JsValue>) -> JsResult<JsValue> {
-        let value = args.first().ok_or_else(|| {
-            JsError::TypeError("JSON.stringify requires an argument".to_string())
-        })?;
+        let value = args
+            .first()
+            .ok_or_else(|| JsError::TypeError("JSON.stringify requires an argument".to_string()))?;
 
         let json = value
             .to_json()
@@ -120,10 +120,9 @@ impl JsBindings {
 
     /// JSON.parse
     fn json_parse(args: Vec<JsValue>) -> JsResult<JsValue> {
-        let input = args
-            .first()
-            .and_then(|v| v.as_string())
-            .ok_or_else(|| JsError::TypeError("JSON.parse requires a string argument".to_string()))?;
+        let input = args.first().and_then(|v| v.as_string()).ok_or_else(|| {
+            JsError::TypeError("JSON.parse requires a string argument".to_string())
+        })?;
 
         let value: serde_json::Value = serde_json::from_str(&input)
             .map_err(|e| JsError::SyntaxError(format!("JSON parse error: {}", e)))?;
@@ -170,8 +169,7 @@ impl JsValue {
 
     /// Create from JSON
     pub fn from_json(json: &serde_json::Value) -> JsResult<Self> {
-        let data =
-            serde_json::to_vec(json).map_err(|e| JsError::RuntimeError(e.to_string()))?;
+        let data = serde_json::to_vec(json).map_err(|e| JsError::RuntimeError(e.to_string()))?;
 
         let value_type = match json {
             serde_json::Value::Null => JsValueType::Null,

@@ -5,8 +5,8 @@
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 /// Distance metric for vector similarity
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -157,8 +157,7 @@ impl HnswIndex {
 
         // Find entry point for insertion
         // SAFETY: entry_point is guaranteed to be Some here due to the check above
-        let mut current_id = self.entry_point.clone()
-            .expect("Entry point checked above");
+        let mut current_id = self.entry_point.clone().expect("Entry point checked above");
         let mut current_level = self.max_level;
 
         // Traverse from top to the level of the new node
@@ -236,8 +235,7 @@ impl HnswIndex {
         };
 
         // SAFETY: entry_point is guaranteed to be Some here due to the check above
-        let mut current_id = self.entry_point.clone()
-            .expect("Entry point checked above");
+        let mut current_id = self.entry_point.clone().expect("Entry point checked above");
         let mut current_level = self.max_level;
 
         // Traverse from top to level 1
@@ -426,11 +424,7 @@ impl HnswIndex {
                 1.0 - dot
             }
             DistanceMetric::Euclidean => {
-                let sum: f32 = a
-                    .iter()
-                    .zip(b.iter())
-                    .map(|(x, y)| (x - y).powi(2))
-                    .sum();
+                let sum: f32 = a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum();
                 sum.sqrt()
             }
             DistanceMetric::DotProduct => {
@@ -520,25 +514,13 @@ mod tests {
 
         // Insert some vectors
         index
-            .insert(
-                "v1".to_string(),
-                vec![1.0, 0.0, 0.0],
-                HashMap::new(),
-            )
+            .insert("v1".to_string(), vec![1.0, 0.0, 0.0], HashMap::new())
             .unwrap();
         index
-            .insert(
-                "v2".to_string(),
-                vec![0.9, 0.1, 0.0],
-                HashMap::new(),
-            )
+            .insert("v2".to_string(), vec![0.9, 0.1, 0.0], HashMap::new())
             .unwrap();
         index
-            .insert(
-                "v3".to_string(),
-                vec![0.0, 1.0, 0.0],
-                HashMap::new(),
-            )
+            .insert("v3".to_string(), vec![0.0, 1.0, 0.0], HashMap::new())
             .unwrap();
 
         assert_eq!(index.len(), 3);

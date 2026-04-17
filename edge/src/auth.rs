@@ -1,16 +1,17 @@
 //! Authentication middleware for NanoLambda Edge
 
-use sha2::{Sha256, Digest};
-use worker::{Request, Env};
 use crate::error::EdgeError;
 use crate::types::{ApiKey, AuthContext, Permission, RateLimit};
+use sha2::{Digest, Sha256};
+use worker::{Env, Request};
 
 /// Authenticate a request using API key or JWT
 pub async fn authenticate(req: &Request, env: &Env) -> Result<AuthContext, EdgeError> {
     // Check for dev mode (local development bypass)
-    let environment = env.var("ENVIRONMENT")
+    let environment = env
+        .var("ENVIRONMENT")
         .map_or_else(|_| "production".to_string(), |v| v.to_string());
-    
+
     // Try API key first (preferred for edge)
     if let Some(api_key) = extract_api_key(req) {
         // In development, allow special dev keys
@@ -19,14 +20,14 @@ pub async fn authenticate(req: &Request, env: &Env) -> Result<AuthContext, EdgeE
         }
         return authenticate_api_key(&api_key, env).await;
     }
-    
+
     // Try JWT from Authorization header
     if let Some(token) = extract_bearer_token(req) {
         return authenticate_jwt(&token, env).await;
     }
-    
+
     Err(EdgeError::AuthenticationFailed(
-        "No valid authentication provided. Use X-Api-Key header or Bearer token.".to_string()
+        "No valid authentication provided. Use X-Api-Key header or Bearer token.".to_string(),
     ))
 }
 
@@ -52,10 +53,7 @@ fn create_dev_context() -> AuthContext {
 
 /// Extract API key from X-Api-Key header
 fn extract_api_key(req: &Request) -> Option<String> {
-    req.headers()
-        .get("X-Api-Key")
-        .ok()
-        .flatten()
+    req.headers().get("X-Api-Key").ok().flatten()
 }
 
 /// Extract Bearer token from Authorization header
@@ -65,7 +63,8 @@ fn extract_bearer_token(req: &Request) -> Option<String> {
         .ok()
         .flatten()
         .and_then(|auth| {
-            auth.strip_prefix("Bearer ").map(std::string::ToString::to_string)
+            auth.strip_prefix("Bearer ")
+                .map(std::string::ToString::to_string)
         })
 }
 
@@ -73,30 +72,36 @@ fn extract_bearer_token(req: &Request) -> Option<String> {
 async fn authenticate_api_key(api_key: &str, env: &Env) -> Result<AuthContext, EdgeError> {
     // Hash the API key for lookup
     let key_hash = hash_api_key(api_key);
-    
+
     // Look up in KV store
-    let kv = env.kv("API_KEYS")
+    let kv = env
+        .kv("API_KEYS")
         .map_err(|e| EdgeError::Internal(format!("KV binding error: {e}")))?;
-    
-    let api_key_data: Option<ApiKey> = kv.get(&key_hash)
+
+    let api_key_data: Option<ApiKey> = kv
+        .get(&key_hash)
         .json()
         .await
         .map_err(|e| EdgeError::StorageError(format!("Failed to fetch API key: {e}")))?;
-    
+
     match api_key_data {
         Some(key) => {
             // Check if key is active
             if !key.is_active {
-                return Err(EdgeError::AuthorizationDenied("API key is disabled".to_string()));
+                return Err(EdgeError::AuthorizationDenied(
+                    "API key is disabled".to_string(),
+                ));
             }
-            
+
             // Check expiration
             if let Some(expires_at) = key.expires_at {
                 if expires_at < chrono::Utc::now() {
-                    return Err(EdgeError::AuthorizationDenied("API key has expired".to_string()));
+                    return Err(EdgeError::AuthorizationDenied(
+                        "API key has expired".to_string(),
+                    ));
                 }
             }
-            
+
             Ok(AuthContext {
                 user_id: key.owner_id,
                 permissions: key.permissions,
@@ -110,38 +115,37 @@ async fn authenticate_api_key(api_key: &str, env: &Env) -> Result<AuthContext, E
 /// Authenticate using JWT token
 async fn authenticate_jwt(token: &str, env: &Env) -> Result<AuthContext, EdgeError> {
     // Get JWT secret from environment
-    let secret = env.secret("JWT_SECRET")
+    let secret = env
+        .secret("JWT_SECRET")
         .map_err(|_| EdgeError::Internal("JWT_SECRET not configured".to_string()))?
         .to_string();
-    
+
     // Parse and validate JWT (simplified - production should use a proper JWT library)
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return Err(EdgeError::InvalidJwt("Invalid token format".to_string()));
     }
-    
+
     // Decode payload (base64url)
-    let payload = base64::Engine::decode(
-        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-        parts[1]
-    ).map_err(|_| EdgeError::InvalidJwt("Invalid payload encoding".to_string()))?;
-    
+    let payload =
+        base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, parts[1])
+            .map_err(|_| EdgeError::InvalidJwt("Invalid payload encoding".to_string()))?;
+
     let claims: JwtClaims = serde_json::from_slice(&payload)
         .map_err(|e| EdgeError::InvalidJwt(format!("Invalid claims: {e}")))?;
-    
+
     // Verify signature
     let signing_input = format!("{}.{}", parts[0], parts[1]);
     let expected_signature = compute_hmac_sha256(&signing_input, &secret);
-    
-    let provided_signature = base64::Engine::decode(
-        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-        parts[2]
-    ).map_err(|_| EdgeError::InvalidJwt("Invalid signature encoding".to_string()))?;
-    
+
+    let provided_signature =
+        base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, parts[2])
+            .map_err(|_| EdgeError::InvalidJwt("Invalid signature encoding".to_string()))?;
+
     if expected_signature != provided_signature {
         return Err(EdgeError::InvalidJwt("Invalid signature".to_string()));
     }
-    
+
     // Check expiration
     if let Some(exp) = claims.exp {
         let now = chrono::Utc::now().timestamp() as u64;
@@ -149,7 +153,7 @@ async fn authenticate_jwt(token: &str, env: &Env) -> Result<AuthContext, EdgeErr
             return Err(EdgeError::InvalidJwt("Token has expired".to_string()));
         }
     }
-    
+
     Ok(AuthContext {
         user_id: claims.sub,
         permissions: claims.permissions.unwrap_or_else(default_permissions),
@@ -168,9 +172,9 @@ fn hash_api_key(key: &str) -> String {
 fn compute_hmac_sha256(data: &str, secret: &str) -> Vec<u8> {
     use hmac::{Hmac, Mac};
     type HmacSha256 = Hmac<Sha256>;
-    
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("HMAC can take key of any size");
+
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
     mac.update(data.as_bytes());
     mac.finalize().into_bytes().to_vec()
 }
@@ -197,7 +201,7 @@ struct JwtClaims {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_hash_api_key() {
         let key = "nlk_test_123456789";

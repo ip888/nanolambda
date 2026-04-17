@@ -8,9 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use worker::{
-    console_log, Date, Headers, Request, Response, Result, WebSocketPair,
-};
+use worker::{Date, Headers, Request, Response, Result, WebSocketPair, console_log};
 
 /// WebSocket message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,10 +24,18 @@ pub enum WsMessage {
     Ping,
     Pong,
     /// Connection events
-    Connected { client_id: String },
-    Disconnected { client_id: String, reason: String },
+    Connected {
+        client_id: String,
+    },
+    Disconnected {
+        client_id: String,
+        reason: String,
+    },
     /// Error message
-    Error { code: u32, message: String },
+    Error {
+        code: u32,
+        message: String,
+    },
 }
 
 /// WebSocket connection configuration
@@ -385,12 +391,12 @@ fn current_timestamp() -> u64 {
 }
 
 fn base64_encode(input: &str) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     STANDARD.encode(input.as_bytes())
 }
 
 fn base64_decode(input: &str) -> Option<String> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     STANDARD
         .decode(input)
         .ok()

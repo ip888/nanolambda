@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use worker::{Request, Cf};
+use worker::{Cf, Request};
 
 /// Geographic region codes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -107,10 +107,11 @@ pub struct GeoLocation {
 impl GeoLocation {
     /// Extract geo info from Cloudflare request
     pub fn from_cf(cf: &Cf) -> Self {
-        let (latitude, longitude) = cf.coordinates()
+        let (latitude, longitude) = cf
+            .coordinates()
             .map(|(lat, lon)| (Some(lat as f64), Some(lon as f64)))
             .unwrap_or((None, None));
-        
+
         Self {
             country: cf.country(),
             region: cf.region(),
@@ -226,8 +227,7 @@ impl GeoRouter {
         }
 
         // Check allowed regions (if configured)
-        if !self.config.allowed_regions.is_empty()
-            && !self.config.allowed_regions.contains(&region)
+        if !self.config.allowed_regions.is_empty() && !self.config.allowed_regions.contains(&region)
         {
             return GeoCheckResult::Blocked(BlockReason::RegionNotAllowed(region));
         }

@@ -12,9 +12,9 @@
 //! - Namespace isolation per user
 //! - Hit rate tracking
 
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc, Duration};
 
 /// Semantic cache configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,7 +85,7 @@ impl CacheEntry {
             metadata: HashMap::new(),
         }
     }
-    
+
     /// Check if entry has expired
     pub fn is_expired(&self, ttl_seconds: u64) -> bool {
         if ttl_seconds == 0 {
@@ -94,7 +94,7 @@ impl CacheEntry {
         let expiry = self.created_at + Duration::seconds(ttl_seconds as i64);
         Utc::now() > expiry
     }
-    
+
     /// Update access timestamp and increment hit count
     pub fn record_hit(&mut self) {
         self.last_accessed = Utc::now();
@@ -159,7 +159,7 @@ impl SemanticCache {
     pub fn new(namespace: String) -> Self {
         Self::with_config(namespace, CacheConfig::default())
     }
-    
+
     /// Create a new semantic cache with custom configuration
     pub fn with_config(namespace: String, config: CacheConfig) -> Self {
         Self {
@@ -169,22 +169,22 @@ impl SemanticCache {
             namespace,
         }
     }
-    
+
     /// Query the cache for a semantically similar entry
     pub fn query(&mut self, query_embedding: &[f32]) -> Option<CacheHit> {
         self.stats.total_queries += 1;
-        
+
         let mut best_match: Option<(String, f32)> = None;
-        
+
         // Find the most similar entry above threshold
         for (id, entry) in &self.entries {
             // Skip expired entries
             if entry.is_expired(self.config.ttl_seconds) {
                 continue;
             }
-            
+
             let similarity = cosine_similarity(query_embedding, &entry.embedding);
-            
+
             if similarity >= self.config.similarity_threshold {
                 match &best_match {
                     None => best_match = Some((id.clone(), similarity)),
@@ -195,17 +195,17 @@ impl SemanticCache {
                 }
             }
         }
-        
+
         if let Some((id, similarity)) = best_match {
             if let Some(entry) = self.entries.get_mut(&id) {
                 entry.record_hit();
                 self.stats.hits += 1;
-                
+
                 // Update average similarity
                 let total_hits = self.stats.hits as f32;
-                self.stats.avg_hit_similarity = 
+                self.stats.avg_hit_similarity =
                     (self.stats.avg_hit_similarity * (total_hits - 1.0) + similarity) / total_hits;
-                
+
                 return Some(CacheHit {
                     entry: entry.clone(),
                     similarity,
@@ -213,84 +213,86 @@ impl SemanticCache {
                 });
             }
         }
-        
+
         self.stats.misses += 1;
         None
     }
-    
+
     /// Add an entry to the cache
     pub fn insert(&mut self, entry: CacheEntry) {
         // Evict if at capacity
         if self.entries.len() >= self.config.max_entries {
             self.evict_lru();
         }
-        
+
         // Clean up expired entries
         self.cleanup_expired();
-        
+
         // Update stats
-        let entry_size = std::mem::size_of::<CacheEntry>() 
+        let entry_size = std::mem::size_of::<CacheEntry>()
             + entry.embedding.len() * std::mem::size_of::<f32>()
             + entry.query.len()
             + entry.response.to_string().len();
         self.stats.bytes_used += entry_size;
-        
+
         self.entries.insert(entry.id.clone(), entry);
         self.stats.entry_count = self.entries.len();
     }
-    
+
     /// Remove a specific entry
     pub fn remove(&mut self, id: &str) -> Option<CacheEntry> {
         let entry = self.entries.remove(id);
         self.stats.entry_count = self.entries.len();
         entry
     }
-    
+
     /// Clear all entries
     pub fn clear(&mut self) {
         self.entries.clear();
         self.stats.entry_count = 0;
         self.stats.bytes_used = 0;
     }
-    
+
     /// Get cache statistics
     pub fn stats(&self) -> &CacheStats {
         &self.stats
     }
-    
+
     /// Get number of entries
     pub fn len(&self) -> usize {
         self.entries.len()
     }
-    
+
     /// Check if cache is empty
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
-    
+
     /// Evict the least recently used entry
     fn evict_lru(&mut self) {
-        let lru_id = self.entries.iter()
+        let lru_id = self
+            .entries
+            .iter()
             .min_by_key(|(_, e)| e.last_accessed)
             .map(|(id, _)| id.clone());
-        
+
         if let Some(id) = lru_id {
             self.entries.remove(&id);
         }
     }
-    
+
     /// Remove all expired entries
     fn cleanup_expired(&mut self) {
         let ttl = self.config.ttl_seconds;
         self.entries.retain(|_, entry| !entry.is_expired(ttl));
         self.stats.entry_count = self.entries.len();
     }
-    
+
     /// Serialize the cache to JSON
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
-    
+
     /// Deserialize the cache from JSON
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
@@ -302,33 +304,33 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
-    
+
     let mut dot_product = 0.0f32;
     let mut norm_a = 0.0f32;
     let mut norm_b = 0.0f32;
-    
+
     for (x, y) in a.iter().zip(b.iter()) {
         dot_product += x * y;
         norm_a += x * x;
         norm_b += y * y;
     }
-    
+
     if norm_a == 0.0 || norm_b == 0.0 {
         return 0.0;
     }
-    
+
     dot_product / (norm_a.sqrt() * norm_b.sqrt())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_cache_hit() {
         let mut cache = SemanticCache::new("test".to_string());
         cache.config.similarity_threshold = 0.9;
-        
+
         let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
         let entry = CacheEntry::new(
             "entry1".to_string(),
@@ -337,21 +339,21 @@ mod tests {
             serde_json::json!({"response": "It's sunny"}),
             "test-model".to_string(),
         );
-        
+
         cache.insert(entry);
-        
+
         // Query with exact same embedding should hit
         let result = cache.query(&embedding);
         assert!(result.is_some());
         let hit = result.unwrap();
         assert!((hit.similarity - 1.0).abs() < 0.001);
     }
-    
+
     #[test]
     fn test_cache_miss() {
         let mut cache = SemanticCache::new("test".to_string());
         cache.config.similarity_threshold = 0.9;
-        
+
         let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
         let entry = CacheEntry::new(
             "entry1".to_string(),
@@ -360,30 +362,30 @@ mod tests {
             serde_json::json!({"response": "It's sunny"}),
             "test-model".to_string(),
         );
-        
+
         cache.insert(entry);
-        
+
         // Query with very different embedding should miss
         let different_embedding = vec![0.9, 0.8, 0.7, 0.6, 0.5];
         let result = cache.query(&different_embedding);
         assert!(result.is_none());
     }
-    
+
     #[test]
     fn test_cosine_similarity() {
         let a = vec![1.0, 0.0, 0.0];
         let b = vec![1.0, 0.0, 0.0];
         assert!((cosine_similarity(&a, &b) - 1.0).abs() < 0.001);
-        
+
         let c = vec![0.0, 1.0, 0.0];
         assert!(cosine_similarity(&a, &c).abs() < 0.001);
     }
-    
+
     #[test]
     fn test_lru_eviction() {
         let mut cache = SemanticCache::new("test".to_string());
         cache.config.max_entries = 2;
-        
+
         // Insert 3 entries, oldest should be evicted
         for i in 0..3 {
             let entry = CacheEntry::new(
@@ -395,7 +397,7 @@ mod tests {
             );
             cache.insert(entry);
         }
-        
+
         assert_eq!(cache.len(), 2);
     }
 }

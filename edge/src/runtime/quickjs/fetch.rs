@@ -14,7 +14,7 @@
 //! const data = await response.json();
 //! ```
 
-use super::value::{JsVal, JsObject, JsArray, JsFunction};
+use super::value::{JsArray, JsFunction, JsObject, JsVal};
 use super::{QuickJsError, QuickJsResultType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -110,7 +110,8 @@ impl Headers {
     /// Create headers from a map
     pub fn from_map(map: HashMap<String, String>) -> Self {
         // Normalize header names to lowercase
-        let entries = map.into_iter()
+        let entries = map
+            .into_iter()
             .map(|(k, v)| (k.to_lowercase(), v))
             .collect();
         Self { entries }
@@ -123,7 +124,8 @@ impl Headers {
 
     /// Set a header value
     pub fn set(&mut self, name: impl Into<String>, value: impl Into<String>) {
-        self.entries.insert(name.into().to_lowercase(), value.into());
+        self.entries
+            .insert(name.into().to_lowercase(), value.into());
     }
 
     /// Append a header value (for multi-value headers)
@@ -228,9 +230,11 @@ impl Request {
     pub fn from_js_args(url: &JsVal, options: Option<&JsVal>) -> QuickJsResultType<Self> {
         let url_str = match url {
             JsVal::String(s) => s.clone(),
-            _ => return Err(QuickJsError::TypeError {
-                message: "URL must be a string".to_string(),
-            }),
+            _ => {
+                return Err(QuickJsError::TypeError {
+                    message: "URL must be a string".to_string(),
+                });
+            }
         };
 
         let mut request = Self::get(&url_str);
@@ -402,8 +406,8 @@ impl Response {
         }
         self.body_used = true;
 
-        let parsed: serde_json::Value = serde_json::from_str(&self.body)
-            .map_err(|e| QuickJsError::SyntaxError {
+        let parsed: serde_json::Value =
+            serde_json::from_str(&self.body).map_err(|e| QuickJsError::SyntaxError {
                 message: format!("JSON parse error: {}", e),
                 line: 0,
                 column: 0,
@@ -440,7 +444,10 @@ impl Response {
         // Methods (stored as function references, will be handled by engine)
         obj.set("text", JsVal::Function(JsFunction::new("text", vec![], "")));
         obj.set("json", JsVal::Function(JsFunction::new("json", vec![], "")));
-        obj.set("clone", JsVal::Function(JsFunction::new("clone", vec![], "")));
+        obj.set(
+            "clone",
+            JsVal::Function(JsFunction::new("clone", vec![], "")),
+        );
 
         // Store raw body for method calls (internal use)
         obj.set("_body", JsVal::String(self.body.clone()));
@@ -480,11 +487,12 @@ fn status_text_for_code(code: u16) -> String {
         503 => "Service Unavailable",
         504 => "Gateway Timeout",
         _ => "Unknown",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Fetch API implementation
-/// 
+///
 /// This struct manages pending fetch requests and their resolution.
 /// In a Workers environment, actual fetches are delegated to the host.
 #[derive(Debug, Default)]
@@ -543,7 +551,7 @@ impl FetchApi {
         // Check pattern matches (simple prefix/suffix)
         for (pattern, response) in &self.mocks {
             if pattern.ends_with('*') {
-                let prefix = &pattern[..pattern.len()-1];
+                let prefix = &pattern[..pattern.len() - 1];
                 if request.url.starts_with(prefix) {
                     return Some(response.clone_response());
                 }
@@ -577,9 +585,26 @@ impl FetchApi {
         let mut obj = JsObject::new();
 
         // Static methods
-        obj.set("error", JsVal::Function(JsFunction::new("error", vec![], "")));
-        obj.set("redirect", JsVal::Function(JsFunction::new("redirect", vec!["url".to_string(), "status".to_string()], "")));
-        obj.set("json", JsVal::Function(JsFunction::new("json", vec!["data".to_string(), "init".to_string()], "")));
+        obj.set(
+            "error",
+            JsVal::Function(JsFunction::new("error", vec![], "")),
+        );
+        obj.set(
+            "redirect",
+            JsVal::Function(JsFunction::new(
+                "redirect",
+                vec!["url".to_string(), "status".to_string()],
+                "",
+            )),
+        );
+        obj.set(
+            "json",
+            JsVal::Function(JsFunction::new(
+                "json",
+                vec!["data".to_string(), "init".to_string()],
+                "",
+            )),
+        );
 
         obj.set("prototype", JsVal::Object(JsObject::new()));
         obj
@@ -612,8 +637,14 @@ mod tests {
         headers.set("Content-Type", "application/json");
         headers.set("X-Custom", "value");
 
-        assert_eq!(headers.get("content-type"), Some(&"application/json".to_string()));
-        assert_eq!(headers.get("Content-Type"), Some(&"application/json".to_string()));
+        assert_eq!(
+            headers.get("content-type"),
+            Some(&"application/json".to_string())
+        );
+        assert_eq!(
+            headers.get("Content-Type"),
+            Some(&"application/json".to_string())
+        );
         assert!(headers.has("x-custom"));
 
         headers.append("accept", "text/html");
@@ -640,15 +671,18 @@ mod tests {
         let url = JsVal::String("https://api.example.com/data".to_string());
         let mut opts = JsObject::new();
         opts.set("method", JsVal::String("POST".to_string()));
-        
+
         let mut headers = JsObject::new();
-        headers.set("Content-Type", JsVal::String("application/json".to_string()));
+        headers.set(
+            "Content-Type",
+            JsVal::String("application/json".to_string()),
+        );
         opts.set("headers", JsVal::Object(headers));
-        
+
         opts.set("body", JsVal::String(r#"{"key":"value"}"#.to_string()));
 
-        let request = Request::from_js_args(&url, Some(&JsVal::Object(opts)))
-            .expect("Should create request");
+        let request =
+            Request::from_js_args(&url, Some(&JsVal::Object(opts))).expect("Should create request");
 
         assert_eq!(request.method, RequestMethod::POST);
         assert!(request.headers.has("content-type"));
@@ -700,10 +734,16 @@ mod tests {
     #[test]
     fn test_fetch_api_mock() {
         let mut api = FetchApi::new();
-        
+
         // Add mock
-        api.add_mock("https://api.example.com/users", Response::ok(r#"[{"id": 1}]"#));
-        api.add_mock("https://api.example.com/*", Response::new(200, "wildcard match"));
+        api.add_mock(
+            "https://api.example.com/users",
+            Response::ok(r#"[{"id": 1}]"#),
+        );
+        api.add_mock(
+            "https://api.example.com/*",
+            Response::new(200, "wildcard match"),
+        );
 
         // Exact match
         let request = Request::get("https://api.example.com/users");
@@ -728,7 +768,10 @@ mod tests {
         request.headers.set("Accept", "application/json");
 
         let obj = request.to_js_object();
-        assert_eq!(obj.get("url"), Some(&JsVal::String("https://example.com".to_string())));
+        assert_eq!(
+            obj.get("url"),
+            Some(&JsVal::String("https://example.com".to_string()))
+        );
         assert_eq!(obj.get("method"), Some(&JsVal::String("GET".to_string())));
     }
 
@@ -740,7 +783,10 @@ mod tests {
 
         let obj = response.to_js_object();
         assert_eq!(obj.get("status"), Some(&JsVal::Number(201.0)));
-        assert_eq!(obj.get("statusText"), Some(&JsVal::String("Created".to_string())));
+        assert_eq!(
+            obj.get("statusText"),
+            Some(&JsVal::String("Created".to_string()))
+        );
         assert_eq!(obj.get("ok"), Some(&JsVal::Boolean(true)));
     }
 
@@ -751,8 +797,14 @@ mod tests {
         headers.set("authorization", "Bearer token");
 
         let obj = headers.to_js_object();
-        assert_eq!(obj.get("content-type"), Some(&JsVal::String("application/json".to_string())));
-        assert_eq!(obj.get("authorization"), Some(&JsVal::String("Bearer token".to_string())));
+        assert_eq!(
+            obj.get("content-type"),
+            Some(&JsVal::String("application/json".to_string()))
+        );
+        assert_eq!(
+            obj.get("authorization"),
+            Some(&JsVal::String("Bearer token".to_string()))
+        );
     }
 
     #[test]

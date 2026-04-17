@@ -2,8 +2,8 @@
 //!
 //! Provides a safe wrapper around the QuickJS runtime.
 
-use crate::error::EdgeError;
 use super::SandboxConfig;
+use crate::error::EdgeError;
 use std::collections::HashMap;
 
 /// Result type for JS operations
@@ -144,9 +144,10 @@ impl JsContext {
             value_type: JsValueType::Object,
             data: None,
         };
-        
-        self.modules.insert(filename.to_string(), module_value.clone());
-        
+
+        self.modules
+            .insert(filename.to_string(), module_value.clone());
+
         // Simulate some memory usage
         self.memory_used += code.len() as u32;
 
@@ -181,7 +182,7 @@ impl JsContext {
                 ']' => bracket_count -= 1,
                 _ => {}
             }
-            
+
             if brace_count < 0 || paren_count < 0 || bracket_count < 0 {
                 return Err(EdgeError::JsRuntimeError(
                     "Unmatched closing bracket".to_string(),
@@ -223,9 +224,11 @@ impl JsContext {
 
         Ok(JsValue {
             value_type,
-            data: Some(serde_json::to_vec(json).map_err(|e| {
-                EdgeError::Internal(format!("JSON serialization failed: {}", e))
-            })?),
+            data: Some(
+                serde_json::to_vec(json).map_err(|e| {
+                    EdgeError::Internal(format!("JSON serialization failed: {}", e))
+                })?,
+            ),
         })
     }
 
@@ -247,9 +250,8 @@ impl JsContext {
     /// Convert JS value to JSON
     pub fn to_json(&self, value: &JsValue) -> Result<serde_json::Value, EdgeError> {
         if let Some(data) = &value.data {
-            serde_json::from_slice(data).map_err(|e| {
-                EdgeError::Internal(format!("JSON deserialization failed: {}", e))
-            })
+            serde_json::from_slice(data)
+                .map_err(|e| EdgeError::Internal(format!("JSON deserialization failed: {}", e)))
         } else {
             match value.value_type {
                 JsValueType::Undefined | JsValueType::Null => Ok(serde_json::Value::Null),
@@ -284,9 +286,21 @@ mod tests {
         let config = SandboxConfig::default();
         let context = JsContext::new(&config).expect("Should create context");
 
-        assert!(context.validate_syntax("function test() { return 1; }").is_ok());
-        assert!(context.validate_syntax("function test() { return 1; ").is_err());
-        assert!(context.validate_syntax("function test() return 1; }").is_err());
+        assert!(
+            context
+                .validate_syntax("function test() { return 1; }")
+                .is_ok()
+        );
+        assert!(
+            context
+                .validate_syntax("function test() { return 1; ")
+                .is_err()
+        );
+        assert!(
+            context
+                .validate_syntax("function test() return 1; }")
+                .is_err()
+        );
     }
 
     #[test]

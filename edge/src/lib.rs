@@ -1,8 +1,8 @@
 //! NanoLambda Edge - Rust-based Edge Serverless Platform
-//! 
+//!
 //! A high-performance edge computing platform built with Rust and WebAssembly
 //! for Cloudflare Workers. Features include:
-//! 
+//!
 //! - Function invocation with JavaScript/Python support
 //! - Built-in vector database (QuartzDB) for AI/ML workloads
 //! - Workers AI integration for embeddings and inference
@@ -44,7 +44,7 @@ pub use types::*;
 async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
     // Initialize panic hook for better error messages in console
     console_error_panic_hook::set_once();
-    
+
     // Route the request
     router::handle_request(req, env, ctx).await
 }
@@ -60,7 +60,7 @@ impl DurableObject for VectorIndex {
     fn new(state: State, env: Env) -> Self {
         Self { state, env }
     }
-    
+
     async fn fetch(&self, req: Request) -> Result<Response> {
         vector::durable_object::handle_request(self, req).await
     }
@@ -70,7 +70,7 @@ impl VectorIndex {
     pub fn state(&self) -> &State {
         &self.state
     }
-    
+
     pub fn env(&self) -> &Env {
         &self.env
     }
@@ -87,7 +87,7 @@ impl DurableObject for UserSession {
     fn new(state: State, env: Env) -> Self {
         Self { state, env }
     }
-    
+
     async fn fetch(&self, req: Request) -> Result<Response> {
         handlers::session::handle_request(self, req).await
     }
@@ -97,7 +97,7 @@ impl UserSession {
     pub fn state(&self) -> &State {
         &self.state
     }
-    
+
     pub fn env(&self) -> &Env {
         &self.env
     }
@@ -114,7 +114,7 @@ impl DurableObject for RateLimiter {
     fn new(state: State, env: Env) -> Self {
         Self { state, env }
     }
-    
+
     async fn fetch(&self, req: Request) -> Result<Response> {
         handlers::rate_limit::handle_request(self, req).await
     }
@@ -124,7 +124,7 @@ impl RateLimiter {
     pub fn state(&self) -> &State {
         &self.state
     }
-    
+
     pub fn env(&self) -> &Env {
         &self.env
     }

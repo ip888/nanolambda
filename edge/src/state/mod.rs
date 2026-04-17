@@ -6,10 +6,10 @@
 //! - TTL-based expiration
 //! - Distributed state synchronization
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 
 /// State entry with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -267,11 +267,7 @@ impl DurableStateMachine {
     }
 
     /// Atomic compare-and-swap update
-    pub fn compare_and_swap(
-        &self,
-        key: &str,
-        update: AtomicUpdate,
-    ) -> StateResult<StateEntry> {
+    pub fn compare_and_swap(&self, key: &str, update: AtomicUpdate) -> StateResult<StateEntry> {
         self.stats.sets.fetch_add(1, Ordering::Relaxed);
 
         let mut state = self.state.write().unwrap();
@@ -488,7 +484,9 @@ impl DurableStateMachine {
         state.retain(|_, entry| !entry.is_expired());
 
         let cleaned = before - state.len();
-        self.stats.expirations.fetch_add(cleaned as u64, Ordering::Relaxed);
+        self.stats
+            .expirations
+            .fetch_add(cleaned as u64, Ordering::Relaxed);
 
         cleaned
     }
@@ -522,15 +520,30 @@ pub struct StateTransaction {
 /// Operation in a transaction
 #[derive(Debug, Clone)]
 pub enum TransactionOp {
-    Set { key: String, value: serde_json::Value, ttl: Option<Duration> },
-    Delete { key: String },
-    Increment { key: String, delta: i64 },
-    CompareAndSwap { key: String, expected_version: u64, value: serde_json::Value },
+    Set {
+        key: String,
+        value: serde_json::Value,
+        ttl: Option<Duration>,
+    },
+    Delete {
+        key: String,
+    },
+    Increment {
+        key: String,
+        delta: i64,
+    },
+    CompareAndSwap {
+        key: String,
+        expected_version: u64,
+        value: serde_json::Value,
+    },
 }
 
 impl StateTransaction {
     pub fn new() -> Self {
-        Self { operations: Vec::new() }
+        Self {
+            operations: Vec::new(),
+        }
     }
 
     pub fn set(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
@@ -542,7 +555,12 @@ impl StateTransaction {
         self
     }
 
-    pub fn set_with_ttl(mut self, key: impl Into<String>, value: serde_json::Value, ttl: Duration) -> Self {
+    pub fn set_with_ttl(
+        mut self,
+        key: impl Into<String>,
+        value: serde_json::Value,
+        ttl: Duration,
+    ) -> Self {
         self.operations.push(TransactionOp::Set {
             key: key.into(),
             value,
@@ -552,7 +570,8 @@ impl StateTransaction {
     }
 
     pub fn delete(mut self, key: impl Into<String>) -> Self {
-        self.operations.push(TransactionOp::Delete { key: key.into() });
+        self.operations
+            .push(TransactionOp::Delete { key: key.into() });
         self
     }
 
@@ -596,18 +615,20 @@ impl StateTransaction {
                 TransactionOp::Increment { key, delta } => {
                     state_machine.increment(&key, delta).is_ok()
                 }
-                TransactionOp::CompareAndSwap { key, expected_version, value } => {
-                    state_machine
-                        .compare_and_swap(
-                            &key,
-                            AtomicUpdate {
-                                expected_version: Some(expected_version),
-                                value,
-                                ttl: None,
-                            },
-                        )
-                        .is_ok()
-                }
+                TransactionOp::CompareAndSwap {
+                    key,
+                    expected_version,
+                    value,
+                } => state_machine
+                    .compare_and_swap(
+                        &key,
+                        AtomicUpdate {
+                            expected_version: Some(expected_version),
+                            value,
+                            ttl: None,
+                        },
+                    )
+                    .is_ok(),
             };
 
             if !result {

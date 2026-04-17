@@ -47,7 +47,7 @@ pub struct SandboxLimits {
 impl Default for SandboxLimits {
     fn default() -> Self {
         Self {
-            max_execution_ms: 30_000,           // 30 seconds
+            max_execution_ms: 30_000,            // 30 seconds
             max_memory_bytes: 128 * 1024 * 1024, // 128 MB
             max_stack_bytes: 1024 * 1024,        // 1 MB stack
             max_string_length: 10 * 1024 * 1024, // 10 MB strings
@@ -75,9 +75,9 @@ impl SandboxLimits {
     /// Create limits for heavy computation
     pub fn heavy() -> Self {
         Self {
-            max_execution_ms: 300_000,           // 5 minutes
-            max_memory_bytes: 512 * 1024 * 1024, // 512 MB
-            max_stack_bytes: 4 * 1024 * 1024,    // 4 MB stack
+            max_execution_ms: 300_000,            // 5 minutes
+            max_memory_bytes: 512 * 1024 * 1024,  // 512 MB
+            max_stack_bytes: 4 * 1024 * 1024,     // 4 MB stack
             max_string_length: 100 * 1024 * 1024, // 100 MB strings
             max_array_length: 10_000_000,
             max_recursion_depth: 10_000,
@@ -183,6 +183,9 @@ mod tests {
         let config = SandboxConfig::default();
         let json = serde_json::to_string(&config).expect("Should serialize");
         let parsed: SandboxConfig = serde_json::from_str(&json).expect("Should deserialize");
-        assert_eq!(parsed.limits.max_execution_ms, config.limits.max_execution_ms);
+        assert_eq!(
+            parsed.limits.max_execution_ms,
+            config.limits.max_execution_ms
+        );
     }
 }

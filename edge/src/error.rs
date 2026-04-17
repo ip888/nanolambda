@@ -8,49 +8,49 @@ use worker::Response;
 pub enum EdgeError {
     #[error("Authentication failed: {0}")]
     AuthenticationFailed(String),
-    
+
     #[error("Authorization denied: {0}")]
     AuthorizationDenied(String),
-    
+
     #[error("Invalid API key")]
     InvalidApiKey,
-    
+
     #[error("Invalid JWT token: {0}")]
     InvalidJwt(String),
-    
+
     #[error("Rate limit exceeded: {0}")]
     RateLimitExceeded(String),
-    
+
     #[error("Function not found: {0}")]
     FunctionNotFound(String),
-    
+
     #[error("Resource not found: {0}")]
     NotFound(String),
-    
+
     #[error("Function execution failed: {0}")]
     ExecutionFailed(String),
-    
+
     #[error("Function timeout after {0}ms")]
     Timeout(u64),
-    
+
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
-    
+
     #[error("Vector operation failed: {0}")]
     VectorError(String),
-    
+
     #[error("AI operation failed: {0}")]
     AiError(String),
-    
+
     #[error("JavaScript runtime error: {0}")]
     JsRuntimeError(String),
-    
+
     #[error("Storage error: {0}")]
     StorageError(String),
-    
+
     #[error("Internal error: {0}")]
     Internal(String),
-    
+
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 }
@@ -77,9 +77,9 @@ impl EdgeError {
             EdgeError::NotImplemented(_) => 501,
         }
     }
-    
+
     /// Convert error to JSON response
-    /// 
+    ///
     /// Tech Decision: We use expect() here because Response::error with a valid
     /// status code (500) is guaranteed to succeed. This is a last-resort fallback.
     pub fn to_response(&self) -> Response {
@@ -90,17 +90,16 @@ impl EdgeError {
                 "message": self.to_string(),
             }
         });
-        
+
         Response::from_json(&body)
             .map(|r| r.with_status(status))
             .unwrap_or_else(|_| {
                 // Fallback: if JSON serialization fails, return plain text error
                 // Response::error with status 500 is infallible for valid inputs
-                Response::error("Internal error", 500)
-                    .expect("Response::error(500) is infallible")
+                Response::error("Internal error", 500).expect("Response::error(500) is infallible")
             })
     }
-    
+
     /// Get error code for API responses
     pub fn error_code(&self) -> &'static str {
         match self {

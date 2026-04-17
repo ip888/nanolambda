@@ -24,9 +24,9 @@
 //! data: [DONE]
 //! ```
 
-use worker::{Env, Request, Response, Headers};
 use crate::error::EdgeError;
 use crate::types::{AuthContext, Permission};
+use worker::{Env, Headers, Request, Response};
 
 /// Streaming chat completion request
 #[derive(Debug, serde::Deserialize)]
@@ -138,7 +138,7 @@ pub async fn streaming_chat(
 
     // In Workers, we use TransformStream for streaming
     // This is a simplified version - real implementation would use worker's streaming APIs
-    
+
     // For now, we'll make the AI call and simulate streaming by chunking the response
     let result: serde_json::Value = ai
         .run(&body.model, ai_input)
@@ -312,7 +312,10 @@ pub async fn streaming_completions(
                 "finish_reason": null
             }]
         });
-        sse_data.push_str(&format!("data: {}\n\n", serde_json::to_string(&data).unwrap_or_default()));
+        sse_data.push_str(&format!(
+            "data: {}\n\n",
+            serde_json::to_string(&data).unwrap_or_default()
+        ));
     }
 
     // Final chunk
@@ -327,7 +330,10 @@ pub async fn streaming_completions(
             "finish_reason": "stop"
         }]
     });
-    sse_data.push_str(&format!("data: {}\n\n", serde_json::to_string(&final_data).unwrap_or_default()));
+    sse_data.push_str(&format!(
+        "data: {}\n\n",
+        serde_json::to_string(&final_data).unwrap_or_default()
+    ));
     sse_data.push_str("data: [DONE]\n\n");
 
     let mut headers = Headers::new();
