@@ -1,0 +1,45 @@
+[package]
+name = "nanolambda-benchmarks"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "benchmark-runner"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# AWS SDK
+aws-sdk-lambda = "1.100"
+aws-config = { version = "1.8", features = ["behavior-version-latest"] }
+
+# Packaging
+zip = "2.2"
+
+# CLI and reporting
+clap = { workspace = true }
+colored = "2.1"
+tabled = "0.16"
+
+# Local NanoLambda client (optional, for direct API access)
+# nanolambda-api = { path = "../crates/api-server" }
+# nanolambda-runtime = { path = "../crates/runtime" }
+
+[dev-dependencies]
+criterion = "0.5"

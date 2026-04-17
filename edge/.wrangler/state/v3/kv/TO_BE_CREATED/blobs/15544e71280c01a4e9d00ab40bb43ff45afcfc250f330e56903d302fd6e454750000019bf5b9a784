@@ -1,0 +1,1 @@
+{"id":"a7beb98f-2951-4b0a-9f7e-39925e6cbf87","name":"f1","runtime":"javascript","code":"x","handler":"handler","timeout_ms":30000,"memory_mb":128,"environment":{},"created_at":"2026-01-25T15:15:43.617Z","updated_at":"2026-01-25T15:15:43.617Z","version":1,"owner_id":"dev-user"}

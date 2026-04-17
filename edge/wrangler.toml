@@ -1,0 +1,67 @@
+name = "nanolambda-edge"
+main = "build/worker/shim.mjs"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = "cargo install -q worker-build && worker-build --release"
+
+# KV Namespaces for function storage
+[[kv_namespaces]]
+binding = "FUNCTIONS"
+id = "TO_BE_CREATED"
+
+[[kv_namespaces]]
+binding = "API_KEYS"
+id = "TO_BE_CREATED"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "TO_BE_CREATED"
+
+# Durable Objects for stateful operations
+[durable_objects]
+bindings = [
+    { name = "VECTOR_INDEX", class_name = "VectorIndex" },
+    { name = "USER_SESSION", class_name = "UserSession" },
+    { name = "RATE_LIMITER", class_name = "RateLimiter" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["VectorIndex", "UserSession", "RateLimiter"]
+
+# R2 Bucket for larger assets
+[[r2_buckets]]
+binding = "PACKAGES"
+bucket_name = "nanolambda-packages"
+
+# Workers AI for embeddings and inference
+[ai]
+binding = "AI"
+
+# Environment variables
+[vars]
+ENVIRONMENT = "development"
+LOG_LEVEL = "debug"
+
+# Development environment (default for local)
+[env.dev]
+name = "nanolambda-edge-dev"
+[env.dev.vars]
+ENVIRONMENT = "development"
+LOG_LEVEL = "debug"
+
+# Production environment
+[env.production]
+name = "nanolambda-edge"
+[env.production.vars]
+ENVIRONMENT = "production"
+LOG_LEVEL = "info"
+
+# Staging environment  
+[env.staging]
+name = "nanolambda-edge-staging"
+[env.staging.vars]
+ENVIRONMENT = "staging"
+LOG_LEVEL = "debug"

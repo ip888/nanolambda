@@ -1,0 +1,262 @@
+{
+  "folders": [
+    {
+      "path": "server",
+      "name": "🖥️ NanoLambda Server",
+    },
+    {
+      "path": "edge",
+      "name": "🌐 NanoLambda Edge",
+    },
+    {
+      "path": ".",
+      "name": "📁 Root",
+    },
+  ],
+  "settings": {
+    // Rust Analyzer - separate workspaces for each project
+    "rust-analyzer.linkedProjects": ["server/Cargo.toml", "edge/Cargo.toml"],
+
+    // Separate target directories to avoid conflicts
+    "rust-analyzer.cargo.targetDir": true,
+
+    // Enable all features for better IDE support
+    "rust-analyzer.cargo.features": "all",
+
+    // Check on save for both projects
+    "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.check.command": "clippy",
+
+    // Editor settings
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+
+    // File associations
+    "files.associations": {
+      "*.toml": "toml",
+      "wrangler.toml": "toml",
+    },
+
+    // Exclude build artifacts from search
+    "files.exclude": {
+      "**/target": true,
+      "**/node_modules": true,
+      "**/.wrangler": true,
+      "**/build": true,
+    },
+
+    // Search exclusions
+    "search.exclude": {
+      "**/target": true,
+      "**/node_modules": true,
+      "**/Cargo.lock": true,
+      "**/package-lock.json": true,
+    },
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      // ==================== SERVER TASKS ====================
+      {
+        "label": "🖥️ Server: Build",
+        "type": "shell",
+        "command": "cargo build",
+        "options": { "cwd": "${workspaceFolder:🖥️ NanoLambda Server}" },
+        "group": "build",
+        "problemMatcher": "$rustc",
+      },
+      {
+        "label": "🖥️ Server: Build Release",
+        "type": "shell",
+        "command": "cargo build --release",
+        "options": { "cwd": "${workspaceFolder:🖥️ NanoLambda Server}" },
+        "group": "build",
+        "problemMatcher": "$rustc",
+      },
+      {
+        "label": "🖥️ Server: Test",
+        "type": "shell",
+        "command": "cargo test",
+        "options": { "cwd": "${workspaceFolder:🖥️ NanoLambda Server}" },
+        "group": "test",
+        "problemMatcher": "$rustc",
+      },
+      {
+        "label": "🖥️ Server: Run",
+        "type": "shell",
+        "command": "cargo run",
+        "options": { "cwd": "${workspaceFolder:🖥️ NanoLambda Server}" },
+        "group": "none",
+        "problemMatcher": "$rustc",
+        "isBackground": true,
+      },
+      {
+        "label": "🖥️ Server: Clippy",
+        "type": "shell",
+        "command": "cargo clippy -- -D warnings",
+        "options": { "cwd": "${workspaceFolder:🖥️ NanoLambda Server}" },
+        "group": "test",
+        "problemMatcher": "$rustc",
+      },
+      {
+        "label": "🖥️ Server: Watch",
+        "type": "shell",
+        "command": "cargo watch -x 'check' -x 'test'",
+        "options": { "cwd": "${workspaceFolder:🖥️ NanoLambda Server}" },
+        "group": "none",
+        "isBackground": true,
+        "problemMatcher": "$rustc",
+      },
+      // ==================== EDGE TASKS ====================
+      {
+        "label": "🌐 Edge: Build",
+        "type": "shell",
+        "command": "cargo build --target wasm32-unknown-unknown",
+        "options": { "cwd": "${workspaceFolder:🌐 NanoLambda Edge}" },
+        "group": "build",
+        "problemMatcher": "$rustc",
+      },
+      {
+        "label": "🌐 Edge: Build Release",
+        "type": "shell",
+        "command": "npm run build",
+        "options": { "cwd": "${workspaceFolder:🌐 NanoLambda Edge}" },
+        "group": "build",
+        "problemMatcher": [],
+      },
+      {
+        "label": "🌐 Edge: Test",
+        "type": "shell",
+        "command": "cargo test",
+        "options": { "cwd": "${workspaceFolder:🌐 NanoLambda Edge}" },
+        "group": "test",
+        "problemMatcher": "$rustc",
+      },
+      {
+        "label": "🌐 Edge: Dev Server",
+        "type": "shell",
+        "command": "npx wrangler dev --local",
+        "options": { "cwd": "${workspaceFolder:🌐 NanoLambda Edge}" },
+        "group": "none",
+        "isBackground": true,
+        "problemMatcher": [],
+      },
+      {
+        "label": "🌐 Edge: Clippy",
+        "type": "shell",
+        "command": "cargo clippy --target wasm32-unknown-unknown -- -D warnings",
+        "options": { "cwd": "${workspaceFolder:🌐 NanoLambda Edge}" },
+        "group": "test",
+        "problemMatcher": "$rustc",
+      },
+      {
+        "label": "🌐 Edge: Deploy",
+        "type": "shell",
+        "command": "npm run deploy",
+        "options": { "cwd": "${workspaceFolder:🌐 NanoLambda Edge}" },
+        "group": "none",
+        "problemMatcher": [],
+      },
+      // ==================== PARALLEL DEVELOPMENT ====================
+      {
+        "label": "🔄 Both: Build All",
+        "dependsOn": ["🖥️ Server: Build", "🌐 Edge: Build"],
+        "dependsOrder": "parallel",
+        "group": {
+          "kind": "build",
+          "isDefault": true,
+        },
+        "problemMatcher": [],
+      },
+      {
+        "label": "🔄 Both: Test All",
+        "dependsOn": ["🖥️ Server: Test", "🌐 Edge: Test"],
+        "dependsOrder": "parallel",
+        "group": {
+          "kind": "test",
+          "isDefault": true,
+        },
+        "problemMatcher": [],
+      },
+      {
+        "label": "🔄 Both: Clippy All",
+        "dependsOn": ["🖥️ Server: Clippy", "🌐 Edge: Clippy"],
+        "dependsOrder": "parallel",
+        "group": "test",
+        "problemMatcher": [],
+      },
+      {
+        "label": "🚀 Dev: Start Both Servers",
+        "dependsOn": ["🖥️ Server: Run", "🌐 Edge: Dev Server"],
+        "dependsOrder": "parallel",
+        "group": "none",
+        "problemMatcher": [],
+      },
+    ],
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "lldb",
+        "request": "launch",
+        "name": "🖥️ Debug Server",
+        "cargo": {
+          "args": [
+            "build",
+            "--bin=nanolambda-server",
+            "--package=nanolambda-server",
+          ],
+          "filter": {
+            "name": "nanolambda-server",
+            "kind": "bin",
+          },
+        },
+        "args": [],
+        "cwd": "${workspaceFolder:🖥️ NanoLambda Server}",
+      },
+      {
+        "type": "lldb",
+        "request": "launch",
+        "name": "🖥️ Debug CLI",
+        "cargo": {
+          "args": [
+            "build",
+            "--bin=nanolambda-cli",
+            "--package=nanolambda-server",
+          ],
+          "filter": {
+            "name": "nanolambda-cli",
+            "kind": "bin",
+          },
+        },
+        "args": [],
+        "cwd": "${workspaceFolder:🖥️ NanoLambda Server}",
+      },
+      {
+        "type": "lldb",
+        "request": "launch",
+        "name": "🖥️ Debug Server Tests",
+        "cargo": {
+          "args": ["test", "--no-run", "--package=nanolambda-server"],
+          "filter": {
+            "name": "nanolambda-server",
+            "kind": "lib",
+          },
+        },
+        "args": [],
+        "cwd": "${workspaceFolder:🖥️ NanoLambda Server}",
+      },
+    ],
+    "compounds": [],
+  },
+  "extensions": {
+    "recommendations": [
+      "rust-lang.rust-analyzer",
+      "tamasfe.even-better-toml",
+      "vadimcn.vscode-lldb",
+      "serayuzgur.crates",
+      "fill-labs.dependi",
+    ],
+  },
+}

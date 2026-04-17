@@ -1,19 +1,37 @@
-# NanoLambda - Self-Hosted Serverless Platform
+# NanoLambda Platform
 
-> **AWS Lambda-compatible serverless platform with microVM isolation, built in Rust**
+> **High-performance serverless computing: Self-hosted infrastructure and Edge deployment**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.93+-orange.svg)](https://www.rust-lang.org/)
+[![Edition](https://img.shields.io/badge/edition-2024-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/)
 
 ---
 
-## 🎯 Vision
+## 📦 Project Structure
 
-**"Lambda-Compatible Serverless for Your Own Infrastructure"**
+This monorepo contains two independent projects designed for parallel development:
 
-NanoLambda enables you to run serverless functions on your own infrastructure with:
-- ✅ **~0ms warm starts** - **10-50x faster** than AWS Lambda
-- ✅ **~32ms cold starts** - **3-10x faster** than AWS Lambda
+```
+nanolambda/
+├── server/     # Traditional self-hosted serverless platform
+├── edge/       # Edge computing platform (Cloudflare Workers)
+├── LICENSE
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+└── README.md   # This file
+```
+
+---
+
+## 🖥️ Server Platform (`/server`)
+
+**Self-hosted AWS Lambda-compatible serverless platform with microVM isolation**
+
+### Features
+
+- ✅ **~0ms warm starts** - 10-50x faster than AWS Lambda
+- ✅ **~32ms cold starts** - 3-10x faster than AWS Lambda
 - ✅ **Process pooling** - Instant execution after first invocation
 - ✅ **Function versioning** - AWS Lambda-compatible versioning system
 - ✅ **API key authentication** - Secure access with Bearer tokens
@@ -21,250 +39,86 @@ NanoLambda enables you to run serverless functions on your own infrastructure wi
 - ✅ **MicroVM isolation** - Hardware-backed security (coming soon)
 - ✅ **70% cost reduction** - Run on your own hardware
 - ✅ **Multi-language support** - Python (Node.js, Java coming soon)
-- ✅ **Zero vendor lock-in** - Deploy anywhere
+
+### Quick Start
+
+```bash
+cd server
+cargo build --release
+cargo test
+cargo run
+```
+
+### Documentation
+
+See [server/docs/](server/docs/) for detailed documentation.
 
 ---
 
-## 🚀 Quick Start
+## 🌐 Edge Platform (`/edge`)
+
+**AI-powered Edge computing platform deployed on Cloudflare Workers**
+
+### Features
+
+- ✅ **Semantic Caching** - AI-powered response caching with similarity matching
+- ✅ **Hybrid Search** - Combined vector + BM25 full-text search
+- ✅ **Reranking** - ML-based result relevance optimization
+- ✅ **Global Edge Deployment** - 300+ Cloudflare locations worldwide
+- ✅ **Sub-10ms latency** - Cold starts under 10ms
+- ✅ **Zero infrastructure** - No servers to manage
+
+### Quick Start
+
+```bash
+cd edge
+npm install
+npx wrangler dev       # Local development
+npx wrangler deploy    # Production deployment
+```
+
+### Documentation
+
+See [edge/README.md](edge/README.md) for detailed documentation.
+
+---
+
+## 🛠️ Development
 
 ### Prerequisites
 
-- **Linux x86_64** with KVM support (Ubuntu 22.04+ recommended)
-- **Rust 1.70+** and Cargo
-- **KVM** enabled (`kvm-ok` should show "can be used")
-- **4GB+ RAM** for development
+| Platform   | Requirements                                               |
+| ---------- | ---------------------------------------------------------- |
+| **Server** | Linux x86_64 with KVM, Rust 1.93+, 4GB+ RAM                |
+| **Edge**   | Node.js 18+, Rust 1.93+ with wasm32-unknown-unknown target |
 
-### Installation
+### Code Quality Standards
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/nanolambda.git
-cd nanolambda
+Both projects enforce strict Rust quality standards:
 
-# Build the project
-cargo build --release
+- **Rust Edition 2024** with `rust-version = "1.93"`
+- **Clippy pedantic** lints enabled
+- **Panic safety** - All fallible operations documented
+- **Comprehensive documentation** - Business and technical decisions explained
 
-# Run tests
-cargo test
-
-# Start the server
-./target/release/nanolambda-server
-```
-
----
-
-## 📚 Documentation
-
-Comprehensive documentation is available in the `/docs` directory:
-
-### Getting Started
-- **[QUICKSTART.md](QUICKSTART.md)** - Get up and running in 5 minutes
-- **[Setup-Guide.md](docs/setup-guide.md)** - Development environment setup
-
-### Deployment
-- **[DEPLOYMENT_QUICKSTART.md](docs/DEPLOYMENT_QUICKSTART.md)** - 15-minute production setup ⚡
-- **[PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md)** - Comprehensive deployment guide
-- **[CLOUD_DEPLOYMENT_COMPARISON.md](docs/CLOUD_DEPLOYMENT_COMPARISON.md)** - AWS vs DO vs GCP vs Hetzner 💰
-
-### Architecture & Design
-- **[00-Executive-Summary.md](docs/00-executive-summary.md)** - Project overview and vision
-- **[01-Market-Analysis.md](docs/01-market-analysis.md)** - Market research and competitive landscape
-- **[02-Technical-Architecture.md](docs/02-technical-architecture.md)** - System design and architecture
-- **[03-Competitive-Analysis.md](docs/03-competitive-analysis.md)** - How we compare to AWS/Azure
-- **[04-Roadmap.md](docs/04-roadmap.md)** - Development roadmap and milestones
-
-### Business & Strategy
-- **[05-Go-To-Market.md](docs/05-go-to-market.md)** - Business strategy and pricing
-- **[06-Revenue-Projections.md](docs/06-revenue-projections.md)** - Financial projections
-
-### API Reference
-- **[API-Reference.md](docs/api-reference.md)** - API documentation
-- **[API_VERSIONING.md](docs/API_VERSIONING.md)** - Function versioning guide ⚡ NEW
-- **[API_AUTHENTICATION.md](docs/API_AUTHENTICATION.md)** - API key authentication guide 🔐 NEW
-
----
-
-## 🏗️ Project Status
-
-**Current Phase:** Month 1 - Core Engine Development
-
-### Milestone Progress
-
-- [x] Project structure and documentation
-- [x] Development environment setup
-- [ ] Basic KVM integration (Week 1-2)
-- [ ] Python runtime (Week 3-4)
-- [ ] HTTP API server (Month 2)
-- [ ] Multi-language support (Month 2)
-- [ ] Production hardening (Month 3)
-- [ ] Beta launch (Month 4)
-
-See [ROADMAP.md](docs/04-roadmap.md) for detailed timeline.
-
----
-
-## 🛠️ Architecture
-
-```
-┌─────────────────────────────────────────┐
-│     API Server (Actix-Web)              │
-│  • Lambda-compatible REST API           │
-│  • Function management                  │
-│  • Authentication                       │
-└─────────────────────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│     Scheduler & Orchestrator            │
-│  • Cold-start prediction (ML)           │
-│  • VM pool management                   │
-│  • Resource allocation                  │
-└─────────────────────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│     MicroVM Manager (VMM)               │
-│  • KVM-based isolation                  │
-│  • Snapshot/restore                     │
-│  • Multi-language runtimes              │
-└─────────────────────────────────────────┘
-```
-
----
-
-## 🎨 Key Features
-
-### Phase 1 (Month 1-2) - MVP
-- [x] Project initialization
-- [ ] KVM-based microVM creation
-- [ ] Python runtime support
-- [ ] Basic REST API
-- [ ] Function execution
-
-### Phase 2 (Month 3) - Production Ready
-- [ ] Node.js and Java runtimes
-- [ ] Cold-start optimization
-- [ ] Multi-tenant isolation
-- [ ] Monitoring (Prometheus)
-- [ ] Kubernetes deployment
-
-### Phase 3 (Month 4) - Beta Launch
-- [ ] AWS Lambda migration tool
-- [ ] CLI tool
-- [ ] Cost analytics dashboard
-- [ ] Documentation site
-- [ ] Beta customer onboarding
-
----
-
-## 🔧 Development
-
-### Project Structure
-
-```
-nanolambda/
-├── docs/                  # Comprehensive documentation
-├── src/
-│   ├── api/              # REST API server
-│   ├── vmm/              # Virtual Machine Manager
-│   ├── runtime/          # Language runtimes
-│   ├── scheduler/        # Orchestration and scheduling
-│   └── storage/          # Function registry
-├── tests/                # Integration tests
-├── deploy/               # Deployment configs
-│   ├── docker/
-│   ├── kubernetes/
-│   └── systemd/
-└── scripts/              # Utility scripts
-```
-
-### Build & Test
+### Building Both Projects
 
 ```bash
-# Development build
-cargo build
+# Server platform
+cd server && cargo build --release && cargo test
 
-# Run specific component
-cargo run --bin nanolambda-server
-
-# Run all tests (31 tests)
-./run_all_tests.sh
-
-# Or run specific test suites
-cargo test --package nanolambda-runtime  # 4 unit tests
-cargo test --package nanolambda-api      # 27 integration/E2E/load tests
-
-# Run with logging
-RUST_LOG=debug cargo run
+# Edge platform
+cd edge && cargo build --target wasm32-unknown-unknown --release
 ```
-
-### Test Suite (✅ All 31 Tests Passing)
-
-NanoLambda has a comprehensive test suite covering:
-- **Unit Tests (4)** - Core executor functionality
-- **Integration Tests (9)** - HTTP endpoint testing
-- **E2E Tests (9)** - Full workflow validation
-- **Load Tests (9)** - Performance & concurrency (up to 100 concurrent requests)
-
-**Performance Verified:**
-- ✅ Cold Start: ~40ms (2-7x faster than AWS Lambda)
-- ✅ Throughput: ~32 req/sec sustained
-- ✅ Memory: 64MB stable (50% less than AWS Lambda)
-- ✅ Error Rate: 0% under load
-
-See [TEST_SUITE.md](TEST_SUITE.md) for detailed test documentation.
 
 ---
 
-## 📊 Performance Targets
+## 📄 License
 
-| Metric | Target | AWS Lambda |
-|--------|--------|------------|
-| Cold Start (Python) | <5ms | ~100-250ms |
-| Memory Overhead | 5MB | 128MB min |
-| Max Concurrent VMs | 1000/node | N/A |
-| API Latency | <10ms p99 | ~50ms |
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! This is currently in early development phase.
-
-1. Read [CONTRIBUTING.md](CONTRIBUTING.md)
-2. Check [GitHub Issues](https://github.com/yourusername/nanolambda/issues)
-3. Submit a Pull Request
-
----
-
-## 📝 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
----
-
-## 🌟 Roadmap to Production
-
-- **Month 1:** Core engine + Python runtime ✅ (in progress)
-- **Month 2:** API server + multi-language support
-- **Month 3:** Security hardening + monitoring
-- **Month 4:** Beta launch + first customers
-
-Target: **5 beta customers by Month 4**
-
----
-
-## 📧 Contact
-
-- **Issues:** [GitHub Issues](https://github.com/yourusername/nanolambda/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/nanolambda/discussions)
-- **Email:** your.email@example.com
-
----
-
-## 🙏 Acknowledgments
-
-Inspired by:
-- [Firecracker](https://github.com/firecracker-microvm/firecracker) - MicroVM technology
-- [AWS Lambda](https://aws.amazon.com/lambda/) - Serverless computing model
-- [OpenFaaS](https://www.openfaas.com/) - Open source serverless
-
-Built with ❤️ and Rust 🦀
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.

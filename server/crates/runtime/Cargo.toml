@@ -1,0 +1,34 @@
+[package]
+name = "nanolambda-runtime"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+description = "Language runtime management"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Base64 encoding
+base64 = "0.22"
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Hashing (upgrade from md5 to blake3 for better performance)
+blake3 = { workspace = true }
+
+# System calls for resource limits (Unix-only)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

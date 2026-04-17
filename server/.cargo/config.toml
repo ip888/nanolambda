@@ -1,0 +1,33 @@
+# Cargo configuration for optimized builds
+# See: https://doc.rust-lang.org/cargo/reference/config.html
+
+[build]
+# Use all available CPU cores for building
+jobs = -1
+
+# Parallel front-end compiler threads (Rust 1.76+)
+# Speeds up macro expansion and parsing
+[env]
+CARGO_BUILD_JOBS = "all"
+
+[target.x86_64-unknown-linux-gnu]
+# Link with mold for faster link times
+# mold is 10-20x faster than the default linker
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[registries.crates-io]
+# Use sparse protocol for faster crate index updates (now default in Rust 1.70+)
+protocol = "sparse"
+
+[net]
+# Retry on network failures
+retry = 3
+
+[alias]
+# Convenient aliases
+br = "build --release"
+brf = "build --profile release-fast"
+tr = "test --release"
+c = "check"
+t = "test"

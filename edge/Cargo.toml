@@ -1,0 +1,128 @@
+[package]
+name = "nanolambda-edge"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+description = "Edge serverless platform for Cloudflare Workers"
+authors = ["NanoLambda Team"]
+license = "MIT"
+
+# ============================================================================
+# LINT CONFIGURATION
+# 
+# Business Decision: We use Rust 2024 Edition with strict lints for production
+# quality, while allowing specific exceptions for Cloudflare Workers runtime
+# constraints (single-threaded, WASM target, non-Send futures).
+# ============================================================================
+
+[lints.rust]
+# Deny unsafe code - all code must be memory safe
+unsafe_code = "deny"
+
+[lints.clippy]
+# Enable pedantic lints for code quality, but with sensible exceptions
+pedantic = { level = "warn", priority = -1 }
+
+# --- Allowed lints (with justification) ---
+
+# Workers runtime is single-threaded, futures don't need Send
+future_not_send = "allow"
+
+# Documentation style exceptions - we use natural language
+doc_markdown = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+# Module organization preferences
+module_name_repetitions = "allow"
+wildcard_imports = "allow"
+
+# Casting precision - necessary for WASM/f32 operations
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+
+# Must-use is too verbose for builder patterns and common operations
+must_use_candidate = "allow"
+return_self_not_must_use = "allow"
+
+# Async functions in Workers SDK handlers must remain async for API compatibility
+unused_async = "allow"
+
+# Match arms with same body are intentional for HTTP status code clarity
+match_same_arms = "allow"
+
+# Clone patterns are acceptable for this codebase
+assigning_clones = "allow"
+needless_pass_by_value = "allow"
+
+# Style preferences - these are non-critical
+items_after_statements = "allow"
+redundant_closure_for_method_calls = "allow"
+manual_let_else = "allow"
+field_reassign_with_default = "allow"
+unnecessary_map_or = "allow"
+derivable_impls = "allow"
+uninlined_format_args = "allow"
+map_unwrap_or = "allow"
+bool_to_int_with_if = "allow"
+manual_range_contains = "allow"
+needless_borrow = "allow"
+used_underscore_binding = "allow"
+unwrap_or_default = "allow"
+unused_self = "allow"
+redundant_closure = "allow"
+
+# These are too noisy for this codebase
+too_many_lines = "allow"
+similar_names = "allow"
+if_not_else = "allow"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Cloudflare Workers SDK
+worker = "0.7"
+
+# Async runtime (Workers runtime is single-threaded)
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling  
+thiserror = "2.0"
+
+# Hashing for auth
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+
+# Base64 encoding
+base64 = "0.22"
+
+# UUID generation
+uuid = { version = "1.19", features = ["v4", "js"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+web-time = "1.1"
+
+# Random for vector operations
+getrandom = { version = "0.3", features = ["wasm_js"] }
+rand = "0.9"
+
+# Logging
+console_error_panic_hook = "0.1"
+
+[build-dependencies]
+worker-build = "0.7"
+
+[profile.release]
+opt-level = "s"   # Optimize for size (important for WASM)
+lto = true
+codegen-units = 1
+strip = true
