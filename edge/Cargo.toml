@@ -124,7 +124,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Cloudflare Workers SDK
-worker = "0.7"
+worker = "0.8"
 
 # Async runtime (Workers runtime is single-threaded)
 futures = "0.3"
@@ -157,9 +157,6 @@ rand = "0.9"
 
 # Logging
 console_error_panic_hook = "0.1"
-
-[build-dependencies]
-worker-build = "0.7"
 
 [profile.release]
 opt-level = "s"   # Optimize for size (important for WASM)
