@@ -940,11 +940,14 @@ mod tests {
 
     #[test]
     fn test_password_hashing() {
-        let hash1 = hash_password("password123");
-        let hash2 = hash_password("password123");
-        assert_eq!(hash1, hash2);
+        let hash1 = hash_password("password123").unwrap();
+        let hash2 = hash_password("password123").unwrap();
+        // Argon2id produces unique salts, so hashes differ even for same password
+        // Verify via verify_password instead
+        assert!(verify_password("password123", &hash1));
+        assert!(verify_password("password123", &hash2));
 
-        let hash3 = hash_password("different");
-        assert_ne!(hash1, hash3);
+        let hash3 = hash_password("different").unwrap();
+        assert!(!verify_password("password123", &hash3));
     }
 }

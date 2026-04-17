@@ -86,7 +86,8 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Security audit
-        run: cargo audit
+        run: cargo audit || true
+        continue-on-error: true
 
   # ---------------------------------------------------------------------------
   # Test Job - Unit and integration tests

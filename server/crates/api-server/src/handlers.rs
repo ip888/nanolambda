@@ -3318,6 +3318,8 @@ mod tests {
         let health = HealthResponse {
             status: "healthy".to_string(),
             version: "1.0.0".to_string(),
+            database: None,
+            uptime_seconds: None,
         };
 
         assert_eq!(health.status, "healthy");
