@@ -10,11 +10,10 @@ jobs = -1
 [env]
 CARGO_BUILD_JOBS = "all"
 
-[target.x86_64-unknown-linux-gnu]
-# Link with mold for faster link times
-# mold is 10-20x faster than the default linker
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+# To use mold linker locally for faster builds (optional):
+# [target.x86_64-unknown-linux-gnu]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 [registries.crates-io]
 # Use sparse protocol for faster crate index updates (now default in Rust 1.70+)
