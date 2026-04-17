@@ -17,12 +17,12 @@
 //! ```
 
 use axum::{
+    Json,
     extract::{Path, State},
     response::sse::{Event, KeepAlive, Sse},
-    Json,
 };
-use futures::stream::Stream;
 use futures::StreamExt;
+use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -71,9 +71,7 @@ pub enum StreamEvent {
         duration_ms: u64,
     },
     /// Heartbeat to keep connection alive
-    Heartbeat {
-        timestamp: String,
-    },
+    Heartbeat { timestamp: String },
 }
 
 impl StreamEvent {

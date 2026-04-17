@@ -24,15 +24,15 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use nanolambda_vmm::clone_pool::{ClonePool, ClonePoolConfig, CloneState};
 use nanolambda_vmm::nanovm::{ExecutionRequest, ExecutionTier, NanoVm, NanoVmConfig};
 use nanolambda_vmm::shared_memory::{SharedMemoryConfig, SharedMemoryManager};
 use nanolambda_vmm::snapshot::{RuntimeType, SnapshotManager};
-use nanolambda_vmm::wasm_sandbox::{WasmModule, WasmSandboxConfig, WasiCapabilities};
+use nanolambda_vmm::wasm_sandbox::{WasiCapabilities, WasmModule, WasmSandboxConfig};
 use nanolambda_vmm::{VmmContext, VmmError, VmmResult};
 
 // ============================================================================
@@ -113,11 +113,9 @@ fn create_test_wasm_module() -> Vec<u8> {
         0x00, 0x61, 0x73, 0x6d, // magic: \0asm
         0x01, 0x00, 0x00, 0x00, // version: 1
         // Type section
-        0x01, 0x07, 0x01, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f,
-        // Function section
+        0x01, 0x07, 0x01, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f, // Function section
         0x03, 0x02, 0x01, 0x00, // Export section
-        0x07, 0x07, 0x01, 0x03, 0x61, 0x64, 0x64, 0x00, 0x00,
-        // Code section
+        0x07, 0x07, 0x01, 0x03, 0x61, 0x64, 0x64, 0x00, 0x00, // Code section
         0x0a, 0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b,
     ]
 }
@@ -155,7 +153,10 @@ mod wasm_tests {
         assert!(result.is_err(), "Invalid WASM should fail to compile");
         match result {
             Err(VmmError::WasmError(msg)) => {
-                assert!(msg.contains("Invalid"), "Error should mention invalid bytecode");
+                assert!(
+                    msg.contains("Invalid"),
+                    "Error should mention invalid bytecode"
+                );
             }
             _ => panic!("Expected WasmError"),
         }
@@ -193,9 +194,15 @@ mod wasm_tests {
     fn test_sandbox_config_defaults() {
         let config = WasmSandboxConfig::default();
 
-        assert!(config.max_memory <= 256 * 1024 * 1024, "Default memory should be reasonable");
+        assert!(
+            config.max_memory <= 256 * 1024 * 1024,
+            "Default memory should be reasonable"
+        );
         assert!(config.max_execution_time <= Duration::from_secs(60));
-        assert!(!config.enable_wasi, "WASI should be disabled by default for safety");
+        assert!(
+            !config.enable_wasi,
+            "WASI should be disabled by default for safety"
+        );
         assert!(config.auto_promote, "Auto-promotion should be enabled");
     }
 
@@ -298,7 +305,10 @@ mod shared_memory_tests {
 
         let result = SharedMemoryManager::new(config);
         // Should succeed even without KSM privileges
-        assert!(result.is_ok(), "SharedMemoryManager should create without KSM");
+        assert!(
+            result.is_ok(),
+            "SharedMemoryManager should create without KSM"
+        );
     }
 
     /// Test: Memory calculation for density claims
@@ -335,7 +345,9 @@ mod shared_memory_tests {
 
 mod snapshot_tests {
     use super::*;
-    use nanolambda_vmm::snapshot::{CpuSnapshotState, ControlRegisters, MemoryRegionSnapshot, SegmentRegisters};
+    use nanolambda_vmm::snapshot::{
+        ControlRegisters, CpuSnapshotState, MemoryRegionSnapshot, SegmentRegisters,
+    };
 
     /// Test: Runtime type conversion
     #[test]
@@ -388,8 +400,14 @@ mod nanovm_tests {
         assert!(config.max_concurrent > 0 && config.max_concurrent <= 10000);
         assert!(config.default_timeout >= Duration::from_secs(1));
         assert!(config.default_timeout <= Duration::from_secs(300));
-        assert!(config.enable_wasm_fastpath, "WASM fast-path should be enabled");
-        assert!(config.enable_metrics, "Metrics should be enabled by default");
+        assert!(
+            config.enable_wasm_fastpath,
+            "WASM fast-path should be enabled"
+        );
+        assert!(
+            config.enable_metrics,
+            "Metrics should be enabled by default"
+        );
     }
 
     /// Test: Execution tier string conversion
@@ -565,7 +583,7 @@ mod performance_tests {
     use super::*;
 
     /// Performance Test: Validate cold start claim (<1ms for WASM)
-    /// 
+    ///
     /// This test verifies our core performance claim that WASM sandbox
     /// cold starts complete in under 1ms.
     #[test]
@@ -663,7 +681,7 @@ mod integration_tests {
     use super::*;
 
     /// Integration Test: Full NanoVM lifecycle
-    /// 
+    ///
     /// This test requires:
     /// - Writable temp directory
     /// - Does NOT require KVM (uses WASM-only mode)

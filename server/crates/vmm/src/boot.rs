@@ -37,7 +37,10 @@ impl BootLoader {
     pub fn load_kernel(vm: &VmInstance, config: &BootConfig) -> VmmResult<u64> {
         // Read kernel file
         let kernel_data = std::fs::read(&config.kernel_path).map_err(|e| {
-            VmmError::BootError(format!("Failed to read kernel {}: {}", config.kernel_path, e))
+            VmmError::BootError(format!(
+                "Failed to read kernel {}: {}",
+                config.kernel_path, e
+            ))
         })?;
 
         // Detect kernel type
@@ -46,9 +49,7 @@ impl BootLoader {
         } else if Self::is_elf(&kernel_data) {
             Self::load_elf(vm, &kernel_data)?
         } else {
-            return Err(VmmError::BootError(
-                "Unknown kernel format".to_string(),
-            ));
+            return Err(VmmError::BootError("Unknown kernel format".to_string()));
         };
 
         // Load initrd if present

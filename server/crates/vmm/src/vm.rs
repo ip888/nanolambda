@@ -6,8 +6,8 @@ use crate::error::{VmmError, VmmResult};
 use crate::kvm::Kvm;
 use crate::memory::GuestMemory;
 use std::os::unix::io::RawFd;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// VM state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,7 +88,11 @@ impl VmInstance {
 
     /// Get current VM state
     pub fn state(&self) -> VmState {
-        *self.inner.state.read().expect("State lock should not be poisoned")
+        *self
+            .inner
+            .state
+            .read()
+            .expect("State lock should not be poisoned")
     }
 
     /// Start the VM
@@ -99,13 +103,15 @@ impl VmInstance {
 
         // Verify kernel is loaded
         if self.inner.config.kernel_path.is_none() {
-            return Err(VmmError::BootError(
-                "No kernel path configured".to_string(),
-            ));
+            return Err(VmmError::BootError("No kernel path configured".to_string()));
         }
 
         self.inner.running.store(true, Ordering::SeqCst);
-        *self.inner.state.write().expect("State lock should not be poisoned during start") = VmState::Running;
+        *self
+            .inner
+            .state
+            .write()
+            .expect("State lock should not be poisoned during start") = VmState::Running;
 
         tracing::info!("VM started");
         Ok(())
@@ -117,7 +123,11 @@ impl VmInstance {
             return Err(VmmError::VmNotRunning);
         }
 
-        *self.inner.state.write().expect("State lock should not be poisoned during pause") = VmState::Paused;
+        *self
+            .inner
+            .state
+            .write()
+            .expect("State lock should not be poisoned during pause") = VmState::Paused;
         tracing::info!("VM paused");
         Ok(())
     }
@@ -126,12 +136,14 @@ impl VmInstance {
     pub fn resume(&self) -> VmmResult<()> {
         let state = self.state();
         if state != VmState::Paused {
-            return Err(VmmError::InvalidConfig(
-                "VM is not paused".to_string(),
-            ));
+            return Err(VmmError::InvalidConfig("VM is not paused".to_string()));
         }
 
-        *self.inner.state.write().expect("State lock should not be poisoned during resume") = VmState::Running;
+        *self
+            .inner
+            .state
+            .write()
+            .expect("State lock should not be poisoned during resume") = VmState::Running;
         tracing::info!("VM resumed");
         Ok(())
     }
@@ -139,7 +151,11 @@ impl VmInstance {
     /// Stop the VM
     pub fn stop(&self) -> VmmResult<()> {
         self.inner.running.store(false, Ordering::SeqCst);
-        *self.inner.state.write().expect("State lock should not be poisoned during stop") = VmState::Stopped;
+        *self
+            .inner
+            .state
+            .write()
+            .expect("State lock should not be poisoned during stop") = VmState::Stopped;
         tracing::info!("VM stopped");
         Ok(())
     }

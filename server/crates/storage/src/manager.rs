@@ -54,7 +54,7 @@ impl StorageManager {
              PRAGMA cache_size = -64000;
              PRAGMA foreign_keys = ON;
              PRAGMA temp_store = MEMORY;
-             PRAGMA mmap_size = 268435456;"
+             PRAGMA mmap_size = 268435456;",
         )?;
 
         debug!("SQLite configured: WAL mode, 5s busy timeout, 64MB cache");

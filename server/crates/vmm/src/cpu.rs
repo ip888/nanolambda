@@ -132,7 +132,9 @@ impl VCpu {
 
         // Check exit reason
         let exit_reason = unsafe {
-            let run = self.kvm_run.expect("kvm_run should be mapped - mmap succeeded in new()");
+            let run = self
+                .kvm_run
+                .expect("kvm_run should be mapped - mmap succeeded in new()");
             (*run).exit_reason
         };
 

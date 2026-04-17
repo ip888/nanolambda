@@ -2,11 +2,26 @@ use crate::workloads::Workload;
 
 pub trait Platform: Send + Sync {
     fn name(&self) -> &str;
-    fn deploy(&self, workload: &Workload) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
-    fn invoke(&self, workload: &Workload) -> impl std::future::Future<Output = anyhow::Result<serde_json::Value>> + Send;
-    fn get_memory_usage(&self, workload: &Workload) -> impl std::future::Future<Output = anyhow::Result<u64>> + Send;
-    fn ensure_cold_state(&self, workload: &Workload) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
-    fn cleanup(&self, workload: &Workload) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
+    fn deploy(
+        &self,
+        workload: &Workload,
+    ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
+    fn invoke(
+        &self,
+        workload: &Workload,
+    ) -> impl std::future::Future<Output = anyhow::Result<serde_json::Value>> + Send;
+    fn get_memory_usage(
+        &self,
+        workload: &Workload,
+    ) -> impl std::future::Future<Output = anyhow::Result<u64>> + Send;
+    fn ensure_cold_state(
+        &self,
+        workload: &Workload,
+    ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
+    fn cleanup(
+        &self,
+        workload: &Workload,
+    ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
 }
 
 pub struct NanoLambda {

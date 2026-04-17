@@ -83,14 +83,15 @@ pub enum VmmError {
     // ========================================================================
     // KVM/Hypervisor Errors
     // ========================================================================
-
     /// KVM kernel module is not loaded or not available.
     ///
     /// # Resolution
     /// 1. Verify virtualization is enabled in BIOS/UEFI
     /// 2. Load the KVM module: `modprobe kvm_intel` or `modprobe kvm_amd`
     /// 3. Verify /dev/kvm exists
-    #[error("KVM is not available on this system. Ensure virtualization is enabled in BIOS and load the kvm kernel module (modprobe kvm_intel or kvm_amd).")]
+    #[error(
+        "KVM is not available on this system. Ensure virtualization is enabled in BIOS and load the kvm kernel module (modprobe kvm_intel or kvm_amd)."
+    )]
     KvmNotAvailable,
 
     /// Permission denied when accessing /dev/kvm.
@@ -98,7 +99,9 @@ pub enum VmmError {
     /// # Resolution
     /// - Add user to 'kvm' group: `sudo usermod -aG kvm $USER`
     /// - Log out and back in for group changes to take effect
-    #[error("Permission denied accessing /dev/kvm. Add user to 'kvm' group: sudo usermod -aG kvm $USER")]
+    #[error(
+        "Permission denied accessing /dev/kvm. Add user to 'kvm' group: sudo usermod -aG kvm $USER"
+    )]
     KvmPermissionDenied,
 
     /// A KVM ioctl system call failed.
@@ -128,7 +131,6 @@ pub enum VmmError {
     // ========================================================================
     // Memory Errors
     // ========================================================================
-
     /// Memory allocation failed.
     ///
     /// # Causes
@@ -153,7 +155,6 @@ pub enum VmmError {
     // ========================================================================
     // vCPU Errors
     // ========================================================================
-
     /// Failed to create a virtual CPU.
     #[error("vCPU creation failed: {0}")]
     VCpuCreationFailed(String),
@@ -165,7 +166,6 @@ pub enum VmmError {
     // ========================================================================
     // VM Lifecycle Errors
     // ========================================================================
-
     /// VM configuration is invalid.
     #[error("VM configuration invalid: {0}")]
     InvalidConfig(String),
@@ -189,7 +189,6 @@ pub enum VmmError {
     // ========================================================================
     // Snapshot/Clone Errors
     // ========================================================================
-
     /// Snapshot operation failed.
     #[error("Snapshot error: {0}")]
     SnapshotError(String),
@@ -201,7 +200,6 @@ pub enum VmmError {
     // ========================================================================
     // WASM Errors
     // ========================================================================
-
     /// WASM execution error (compilation, runtime, etc.).
     #[error("WASM error: {0}")]
     WasmError(String),
@@ -216,7 +214,6 @@ pub enum VmmError {
     // ========================================================================
     // Configuration Errors
     // ========================================================================
-
     /// Configuration parameter is invalid.
     #[error("Configuration error: {0}")]
     ConfigError(String),
@@ -228,7 +225,6 @@ pub enum VmmError {
     // ========================================================================
     // Resource Errors
     // ========================================================================
-
     /// Resource limit has been reached.
     ///
     /// # Causes

@@ -38,8 +38,8 @@
 //! ```
 
 use anyhow::{Result, anyhow};
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use chrono::{Datelike, Timelike};
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
@@ -553,12 +553,11 @@ impl UserManager {
     /// Change user password
     pub async fn change_password(&self, id: &str, req: ChangePasswordRequest) -> Result<()> {
         // Fetch stored hash
-        let stored_hash: Option<String> = sqlx::query_scalar(
-            "SELECT password_hash FROM users WHERE id = ?",
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let stored_hash: Option<String> =
+            sqlx::query_scalar("SELECT password_hash FROM users WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         let stored_hash = stored_hash.ok_or_else(|| anyhow!("User not found"))?;
 
@@ -824,8 +823,8 @@ fn hash_password(password: &str) -> Result<String> {
     let mut salt_bytes = [0u8; 16];
     getrandom::fill(&mut salt_bytes)
         .map_err(|e| anyhow!("Failed to generate random salt: {}", e))?;
-    let salt = SaltString::encode_b64(&salt_bytes)
-        .map_err(|e| anyhow!("Failed to encode salt: {}", e))?;
+    let salt =
+        SaltString::encode_b64(&salt_bytes).map_err(|e| anyhow!("Failed to encode salt: {}", e))?;
     let argon2 = Argon2::default();
     let hash = argon2
         .hash_password(password.as_bytes(), &salt)

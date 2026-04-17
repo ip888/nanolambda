@@ -6,15 +6,17 @@
 //! 3. Use shared memory for maximum density
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::clone_pool::{ClonePool, ClonePoolConfig, ClonePoolManager, VmClone};
 use crate::error::{VmmError, VmmResult};
 use crate::shared_memory::{SharedMemoryConfig, SharedMemoryManager};
 use crate::snapshot::{RuntimeType, SnapshotManager, VmSnapshot};
-use crate::wasm_sandbox::{HybridExecutor, PromotionReason, WasmModule, WasmSandboxConfig, WasmValue};
+use crate::wasm_sandbox::{
+    HybridExecutor, PromotionReason, WasmModule, WasmSandboxConfig, WasmValue,
+};
 
 /// NanoVM configuration
 #[derive(Debug, Clone)]
@@ -208,7 +210,8 @@ impl NanoVm {
         let snapshot = Arc::new(snapshot);
 
         // Register with snapshot manager
-        self.snapshot_manager.register_golden_snapshot(runtime, Arc::clone(&snapshot));
+        self.snapshot_manager
+            .register_golden_snapshot(runtime, Arc::clone(&snapshot));
 
         // Create clone pool
         self.pool_manager.register_runtime(runtime, snapshot)?;
@@ -258,10 +261,9 @@ impl NanoVm {
 
         match &result {
             Ok(r) => {
-                self.stats.total_execution_time_us.fetch_add(
-                    r.duration.as_micros() as u64,
-                    Ordering::Relaxed,
-                );
+                self.stats
+                    .total_execution_time_us
+                    .fetch_add(r.duration.as_micros() as u64, Ordering::Relaxed);
             }
             Err(_) => {
                 self.stats.errors.fetch_add(1, Ordering::Relaxed);
@@ -330,7 +332,9 @@ impl NanoVm {
 
         // Execute
         let args = self.deserialize_wasm_args(&request.payload)?;
-        let result = self.wasm_executor.execute(&module, &request.handler, args)?;
+        let result = self
+            .wasm_executor
+            .execute(&module, &request.handler, args)?;
 
         metrics.wasm_time = Some(wasm_start.elapsed());
         metrics.function_time = wasm_start.elapsed();
@@ -361,13 +365,17 @@ impl NanoVm {
         // Try to get a warm clone first
         let (clone, tier, cold_start) = match self.pool_manager.acquire(request.runtime) {
             Ok(clone) => {
-                self.stats.warm_vm_executions.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .warm_vm_executions
+                    .fetch_add(1, Ordering::Relaxed);
                 (clone, ExecutionTier::MicroVmWarm, false)
             }
             Err(_) => {
                 // Need to restore from snapshot
                 let clone = self.restore_from_snapshot(request.runtime, &mut metrics)?;
-                self.stats.cold_vm_executions.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .cold_vm_executions
+                    .fetch_add(1, Ordering::Relaxed);
                 (clone, ExecutionTier::MicroVmCold, true)
             }
         };
@@ -403,9 +411,12 @@ impl NanoVm {
         let restore_start = Instant::now();
 
         // Get golden snapshot
-        let _snapshot = self.snapshot_manager.get_golden_snapshot(runtime).ok_or_else(|| {
-            VmmError::SnapshotError(format!("No golden snapshot for {:?}", runtime))
-        })?;
+        let _snapshot = self
+            .snapshot_manager
+            .get_golden_snapshot(runtime)
+            .ok_or_else(|| {
+                VmmError::SnapshotError(format!("No golden snapshot for {:?}", runtime))
+            })?;
 
         // Create clone from snapshot (uses lazy loading)
         let clone = self.pool_manager.acquire(runtime)?;
@@ -424,11 +435,7 @@ impl NanoVm {
         // 4. Read response from VM memory
 
         // Placeholder
-        Ok(format!(
-            "Executed {} in {:?} VM",
-            request.handler, request.runtime
-        )
-        .into_bytes())
+        Ok(format!("Executed {} in {:?} VM", request.handler, request.runtime).into_bytes())
     }
 
     /// Get execution statistics
@@ -445,11 +452,7 @@ impl NanoVm {
         let errors = self.stats.errors.load(Ordering::Relaxed);
         let total_time_us = self.stats.total_execution_time_us.load(Ordering::Relaxed);
 
-        let avg_time_us = if total > 0 {
-            total_time_us / total
-        } else {
-            0
-        };
+        let avg_time_us = if total > 0 { total_time_us / total } else { 0 };
 
         StatsReport {
             total_executions: total,
@@ -485,10 +488,9 @@ impl NanoVm {
         let memory_result = self.shared_memory.maintenance();
 
         // Update memory saved stat
-        self.stats.memory_saved.store(
-            self.shared_memory.total_memory_saved(),
-            Ordering::Relaxed,
-        );
+        self.stats
+            .memory_saved
+            .store(self.shared_memory.total_memory_saved(), Ordering::Relaxed);
 
         MaintenanceReport {
             clones_recycled: pool_result.clones_recycled,

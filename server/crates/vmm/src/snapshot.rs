@@ -232,11 +232,7 @@ impl SnapshotManager {
     }
 
     /// Find or create deduplicated memory file
-    fn find_deduplicated_path(
-        &self,
-        hash: &[u8; 32],
-        default_path: &Path,
-    ) -> VmmResult<PathBuf> {
+    fn find_deduplicated_path(&self, hash: &[u8; 32], default_path: &Path) -> VmmResult<PathBuf> {
         let hash_hex = hex::encode(hash);
         let dedup_path = self.storage_path.join("dedup").join(&hash_hex[..2]);
         let dedup_file = dedup_path.join(format!("{}.bin", hash_hex));
@@ -288,11 +284,7 @@ impl SnapshotManager {
     }
 
     /// Register a pre-warmed golden snapshot for a runtime type
-    pub fn register_golden_snapshot(
-        &mut self,
-        runtime: RuntimeType,
-        snapshot: Arc<VmSnapshot>,
-    ) {
+    pub fn register_golden_snapshot(&mut self, runtime: RuntimeType, snapshot: Arc<VmSnapshot>) {
         self.golden_snapshots.insert(runtime, snapshot);
     }
 
@@ -310,7 +302,8 @@ impl SnapshotManager {
         // Load from disk
         let snapshot = self.load_snapshot_from_disk(snapshot_id)?;
         let snapshot = Arc::new(snapshot);
-        self.snapshots.insert(snapshot_id.to_string(), Arc::clone(&snapshot));
+        self.snapshots
+            .insert(snapshot_id.to_string(), Arc::clone(&snapshot));
 
         Ok(snapshot)
     }
@@ -320,14 +313,12 @@ impl SnapshotManager {
         let snapshot_dir = self.storage_path.join(snapshot_id);
         let meta_path = snapshot_dir.join("metadata.json");
 
-        let mut file = File::open(&meta_path).map_err(|e| {
-            VmmError::SnapshotError(format!("Snapshot not found: {}", e))
-        })?;
+        let mut file = File::open(&meta_path)
+            .map_err(|e| VmmError::SnapshotError(format!("Snapshot not found: {}", e)))?;
 
         let mut content = String::new();
-        file.read_to_string(&mut content).map_err(|e| {
-            VmmError::SnapshotError(format!("Failed to read metadata: {}", e))
-        })?;
+        file.read_to_string(&mut content)
+            .map_err(|e| VmmError::SnapshotError(format!("Failed to read metadata: {}", e)))?;
 
         // Parse metadata and reconstruct snapshot
         // This is simplified - real implementation would fully deserialize
@@ -403,7 +394,8 @@ impl LazyMemoryLoader {
     /// Create a new lazy memory loader for a snapshot
     pub fn new(snapshot: Arc<VmSnapshot>) -> VmmResult<Self> {
         // Create userfaultfd (requires Linux 4.11+)
-        let uffd = unsafe { libc::syscall(libc::SYS_userfaultfd, libc::O_CLOEXEC | libc::O_NONBLOCK) };
+        let uffd =
+            unsafe { libc::syscall(libc::SYS_userfaultfd, libc::O_CLOEXEC | libc::O_NONBLOCK) };
         if uffd < 0 {
             return Err(VmmError::SnapshotError(
                 "Failed to create userfaultfd - requires Linux 4.11+".to_string(),
@@ -463,9 +455,8 @@ impl LazyMemoryLoader {
         }
 
         // Load page from file
-        let mut file = File::open(&mapping.file_path).map_err(|e| {
-            VmmError::SnapshotError(format!("Failed to open memory file: {}", e))
-        })?;
+        let mut file = File::open(&mapping.file_path)
+            .map_err(|e| VmmError::SnapshotError(format!("Failed to open memory file: {}", e)))?;
 
         let mut page_data = vec![0u8; page_size as usize];
         use std::io::Seek;
@@ -553,7 +544,11 @@ impl GoldenSnapshotBuilder {
 
         // Return placeholder for now
         Ok(VmSnapshot {
-            id: format!("golden_{}_{}", self.runtime.as_str(), SnapshotManager::timestamp()),
+            id: format!(
+                "golden_{}_{}",
+                self.runtime.as_str(),
+                SnapshotManager::timestamp()
+            ),
             runtime: self.runtime,
             cpu_state: CpuSnapshotState::default(),
             memory_regions: Vec::new(),

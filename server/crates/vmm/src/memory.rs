@@ -136,13 +136,11 @@ impl MemoryRegion {
     }
 
     /// Get the region contents as a slice
-    /// 
+    ///
     /// # Safety
     /// The caller must ensure no concurrent writes occur during the slice lifetime.
     pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(self.host_addr.as_ptr(), self.size as usize)
-        }
+        unsafe { std::slice::from_raw_parts(self.host_addr.as_ptr(), self.size as usize) }
     }
 }
 
@@ -272,7 +270,9 @@ impl GuestMemory {
         };
 
         if ret < 0 {
-            return Err(VmmError::KvmIoctlFailed("KVM_SET_USER_MEMORY_REGION (remove)"));
+            return Err(VmmError::KvmIoctlFailed(
+                "KVM_SET_USER_MEMORY_REGION (remove)",
+            ));
         }
 
         if let Some(region) = self.regions.remove(&slot) {
@@ -323,14 +323,14 @@ impl GuestMemory {
     }
 
     /// Get total memory size (alias for total_size)
-    /// 
+    ///
     /// Returns the sum of all memory region sizes in bytes.
     pub fn size(&self) -> u64 {
         self.total_size
     }
 
     /// Get iterator over all memory regions
-    /// 
+    ///
     /// Returns references to all registered memory regions.
     /// This is useful for snapshotting and memory inspection.
     pub fn regions(&self) -> impl Iterator<Item = &MemoryRegion> {

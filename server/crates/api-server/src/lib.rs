@@ -1,5 +1,6 @@
 //! Lambda-compatible REST API
 
+use axum::http::StatusCode as AxumStatusCode;
 use axum::{
     Router,
     extract::DefaultBodyLimit,
@@ -10,7 +11,6 @@ use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 use tracing::info;
-use axum::http::StatusCode as AxumStatusCode;
 
 // Import Runtime trait to make execute method available
 use nanolambda_runtime::Runtime;
@@ -461,7 +461,10 @@ impl ApiServer {
             // Function invocation
             .route("/functions/{name}/invoke", post(handlers::invoke_function))
             // SSE streaming endpoints
-            .route("/functions/{name}/stream", post(sse_handlers::stream_function))
+            .route(
+                "/functions/{name}/stream",
+                post(sse_handlers::stream_function),
+            )
             .route("/stream/fanout", post(sse_handlers::stream_fanout))
             // Function versioning
             .route(
@@ -766,7 +769,11 @@ impl ApiServer {
     }
 
     /// Start the API server with graceful shutdown support
-    pub async fn run_with_shutdown(self, host: &str, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run_with_shutdown(
+        self,
+        host: &str,
+        port: u16,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let state = Arc::new(self);
 
         // Clone storage for auth middleware
@@ -783,7 +790,10 @@ impl ApiServer {
             // Function invocation
             .route("/functions/{name}/invoke", post(handlers::invoke_function))
             // SSE streaming endpoints
-            .route("/functions/{name}/stream", post(sse_handlers::stream_function))
+            .route(
+                "/functions/{name}/stream",
+                post(sse_handlers::stream_function),
+            )
             .route("/stream/fanout", post(sse_handlers::stream_fanout))
             // Function versioning
             .route(
@@ -1048,12 +1058,10 @@ impl ApiServer {
                     .allow_methods(Any)
                     .allow_headers(Any)
             }
-            Err(_) => {
-                CorsLayer::new()
-                    .allow_origin(Any)
-                    .allow_methods(Any)
-                    .allow_headers(Any)
-            }
+            Err(_) => CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
         };
 
         let app = Router::new()

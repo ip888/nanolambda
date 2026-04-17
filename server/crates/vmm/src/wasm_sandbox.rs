@@ -5,8 +5,8 @@
 //! microVM if they require syscalls or other capabilities.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::error::{VmmError, VmmResult};
@@ -315,11 +315,7 @@ impl WasmSandbox {
     }
 
     /// Execute a function in the sandbox
-    pub fn execute(
-        &self,
-        function: &str,
-        args: Vec<WasmValue>,
-    ) -> WasmExecutionResult {
+    pub fn execute(&self, function: &str, args: Vec<WasmValue>) -> WasmExecutionResult {
         self.started.store(true, Ordering::SeqCst);
         let start = Instant::now();
 
@@ -439,7 +435,8 @@ impl HybridExecutor {
         }
 
         let module = Arc::new(WasmModule::compile(id, bytecode)?);
-        self.module_cache.insert(id.to_string(), Arc::clone(&module));
+        self.module_cache
+            .insert(id.to_string(), Arc::clone(&module));
         Ok(module)
     }
 
@@ -459,10 +456,9 @@ impl HybridExecutor {
         match result {
             WasmExecutionResult::Success(output) => {
                 self.stats.wasm_successes.fetch_add(1, Ordering::Relaxed);
-                self.stats.total_time_us.fetch_add(
-                    output.duration.as_micros() as u64,
-                    Ordering::Relaxed,
-                );
+                self.stats
+                    .total_time_us
+                    .fetch_add(output.duration.as_micros() as u64, Ordering::Relaxed);
                 Ok(output.result)
             }
             WasmExecutionResult::NeedsPromotion(reason) => {

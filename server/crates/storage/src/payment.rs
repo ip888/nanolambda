@@ -872,8 +872,8 @@ impl PaymentManager {
         mac.update(signed_payload.as_bytes());
 
         // Verify signature using constant-time comparison
-        let expected_bytes = hex::decode(expected_sig)
-            .map_err(|_| anyhow!("Invalid signature hex encoding"))?;
+        let expected_bytes =
+            hex::decode(expected_sig).map_err(|_| anyhow!("Invalid signature hex encoding"))?;
         mac.verify_slice(&expected_bytes)
             .map_err(|_| anyhow!("Webhook signature verification failed"))?;
 

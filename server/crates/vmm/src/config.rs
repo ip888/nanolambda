@@ -74,11 +74,11 @@ impl VmConfig {
 }
 
 /// Builder pattern for VmConfig
-/// 
+///
 /// Provides a fluent API for constructing VM configurations with validation.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```ignore
 /// let config = VmConfigBuilder::default()
 ///     .memory_mb(256)
@@ -141,9 +141,9 @@ impl VmConfigBuilder {
     }
 
     /// Build and validate the configuration.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
     pub fn build(self) -> VmmResult<VmConfig> {
         self.config.validate()?;

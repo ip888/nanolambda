@@ -191,7 +191,9 @@ impl MappedRegion {
         };
 
         if result != 0 {
-            return Err(VmmError::MemoryError("madvise MERGEABLE failed".to_string()));
+            return Err(VmmError::MemoryError(
+                "madvise MERGEABLE failed".to_string(),
+            ));
         }
 
         Ok(())
@@ -274,11 +276,15 @@ impl SharedRegion {
     /// Load data into the shared region
     pub fn load_data(&mut self, data: &[u8]) -> VmmResult<()> {
         if data.len() > self.mmap.size() {
-            return Err(VmmError::MemoryError("Data too large for region".to_string()));
+            return Err(VmmError::MemoryError(
+                "Data too large for region".to_string(),
+            ));
         }
 
         self.mmap.as_mut_slice()[..data.len()].copy_from_slice(data);
-        self.stats.bytes_shared.store(data.len() as u64, Ordering::Relaxed);
+        self.stats
+            .bytes_shared
+            .store(data.len() as u64, Ordering::Relaxed);
 
         Ok(())
     }
@@ -373,7 +379,11 @@ impl SharedMemoryManager {
         runtime: RuntimeType,
         data: &[u8],
     ) -> VmmResult<Arc<SharedRegion>> {
-        let id = format!("runtime_{}_{}", runtime.as_str(), self.stats.total_regions.load(Ordering::Relaxed));
+        let id = format!(
+            "runtime_{}_{}",
+            runtime.as_str(),
+            self.stats.total_regions.load(Ordering::Relaxed)
+        );
 
         let path = if self.config.enable_runtime_sharing {
             Some(self.config.shared_path.join(&id))
@@ -391,7 +401,10 @@ impl SharedMemoryManager {
         let region = Arc::new(region);
 
         // Store region
-        self.regions.write().unwrap().insert(id.clone(), Arc::clone(&region));
+        self.regions
+            .write()
+            .unwrap()
+            .insert(id.clone(), Arc::clone(&region));
         self.runtime_regions
             .write()
             .unwrap()
@@ -400,7 +413,9 @@ impl SharedMemoryManager {
             .push(id);
 
         self.stats.total_regions.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_shared_bytes.fetch_add(data.len() as u64, Ordering::Relaxed);
+        self.stats
+            .total_shared_bytes
+            .fetch_add(data.len() as u64, Ordering::Relaxed);
 
         Ok(region)
     }
@@ -443,12 +458,16 @@ impl SharedMemoryManager {
         // Trigger KSM scan
         if let Some(ref ksm) = self.ksm {
             result.pages_merged = ksm.trigger_scan();
-            self.stats.ksm_pages_merged.fetch_add(result.pages_merged, Ordering::Relaxed);
+            self.stats
+                .ksm_pages_merged
+                .fetch_add(result.pages_merged, Ordering::Relaxed);
         }
 
         // Update memory saved stats
         let saved = self.total_memory_saved();
-        self.stats.total_memory_saved.store(saved, Ordering::Relaxed);
+        self.stats
+            .total_memory_saved
+            .store(saved, Ordering::Relaxed);
         result.memory_saved = saved;
 
         // Cleanup unused regions
@@ -483,7 +502,9 @@ impl KsmController {
 
         // Check if KSM is available
         if !sysfs_path.exists() {
-            return Err(VmmError::FeatureNotSupported("KSM not available".to_string()));
+            return Err(VmmError::FeatureNotSupported(
+                "KSM not available".to_string(),
+            ));
         }
 
         let controller = Self {
@@ -512,17 +533,15 @@ impl KsmController {
 
     fn write_param(&self, param: &str, value: u32) -> VmmResult<()> {
         let path = self.sysfs_path.join(param);
-        std::fs::write(&path, value.to_string()).map_err(|e| {
-            VmmError::MemoryError(format!("Failed to set KSM {}: {}", param, e))
-        })?;
+        std::fs::write(&path, value.to_string())
+            .map_err(|e| VmmError::MemoryError(format!("Failed to set KSM {}: {}", param, e)))?;
         Ok(())
     }
 
     fn read_param(&self, param: &str) -> VmmResult<u64> {
         let path = self.sysfs_path.join(param);
-        let content = std::fs::read_to_string(&path).map_err(|e| {
-            VmmError::MemoryError(format!("Failed to read KSM {}: {}", param, e))
-        })?;
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| VmmError::MemoryError(format!("Failed to read KSM {}: {}", param, e)))?;
         content
             .trim()
             .parse()
@@ -577,7 +596,10 @@ pub struct RuntimeMemoryLoader;
 
 impl RuntimeMemoryLoader {
     /// Load Node.js runtime into shared memory
-    pub fn load_nodejs(manager: &SharedMemoryManager, version: &str) -> VmmResult<Arc<SharedRegion>> {
+    pub fn load_nodejs(
+        manager: &SharedMemoryManager,
+        version: &str,
+    ) -> VmmResult<Arc<SharedRegion>> {
         // In real implementation, this would:
         // 1. Load the Node.js binary and V8 heap snapshot
         // 2. Include commonly used modules (express, lodash, etc.)
@@ -587,7 +609,10 @@ impl RuntimeMemoryLoader {
     }
 
     /// Load Python runtime into shared memory
-    pub fn load_python(manager: &SharedMemoryManager, version: &str) -> VmmResult<Arc<SharedRegion>> {
+    pub fn load_python(
+        manager: &SharedMemoryManager,
+        version: &str,
+    ) -> VmmResult<Arc<SharedRegion>> {
         let runtime_data = Self::create_python_template(version)?;
         manager.create_runtime_region(RuntimeType::Python, &runtime_data)
     }
@@ -709,9 +734,9 @@ mod tests {
     fn test_density_calculator() {
         let report = DensityCalculator::calculate_density(
             1024 * 1024 * 1024, // 1 GB total
-            128 * 1024 * 1024,   // 128 MB per VM
-            30 * 1024 * 1024,    // 30 MB shared
-            250,                  // 250 private pages (1 MB)
+            128 * 1024 * 1024,  // 128 MB per VM
+            30 * 1024 * 1024,   // 30 MB shared
+            250,                // 250 private pages (1 MB)
         );
 
         assert!(report.with_sharing > report.without_sharing);

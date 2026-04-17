@@ -432,9 +432,9 @@ impl ClonePoolManager {
     /// Get a clone for a runtime type
     pub fn acquire(&self, runtime: RuntimeType) -> VmmResult<Box<VmClone>> {
         let pools = self.pools.read().unwrap();
-        let pool = pools.get(&runtime).ok_or_else(|| {
-            VmmError::CloneError(format!("No pool for runtime {:?}", runtime))
-        })?;
+        let pool = pools
+            .get(&runtime)
+            .ok_or_else(|| VmmError::CloneError(format!("No pool for runtime {:?}", runtime)))?;
 
         pool.acquire()
     }
@@ -508,7 +508,9 @@ impl KsmManager {
         // Check if KSM is available
         let ksm_run = std::path::Path::new("/sys/kernel/mm/ksm/run");
         if !ksm_run.exists() {
-            return Err(VmmError::FeatureNotSupported("KSM not available".to_string()));
+            return Err(VmmError::FeatureNotSupported(
+                "KSM not available".to_string(),
+            ));
         }
 
         Ok(Self { enabled: true })
@@ -576,12 +578,12 @@ mod tests {
 
         pool.warm_up().unwrap();
         let efficiency = pool.memory_efficiency();
-        
+
         // Memory efficiency formula: ((full_memory - actual_memory) / full_memory) * 100
         // With CoW clones sharing the base memory:
         // - full_memory = base * clone_count (what we'd use without sharing)
         // - actual_memory = base + overhead (shared base + per-clone overhead)
-        // 
+        //
         // For a single clone with no dirty pages:
         // - full_memory = 128MB * 1 = 128MB
         // - actual_memory = 128MB + 0 = 128MB
