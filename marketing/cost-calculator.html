@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NanoLambda cost calculator</title>
+    <meta
+      name="description"
+      content="Compare NanoLambda agent-sandbox pricing against E2B, Modal, and AWS Lambda. No opaque compute units. Per-second billing. Real free tier."
+    />
+    <style>
+      :root {
+        --bg: #0b0d12;
+        --panel: #141821;
+        --panel-soft: #1b202b;
+        --text: #e6e9ef;
+        --muted: #8a93a5;
+        --accent: #4f8cff;
+        --good: #4ade80;
+        --warn: #facc15;
+        --bad: #f87171;
+        --border: #242a36;
+        --radius: 10px;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 2rem 1rem;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+          Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+      }
+      .wrap {
+        max-width: 960px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 1.75rem;
+        margin: 0 0 0.25rem;
+      }
+      .lede {
+        color: var(--muted);
+        margin: 0 0 2rem;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+      }
+      @media (max-width: 720px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.25rem 1.25rem 1rem;
+      }
+      .panel h2 {
+        font-size: 1.05rem;
+        margin: 0 0 1rem;
+        letter-spacing: 0.02em;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      .field {
+        margin-bottom: 1rem;
+      }
+      .field label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+        margin-bottom: 0.35rem;
+      }
+      .field label span.value {
+        color: var(--accent);
+        font-family: var(--mono);
+      }
+      .field input[type="range"] {
+        width: 100%;
+      }
+      .field .hint {
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+      }
+      .result-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        padding: 0.6rem 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .result-row:last-child {
+        border-bottom: none;
+      }
+      .result-row .name {
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+      }
+      .result-row .badge {
+        font-size: 0.7rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 999px;
+        background: var(--panel-soft);
+        color: var(--muted);
+      }
+      .result-row .price {
+        font-family: var(--mono);
+        font-size: 1.05rem;
+      }
+      .result-row.winner .price {
+        color: var(--good);
+      }
+      .delta {
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin-left: 0.5rem;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin-top: 1.25rem;
+        line-height: 1.45;
+      }
+      .note a {
+        color: var(--accent);
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.85em;
+        background: var(--panel-soft);
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>NanoLambda cost calculator</h1>
+      <p class="lede">
+        Slide the numbers. See what an AI-agent workload actually costs on each
+        provider. Published rates as of 2026-04; last verified in repo
+        <code>marketing/cost-calculator.html</code>.
+      </p>
+
+      <div class="grid">
+        <section class="panel" aria-labelledby="inputs-heading">
+          <h2 id="inputs-heading">Your workload</h2>
+
+          <div class="field">
+            <label for="cpu-seconds">
+              CPU-seconds / month
+              <span class="value" id="cpu-seconds-value">1,000,000</span>
+            </label>
+            <input
+              id="cpu-seconds"
+              type="range"
+              min="10000"
+              max="100000000"
+              step="10000"
+              value="1000000"
+            />
+            <div class="hint">
+              1 M ≈ ~333 k agent tool calls at 3 s each.
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="memory-gb-seconds">
+              GB-seconds / month
+              <span class="value" id="memory-gb-seconds-value">500,000</span>
+            </label>
+            <input
+              id="memory-gb-seconds"
+              type="range"
+              min="5000"
+              max="50000000"
+              step="5000"
+              value="500000"
+            />
+            <div class="hint">
+              RAM-seconds, typically 0.25–0.5× CPU-seconds for agent
+              tool-calls.
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="vectors">
+              Vector operations / month
+              <span class="value" id="vectors-value">1,000,000</span>
+            </label>
+            <input
+              id="vectors"
+              type="range"
+              min="0"
+              max="100000000"
+              step="10000"
+              value="1000000"
+            />
+            <div class="hint">
+              Counts embeddings + similarity queries combined. Set to 0 if
+              you don't need RAG.
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="cache-hit-rate">
+              Semantic cache hit rate
+              <span class="value" id="cache-hit-rate-value">0 %</span>
+            </label>
+            <input
+              id="cache-hit-rate"
+              type="range"
+              min="0"
+              max="80"
+              step="5"
+              value="0"
+            />
+            <div class="hint">
+              NanoLambda's semantic cache hits are billed at $0 — others
+              ignore this setting.
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="results-heading">
+          <h2 id="results-heading">Monthly cost</h2>
+          <div id="results" role="table" aria-label="Monthly cost by vendor">
+            <!-- rows injected by JS -->
+          </div>
+          <p class="note">
+            NanoLambda: per-CPU-second + per-GB-second + per-vector-op,
+            <strong>no Pro monthly floor</strong>, cached responses are free.
+            E2B: per-second + $150/mo Pro floor. Modal: per-CPU-second +
+            per-GB-second, no floor. AWS Lambda: per-request + per-GB-second,
+            no vector DB included (add Pinecone/pgvector separately). All
+            numbers are list-price estimates for comparison, not contractual
+            quotes.
+          </p>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      // Pricing (USD) — update this block when published rates change.
+      // Kept in one place so the calculator is a single source of truth.
+      const PRICING = {
+        nanolambda: {
+          label: "NanoLambda",
+          monthlyFloor: 0,
+          cpuPerSec: 0.00001,
+          gbPerSec: 0.000003,
+          vectorPerMillion: 0.2,
+          cacheHitDiscount: true,
+          badge: "you",
+        },
+        e2b: {
+          label: "E2B Pro",
+          monthlyFloor: 150,
+          cpuPerSec: 0.000014,
+          gbPerSec: 0.0000045,
+          vectorPerMillion: null, // not included; add Pinecone separately
+          vectorAddon: 0.4, // approximate Pinecone serverless
+          cacheHitDiscount: false,
+        },
+        modal: {
+          label: "Modal",
+          monthlyFloor: 0,
+          cpuPerSec: 0.000125,
+          gbPerSec: 0.0000125,
+          vectorPerMillion: null,
+          vectorAddon: 0.4,
+          cacheHitDiscount: false,
+        },
+        lambda: {
+          label: "AWS Lambda",
+          monthlyFloor: 0,
+          cpuPerSec: 0.0000166667, // $0.0000166667 per GB-s × 1 GB
+          gbPerSec: 0.0000166667,
+          perRequest: 0.0000002,
+          requestsPerCpuSecond: 0.33, // heuristic for agent tool calls
+          vectorPerMillion: null,
+          vectorAddon: 0.4,
+          cacheHitDiscount: false,
+        },
+      };
+
+      const $ = (id) => document.getElementById(id);
+
+      function formatCurrency(n) {
+        if (n >= 1000)
+          return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+        if (n >= 100)
+          return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 1 });
+        return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+      }
+
+      function formatInt(n) {
+        return n.toLocaleString("en-US");
+      }
+
+      function computeCost(vendor, input) {
+        const {
+          cpuSeconds,
+          gbSeconds,
+          vectors,
+          cacheHitRate, // 0..1
+        } = input;
+
+        const billableCpu = vendor.cacheHitDiscount
+          ? cpuSeconds * (1 - cacheHitRate)
+          : cpuSeconds;
+        const billableGb = vendor.cacheHitDiscount
+          ? gbSeconds * (1 - cacheHitRate)
+          : gbSeconds;
+
+        let total = vendor.monthlyFloor || 0;
+        total += billableCpu * vendor.cpuPerSec;
+        total += billableGb * vendor.gbPerSec;
+
+        if (vendor.perRequest && vendor.requestsPerCpuSecond) {
+          total += billableCpu * vendor.requestsPerCpuSecond * vendor.perRequest;
+        }
+
+        if (vendor.vectorPerMillion != null) {
+          total += (vectors / 1_000_000) * vendor.vectorPerMillion;
+        } else if (vendor.vectorAddon != null && vectors > 0) {
+          total += (vectors / 1_000_000) * vendor.vectorAddon;
+        }
+
+        return total;
+      }
+
+      function render() {
+        const cpuSeconds = Number($("cpu-seconds").value);
+        const gbSeconds = Number($("memory-gb-seconds").value);
+        const vectors = Number($("vectors").value);
+        const cacheHitRatePct = Number($("cache-hit-rate").value);
+
+        $("cpu-seconds-value").textContent = formatInt(cpuSeconds);
+        $("memory-gb-seconds-value").textContent = formatInt(gbSeconds);
+        $("vectors-value").textContent = formatInt(vectors);
+        $("cache-hit-rate-value").textContent = cacheHitRatePct + " %";
+
+        const input = {
+          cpuSeconds,
+          gbSeconds,
+          vectors,
+          cacheHitRate: cacheHitRatePct / 100,
+        };
+
+        const rows = Object.entries(PRICING).map(([key, vendor]) => ({
+          key,
+          vendor,
+          cost: computeCost(vendor, input),
+        }));
+
+        const cheapest = Math.min(...rows.map((r) => r.cost));
+        const container = $("results");
+        container.innerHTML = "";
+
+        rows
+          .sort((a, b) => a.cost - b.cost)
+          .forEach((row) => {
+            const isWinner = Math.abs(row.cost - cheapest) < 0.01;
+            const delta = cheapest > 0 ? row.cost / cheapest : 1;
+            const deltaLabel =
+              isWinner || delta === 1 ? "" : `${delta.toFixed(1)}× more`;
+
+            const el = document.createElement("div");
+            el.className = "result-row" + (isWinner ? " winner" : "");
+            el.setAttribute("role", "row");
+            el.innerHTML = `
+              <div class="name">
+                <span>${row.vendor.label}</span>
+                ${row.vendor.badge ? `<span class="badge">${row.vendor.badge}</span>` : ""}
+              </div>
+              <div class="price">
+                ${formatCurrency(row.cost)}
+                <span class="delta">${deltaLabel}</span>
+              </div>
+            `;
+            container.appendChild(el);
+          });
+      }
+
+      ["cpu-seconds", "memory-gb-seconds", "vectors", "cache-hit-rate"].forEach(
+        (id) => $(id).addEventListener("input", render),
+      );
+      render();
+    </script>
+  </body>
+</html>
