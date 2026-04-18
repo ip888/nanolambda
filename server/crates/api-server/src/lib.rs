@@ -29,6 +29,7 @@ pub mod payment_retry_handlers;
 pub mod rate_limiter;
 pub mod referral_handlers;
 pub mod routes;
+pub mod sandbox_handlers;
 pub mod scheduler_handlers;
 pub mod sse_handlers;
 pub mod usage_tracker;
@@ -731,6 +732,8 @@ impl ApiServer {
                 "/ws/{function_name}",
                 get(websocket_handlers::websocket_handler),
             )
+            // Sandbox (MCP tool-exec endpoint; auth handled by MCP daemon)
+            .route("/sandbox/invoke", post(sandbox_handlers::sandbox_invoke))
             // Health check
             .route("/health", get(handlers::health_check))
             .with_state(state);
@@ -1043,6 +1046,7 @@ impl ApiServer {
                 "/ws/{function_name}",
                 get(websocket_handlers::websocket_handler),
             )
+            .route("/sandbox/invoke", post(sandbox_handlers::sandbox_invoke))
             .route("/health", get(handlers::health_check))
             .with_state(state);
 
