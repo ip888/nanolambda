@@ -1,7 +1,7 @@
 use crate::workloads::Workload;
 
 pub trait Platform: Send + Sync {
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
     fn deploy(
         &self,
         workload: &Workload,
@@ -39,7 +39,7 @@ impl NanoLambda {
 }
 
 impl Platform for NanoLambda {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "NanoLambda"
     }
 
@@ -137,7 +137,6 @@ impl Platform for NanoLambda {
 
 pub struct AwsLambda {
     client: aws_sdk_lambda::Client,
-    region: String,
 }
 
 impl AwsLambda {
@@ -146,12 +145,7 @@ impl AwsLambda {
             .load()
             .await;
         let client = aws_sdk_lambda::Client::new(&config);
-        let region = config
-            .region()
-            .map(|r| r.as_ref().to_string())
-            .unwrap_or_else(|| "us-east-1".to_string());
-
-        Ok(Self { client, region })
+        Ok(Self { client })
     }
 
     fn runtime_from_str(&self, runtime: &str) -> aws_sdk_lambda::types::Runtime {
@@ -165,7 +159,7 @@ impl AwsLambda {
 }
 
 impl Platform for AwsLambda {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "AWS Lambda"
     }
 

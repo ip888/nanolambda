@@ -1,13 +1,17 @@
 use clap::Parser;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::time::{Duration, Instant};
 use tabled::{Table, Tabled};
 
+mod e2b;
 mod platforms;
+mod report;
 mod statistics;
 mod workloads;
 
+use e2b::E2B;
 use platforms::{AwsLambda, NanoLambda, Platform};
 use statistics::BenchmarkStats;
 use workloads::{Workload, WorkloadType};
@@ -16,7 +20,7 @@ use workloads::{Workload, WorkloadType};
 #[command(name = "benchmark-runner")]
 #[command(about = "Benchmark NanoLambda vs AWS Lambda")]
 struct Args {
-    /// Platform to benchmark: nanolambda, aws-lambda, or both
+    /// Platform to benchmark: nanolambda, aws-lambda, e2b, or all
     #[arg(short, long, default_value = "nanolambda")]
     platform: String,
 
@@ -38,15 +42,15 @@ struct Args {
 }
 
 #[derive(Debug, Serialize, Deserialize, Tabled)]
-struct BenchmarkResult {
-    platform: String,
-    workload: String,
-    cold_start_ms: f64,
-    warm_p50_ms: f64,
-    warm_p95_ms: f64,
-    warm_p99_ms: f64,
-    throughput_rps: f64,
-    memory_mb: u64,
+pub struct BenchmarkResult {
+    pub platform: String,
+    pub workload: String,
+    pub cold_start_ms: f64,
+    pub warm_p50_ms: f64,
+    pub warm_p95_ms: f64,
+    pub warm_p99_ms: f64,
+    pub throughput_rps: f64,
+    pub memory_mb: u64,
 }
 
 #[tokio::main]
@@ -69,33 +73,53 @@ async fn main() -> anyhow::Result<()> {
 
     let mut all_results = Vec::new();
 
-    // Run benchmarks for each platform
-    if args.platform == "nanolambda" || args.platform == "both" {
+    let run_nanolambda = matches!(args.platform.as_str(), "nanolambda" | "both" | "all");
+    let run_aws = matches!(args.platform.as_str(), "aws-lambda" | "both" | "all");
+    let run_e2b = matches!(args.platform.as_str(), "e2b" | "all");
+
+    if run_nanolambda {
         println!("📊 Benchmarking NanoLambda...\n");
         let platform = NanoLambda::new().await?;
         let results = run_benchmarks(&platform, &workloads, &args).await?;
         all_results.extend(results);
     }
 
-    if args.platform == "aws-lambda" || args.platform == "both" {
+    if run_aws {
         println!("☁️  Benchmarking AWS Lambda...\n");
         let platform = AwsLambda::new().await?;
         let results = run_benchmarks(&platform, &workloads, &args).await?;
         all_results.extend(results);
     }
 
-    // Display results
+    if run_e2b {
+        println!("🧪 Benchmarking E2B...\n");
+        match E2B::new() {
+            Ok(platform) => {
+                let results = run_benchmarks(&platform, &workloads, &args).await?;
+                all_results.extend(results);
+            }
+            Err(err) => {
+                // Don't tank the whole run — just skip E2B when creds missing.
+                eprintln!("⚠️  Skipping E2B: {err}");
+            }
+        }
+    }
+
     display_results(&all_results);
 
-    // Save to file if requested
     if let Some(output_path) = &args.output {
         let json = serde_json::to_string_pretty(&all_results)?;
         std::fs::write(output_path, json)?;
         println!("\n💾 Results saved to: {}", output_path);
+
+        // Always emit a sibling Markdown report for the benchmark blog post.
+        let md_path = Path::new(output_path).with_extension("md");
+        let md = report::render_markdown(&all_results);
+        std::fs::write(&md_path, md)?;
+        println!("📝 Markdown report: {}", md_path.display());
     }
 
-    // If comparing both platforms, show comparison table
-    if args.platform == "both" {
+    if matches!(args.platform.as_str(), "both" | "all") {
         println!("\n🔬 Comparison Analysis\n");
         display_comparison(&all_results);
     }
@@ -226,25 +250,26 @@ fn display_comparison(results: &[BenchmarkResult]) {
         println!("  📦 {}", workload);
 
         let nano = platforms.iter().find(|p| p.platform == "NanoLambda");
-        let aws = platforms.iter().find(|p| p.platform == "AWS Lambda");
 
-        if let (Some(nano), Some(aws)) = (nano, aws) {
-            let cold_speedup = aws.cold_start_ms / nano.cold_start_ms;
-            let warm_speedup = aws.warm_p50_ms / nano.warm_p50_ms;
-            let throughput_ratio = nano.throughput_rps / aws.throughput_rps;
+        for other in platforms.iter().filter(|p| p.platform != "NanoLambda") {
+            let Some(nano) = nano else { continue };
+            let cold_speedup = other.cold_start_ms / nano.cold_start_ms;
+            let warm_speedup = other.warm_p50_ms / nano.warm_p50_ms;
+            let throughput_ratio = nano.throughput_rps / other.throughput_rps;
 
+            println!("    vs {}", other.platform);
             println!(
-                "    Cold Start: {} ({:.1}x faster)",
+                "      Cold Start: {} ({:.1}x faster)",
                 format_speedup(cold_speedup),
                 cold_speedup
             );
             println!(
-                "    Warm P50:   {} ({:.1}x faster)",
+                "      Warm P50:   {} ({:.1}x faster)",
                 format_speedup(warm_speedup),
                 warm_speedup
             );
             println!(
-                "    Throughput: {} ({:.1}x higher)",
+                "      Throughput: {} ({:.1}x higher)",
                 format_speedup(throughput_ratio),
                 throughput_ratio
             );

@@ -2,37 +2,16 @@ pub struct BenchmarkStats {
     pub p50: f64,
     pub p95: f64,
     pub p99: f64,
-    pub mean: f64,
-    pub std_dev: f64,
-    pub min: f64,
-    pub max: f64,
 }
 
 impl BenchmarkStats {
     pub fn from_latencies(latencies: &[f64]) -> Self {
         let mut sorted = latencies.to_vec();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-
-        let p50 = percentile(&sorted, 50.0);
-        let p95 = percentile(&sorted, 95.0);
-        let p99 = percentile(&sorted, 99.0);
-
-        let mean = sorted.iter().sum::<f64>() / sorted.len() as f64;
-
-        let variance = sorted.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / sorted.len() as f64;
-        let std_dev = variance.sqrt();
-
-        let min = sorted.first().copied().unwrap_or(0.0);
-        let max = sorted.last().copied().unwrap_or(0.0);
-
         Self {
-            p50,
-            p95,
-            p99,
-            mean,
-            std_dev,
-            min,
-            max,
+            p50: percentile(&sorted, 50.0),
+            p95: percentile(&sorted, 95.0),
+            p99: percentile(&sorted, 99.0),
         }
     }
 }
