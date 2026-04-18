@@ -13,6 +13,7 @@ categories = ["virtualization", "web-programming"]
 [workspace]
 members = [
     "crates/api-server",
+    "crates/mcp",
     "crates/runtime",
     "crates/storage",
     "crates/vmm",

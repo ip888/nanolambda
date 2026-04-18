@@ -2256,6 +2256,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanolambda-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "nanolambda-runtime"
 version = "0.1.0"
 dependencies = [

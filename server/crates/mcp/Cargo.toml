@@ -1,0 +1,33 @@
+[package]
+name = "nanolambda-mcp"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+license = "Apache-2.0"
+description = "Model Context Protocol (MCP) server exposing NanoLambda sandboxes as tools for AI agents"
+repository = "https://github.com/ip888/nanolambda"
+keywords = ["mcp", "ai", "agent", "sandbox", "nanolambda"]
+categories = ["command-line-utilities", "web-programming"]
+
+[[bin]]
+name = "nanolambda-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# workspace tokio doesn't enable `io-std`; the MCP loop needs stdin/stdout handles.
+tokio = { workspace = true, features = ["io-std"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true, features = ["env"] }
+reqwest = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
