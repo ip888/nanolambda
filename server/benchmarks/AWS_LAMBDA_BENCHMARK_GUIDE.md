@@ -5,8 +5,8 @@ This guide explains how to run benchmarks comparing NanoLambda with AWS Lambda.
 ## Prerequisites
 
 ### For NanoLambda Benchmarks
-- NanoLambda server running locally on port 3000
-- Python 3.11 or 3.12 installed
+- NanoLambda server running locally on port 8080
+- Python 3.12 or 3.13 installed
 
 ### For AWS Lambda Benchmarks
 - AWS account with Lambda access
@@ -140,7 +140,7 @@ I/O Operations    ~30-40ms      ~5-10ms     100-200 req/s
 
 ### AWS Lambda Comparison
 
-Typical AWS Lambda (Python 3.11):
+Typical AWS Lambda (Python 3.12):
 
 ```
 Workload          Cold Start    Warm P50    Throughput
@@ -200,7 +200,7 @@ export AWS_LAMBDA_ROLE_ARN=$(aws iam get-role --role-name lambda-benchmark-role 
 ### NanoLambda server not responding
 ```bash
 # Check if server is running
-curl http://localhost:3000/health
+curl http://localhost:8080/health
 
 # Check server logs
 cargo run --release --bin server

@@ -299,7 +299,7 @@
           <li><a href="#benchmarks">Benchmarks</a></li>
           <li><a href="#pricing">Pricing</a></li>
           <li><a href="#integration">Integration</a></li>
-          <li><a href="https://github.com/nanolambda/nanolambda">GitHub</a></li>
+          <li><a href="https://github.com/ip888/nanolambda">GitHub</a></li>
         </ul>
       </div>
     </nav>
@@ -470,9 +470,9 @@
             <pre>{
   "mcpServers": {
     "nanolambda": {
-      "command": "npx",
-      "args": ["-y", "nanolambda-mcp"],
+      "command": "nanolambda-mcp",
       "env": {
+        "NANOLAMBDA_URL": "http://localhost:8080",
         "NANOLAMBDA_API_KEY": "nl_..."
       }
     }
@@ -483,9 +483,10 @@
             <div class="snippet-header">Python SDK</div>
             <pre>pip install nanolambda
 
-from nanolambda import Sandbox
+from nanolambda import NanoLambda
 
-result = Sandbox().run("print('hello')")
+sandbox = NanoLambda(api_key="nl_...")
+result = sandbox.execute_python("print('hello')")
 print(result.stdout)  # hello</pre>
           </div>
         </div>
@@ -551,11 +552,11 @@ print(result.stdout)  # hello</pre>
     <!-- FOOTER -->
     <footer>
       <div class="wrap">
-        <div>NanoLambda &middot; Apache-2.0 open source</div>
+        <div>NanoLambda &middot; MIT open source</div>
         <ul>
           <li><a href="#pricing">Pricing</a></li>
           <li><a href="cost-calculator.html">Cost calculator</a></li>
-          <li><a href="https://github.com/nanolambda/nanolambda">GitHub</a></li>
+          <li><a href="https://github.com/ip888/nanolambda">GitHub</a></li>
         </ul>
       </div>
     </footer>

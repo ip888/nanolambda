@@ -216,7 +216,7 @@ curl -X POST http://localhost:8080/api/functions \
 ## Runtime Features
 
 ### Python Runtime
-- **Supported versions:** 3.8, 3.9, 3.10, 3.11
+- **Supported versions:** 3.12, 3.13
 - **Pre-installed packages:** requests, boto3, numpy, pandas
 - **Custom packages:** Upload with requirements.txt
 

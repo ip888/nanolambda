@@ -22,7 +22,7 @@ The storage layer provides persistent storage for Lambda functions, their config
 CREATE TABLE functions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    runtime TEXT NOT NULL,          -- 'python3.11', 'nodejs20', etc.
+    runtime TEXT NOT NULL,          -- 'python3.12', 'nodejs20', etc.
     handler TEXT NOT NULL,           -- 'index.handler', 'main.handler'
     code TEXT NOT NULL,              -- Base64-encoded source code
     code_hash TEXT NOT NULL,         -- SHA256 for cache validation

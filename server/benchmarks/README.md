@@ -41,7 +41,7 @@ cargo run --release --bin benchmark-runner -- --platform both --output results.j
 Based on our warm start optimization:
 - **NanoLambda Cold Start**: ~32ms
 - **NanoLambda Warm Start**: ~0-1ms (19x faster than cold)
-- **AWS Lambda Cold Start**: 100-300ms (Python 3.11)
+- **AWS Lambda Cold Start**: 100-300ms (Python 3.12)
 - **AWS Lambda Warm Start**: 1-5ms
 
 Our advantage is in:

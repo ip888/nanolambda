@@ -42,7 +42,7 @@ NanoLambda Edge is a complete serverless platform implementation in Rust, compil
 
 ### Prerequisites
 
-- Rust 1.70+ with `wasm32-unknown-unknown` target
+- Rust 1.93+ with `wasm32-unknown-unknown` target
 - Node.js 18+
 - Cloudflare account (for deployment)
 

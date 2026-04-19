@@ -65,4 +65,4 @@ stderr carries `tracing` logs; stdout is reserved for the JSON-RPC stream.
 
 ## License
 
-Apache-2.0.
+MIT.

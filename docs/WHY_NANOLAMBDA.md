@@ -38,7 +38,7 @@ result = sandbox.execute_python("print(2 + 2)")
 | Self-host option | Yes | No | No | No |
 | Per-invocation billing | Yes | Yes | Yes | Yes |
 | Minimum monthly cost | $0 | $0 | $30 | $0 |
-| Open source | Apache-2.0 | Partial | No | No |
+| Open source | MIT | Partial | No | No |
 | Process isolation | Yes | Yes | Yes | Yes |
 | Network isolation | Configurable | Configurable | No | VPC required |
 | Memory limits | Per-sandbox | Per-sandbox | Per-function | Per-function |
@@ -70,7 +70,7 @@ NanoLambda uses straightforward, usage-based pricing with no minimums and no com
 | Growth | 10,001 - 1,000,000 | $0.50 |
 | Scale | 1,000,001+ | $0.25 |
 
-Self-hosted deployments are free and unlimited under the Apache-2.0 license.
+Self-hosted deployments are free and unlimited under the MIT license.
 
 ## Integration
 

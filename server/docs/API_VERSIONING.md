@@ -32,7 +32,7 @@ POST /functions
 ```json
 {
   "name": "my-function",
-  "runtime": "python3.11",
+  "runtime": "python3.12",
   "handler": "handler",
   "code": "def handler(event, context): return {'version': 1}",
   "memory_mb": 128,
@@ -44,7 +44,7 @@ POST /functions
 ```json
 {
   "name": "my-function",
-  "runtime": "python3.11",
+  "runtime": "python3.12",
   "status": "active",
   "created_at": 1732694400,
   "updated_at": 1732694400
@@ -64,7 +64,7 @@ POST /functions/{name}/versions
 **Request**:
 ```json
 {
-  "runtime": "python3.11",
+  "runtime": "python3.12",
   "handler": "handler",
   "code": "def handler(event, context): return {'version': 2, 'updated': True}",
   "memory_mb": 128,
@@ -79,7 +79,7 @@ POST /functions/{name}/versions
   "name": "my-function",
   "version": 2,
   "is_latest": true,
-  "runtime": "python3.11",
+  "runtime": "python3.12",
   "handler": "handler",
   "code_hash": "a069ccd1...",
   "memory_mb": 128,
@@ -108,7 +108,7 @@ GET /functions/{name}/versions
       "name": "my-function",
       "version": 2,
       "is_latest": true,
-      "runtime": "python3.11",
+      "runtime": "python3.12",
       "handler": "handler",
       "code_hash": "a069ccd1...",
       "memory_mb": 128,
@@ -121,7 +121,7 @@ GET /functions/{name}/versions
       "name": "my-function",
       "version": 1,
       "is_latest": false,
-      "runtime": "python3.11",
+      "runtime": "python3.12",
       "handler": "handler",
       "code_hash": "014782c9...",
       "memory_mb": 128,
@@ -153,7 +153,7 @@ GET /functions/{name}/versions/{version}
   "name": "my-function",
   "version": 1,
   "is_latest": false,
-  "runtime": "python3.11",
+  "runtime": "python3.12",
   "handler": "handler",
   "code_hash": "014782c9...",
   "memory_mb": 128,
@@ -204,7 +204,7 @@ curl -X POST http://localhost:8080/functions \
   -H "Content-Type: application/json" \
   -d '{
     "name": "calc",
-    "runtime": "python3.11",
+    "runtime": "python3.12",
     "handler": "handler",
     "code": "def handler(event, context): return event[\"x\"] * 2",
     "memory_mb": 128,
@@ -221,7 +221,7 @@ curl -X POST http://localhost:8080/functions/calc/invoke \
 curl -X POST http://localhost:8080/functions/calc/versions \
   -H "Content-Type: application/json" \
   -d '{
-    "runtime": "python3.11",
+    "runtime": "python3.12",
     "handler": "handler",
     "code": "def handler(event, context): return event[\"x\"] * 3",
     "memory_mb": 128,

@@ -314,7 +314,7 @@ crates/edge/
 
 ### Prerequisites
 
-- Rust 1.70+ with `wasm32-unknown-unknown` target
+- Rust 1.93+ with `wasm32-unknown-unknown` target
 - Node.js 18+
 - wrangler CLI (`npm install -g wrangler`)
 

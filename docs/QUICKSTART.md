@@ -23,9 +23,9 @@ Add this to your Claude Desktop config (`~/Library/Application Support/Claude/cl
 {
   "mcpServers": {
     "nanolambda": {
-      "command": "npx",
-      "args": ["-y", "@nanolambda/mcp-server"],
+      "command": "nanolambda-mcp",
       "env": {
+        "NANOLAMBDA_URL": "http://localhost:8080",
         "NANOLAMBDA_API_KEY": "nl_..."
       }
     }
@@ -55,5 +55,5 @@ print(result.duration_ms)  # 11
 
 - Browse framework examples: [LangChain](../sdks/python/examples/langchain_tool.py), [CrewAI](../sdks/python/examples/crewai_tool.py), [Pydantic-AI](../sdks/python/examples/pydantic_ai_tool.py)
 - Read the [Python SDK docs](../sdks/python/README.md)
-- Check execution metrics at `/metrics` (Prometheus format)
+- Check execution metrics at `/metrics/prometheus` (Prometheus format)
 - Read [Why NanoLambda](WHY_NANOLAMBDA.md) for the full value proposition

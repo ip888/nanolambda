@@ -170,10 +170,10 @@ cd nanolambda
 
 ```bash
 # Build optimized release binary
-cargo build --release --bin server
+cargo build --release --bin nanolambda-server
 
 # Verify build
-./target/release/server --version
+./target/release/nanolambda-server --version
 ```
 
 ### 4. Install Binary
@@ -230,7 +230,7 @@ WorkingDirectory=/var/lib/nanolambda
 # Environment variables
 Environment="RUST_LOG=info"
 Environment="NANOLAMBDA_HOST=127.0.0.1"
-Environment="NANOLAMBDA_PORT=3000"
+Environment="NANOLAMBDA_PORT=8080"
 Environment="NANOLAMBDA_DB_PATH=/var/lib/nanolambda/data/nanolambda.db"
 Environment="NANOLAMBDA_LOG_PATH=/var/lib/nanolambda/logs"
 
@@ -322,10 +322,10 @@ sudo nano /etc/nginx/sites-available/nanolambda
 # Upstream definition
 upstream nanolambda {
     # Single server
-    server 127.0.0.1:3000 fail_timeout=5s max_fails=3;
+    server 127.0.0.1:8080 fail_timeout=5s max_fails=3;
     
     # For multiple instances (load balancing)
-    # server 127.0.0.1:3000 weight=1;
+    # server 127.0.0.1:8080 weight=1;
     # server 127.0.0.1:3001 weight=1;
     # server 127.0.0.1:3002 weight=1;
     
@@ -576,7 +576,7 @@ scrape_configs:
   # Nanolambda metrics
   - job_name: 'nanolambda'
     static_configs:
-      - targets: ['localhost:3000']
+      - targets: ['localhost:8080']
     metrics_path: /metrics
     
   # Node exporter (system metrics)
@@ -608,12 +608,12 @@ sudo systemctl enable grafana-server
 sudo systemctl start grafana-server
 
 # Default credentials: admin/admin
-# Visit: http://localhost:3000
+# Visit: http://localhost:8080
 ```
 
 #### Add Prometheus Data Source
 
-1. Login to Grafana (http://localhost:3000)
+1. Login to Grafana (http://localhost:8080)
 2. Go to Configuration → Data Sources
 3. Click "Add data source"
 4. Select "Prometheus"
@@ -735,7 +735,7 @@ sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 
 # Deny direct access to Nanolambda port
-sudo ufw deny 3000/tcp
+sudo ufw deny 8080/tcp
 
 # Allow Prometheus (only from localhost)
 sudo ufw allow from 127.0.0.1 to any port 9090
@@ -851,10 +851,10 @@ cd /opt/nanolambda/nanolambda
 sudo -u nanolambda git pull
 
 # Build new binary
-sudo -u nanolambda cargo build --release --bin server
+sudo -u nanolambda cargo build --release --bin nanolambda-server
 
 # Replace binary
-sudo cp target/release/server /usr/local/bin/nanolambda-server
+sudo cp target/release/nanolambda-server /usr/local/bin/nanolambda-server
 
 # Restart service
 sudo systemctl restart nanolambda
@@ -1010,9 +1010,9 @@ Update nginx upstream:
 upstream nanolambda {
     least_conn;  # or ip_hash for sticky sessions
     
-    server 10.0.1.10:3000 weight=1 max_fails=3 fail_timeout=30s;
-    server 10.0.1.11:3000 weight=1 max_fails=3 fail_timeout=30s;
-    server 10.0.1.12:3000 weight=1 max_fails=3 fail_timeout=30s;
+    server 10.0.1.10:8080 weight=1 max_fails=3 fail_timeout=30s;
+    server 10.0.1.11:8080 weight=1 max_fails=3 fail_timeout=30s;
+    server 10.0.1.12:8080 weight=1 max_fails=3 fail_timeout=30s;
     
     keepalive 64;
 }
@@ -1065,7 +1065,7 @@ sudo nano /usr/local/bin/nanolambda-healthcheck.sh
 ```bash
 #!/bin/bash
 
-ENDPOINT="http://localhost:3000/health"
+ENDPOINT="http://localhost:8080/health"
 EXPECTED_STATUS=200
 
 # Check HTTP status
@@ -1115,7 +1115,7 @@ sudo systemctl status nanolambda
 sudo journalctl -u nanolambda -n 100 --no-pager
 
 # Check for port conflicts
-sudo lsof -i :3000
+sudo lsof -i :8080
 
 # Verify binary exists
 ls -la /usr/local/bin/nanolambda-server
@@ -1163,7 +1163,7 @@ sudo nginx -t
 sudo tail -f /var/log/nginx/error.log
 
 # Verify upstream connection
-curl http://127.0.0.1:3000/health
+curl http://127.0.0.1:8080/health
 ```
 
 ### Debug Mode
@@ -1199,7 +1199,7 @@ htop
 iostat -x 1
 
 # Network connections
-ss -tunapl | grep 3000
+ss -tunapl | grep 8080
 
 # Database performance
 sudo -u nanolambda sqlite3 /var/lib/nanolambda/data/nanolambda.db ".timer on" "SELECT COUNT(*) FROM functions;"
@@ -1271,7 +1271,7 @@ sudo mount -t nfs4 -o nfsvers=4.1 fs-xxxxx.efs.us-east-1.amazonaws.com:/ /var/li
 # 4. Target Group:
 #    - Name: nanolambda-targets
 #    - Protocol: HTTP
-#    - Port: 3000
+#    - Port: 8080
 #    - Health check: /health
 #
 # 5. Register EC2 instances
@@ -1380,8 +1380,8 @@ postgresql://user:pass@host:25060/nanolambda?sslmode=require
 # - Name: nanolambda-lb
 # - Type: Regional
 # - Forwarding Rules:
-#   - HTTPS 443 → HTTP 3000
-#   - HTTP 80 → HTTP 3000 (redirect to HTTPS)
+#   - HTTPS 443 → HTTP 8080
+#   - HTTP 80 → HTTP 8080 (redirect to HTTPS)
 # - Health Check: /health
 # - Sticky Sessions: Enabled
 # - Add Droplets
@@ -1618,7 +1618,7 @@ ssh root@server-ip
 # - Type: LB11 (€5.83/month)
 # - Location: Same as servers
 # - Services:
-#   - HTTPS 443 → HTTP 3000
+#   - HTTPS 443 → HTTP 8080
 #   - Health check: /health
 # - Add servers as targets
 ```
@@ -1676,7 +1676,7 @@ Inbound:
 - HTTP (80): 0.0.0.0/0 (redirect to HTTPS)
 - HTTPS (443): 0.0.0.0/0
 - Prometheus (9090): Internal only
-- Grafana (3000): Your IP only (or use SSH tunnel)
+- Grafana (8080): Your IP only (or use SSH tunnel)
 
 Outbound:
 - All traffic: 0.0.0.0/0 (for updates, packages)

@@ -59,4 +59,4 @@ Raised on API errors. Has a `status_code` attribute when the error comes from an
 
 ## License
 
-Apache-2.0
+MIT

@@ -151,7 +151,7 @@ NanoLambda uses **KVM (Kernel Virtual Machine)** for hardware-based isolation. K
    source $HOME/.cargo/env
    
    # Verify
-   rustc --version  # Should be 1.70+
+   rustc --version  # Should be 1.93+
    ```
 
 4. **Install Development Tools:**
@@ -161,7 +161,7 @@ NanoLambda uses **KVM (Kernel Virtual Machine)** for hardware-based isolation. K
 
 5. **Clone Repository:**
    ```bash
-   git clone https://github.com/yourusername/nanolambda.git
+   git clone https://github.com/ip888/nanolambda.git
    cd nanolambda
    cargo build
    ```
@@ -220,7 +220,7 @@ NanoLambda uses **KVM (Kernel Virtual Machine)** for hardware-based isolation. K
    source $HOME/.cargo/env
    
    # Clone repo
-   git clone https://github.com/yourusername/nanolambda.git
+   git clone https://github.com/ip888/nanolambda.git
    cd nanolambda
    cargo build
    ```
@@ -243,7 +243,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
 
 # Clone and build
-git clone https://github.com/yourusername/nanolambda.git
+git clone https://github.com/ip888/nanolambda.git
 cd nanolambda
 cargo build
 ```
@@ -273,7 +273,7 @@ sudo kvm-ok
 ```bash
 # Check Rust version
 rustc --version
-# Should be: rustc 1.70.0 or higher
+# Should be: rustc 1.93.0 or higher
 
 # Check Cargo
 cargo --version

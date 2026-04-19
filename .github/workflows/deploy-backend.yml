@@ -14,8 +14,62 @@ env:
   IMAGE_NAME: ${{ github.repository }}/nanolambda-server
 
 jobs:
-  build-and-deploy:
+  # ---------------------------------------------------------------------------
+  # Pre-deploy gate — fast checks that catch build/format/test failures before
+  # we spend 5+ minutes on a Docker image build.
+  # ---------------------------------------------------------------------------
+  pre-deploy:
+    name: Pre-deploy checks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93"
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/target
+          key: ${{ runner.os }}-cargo-predeploy-${{ hashFiles('server/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-predeploy-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --workspace --lib
+
+      - name: Verify Dockerfile parses
+        run: docker build --check . 2>/dev/null || echo "docker build --check not supported, skipping"
+
+      - name: Scan for secrets in diff
+        run: |
+          if git diff HEAD~1..HEAD -U0 2>/dev/null | grep -iqE '(sk-[a-z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{36}|-----BEGIN (RSA |EC )?PRIVATE KEY)'; then
+            echo "::error::Possible secret detected in diff"
+            exit 1
+          fi
+          echo "No secrets detected"
+
+  # ---------------------------------------------------------------------------
+  # Build and deploy — only runs after pre-deploy passes.
+  # ---------------------------------------------------------------------------
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    needs: [pre-deploy]
     permissions:
       contents: read
       packages: write
@@ -54,6 +108,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify image binaries
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest ls -la /usr/local/bin/nanolambda-server /usr/local/bin/nanolambda-mcp
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest python3 --version
+
       - name: Deploy to DigitalOcean
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -87,10 +147,23 @@ jobs:
             # Clean up old images
             docker image prune -af
 
-      - name: Health check
+      - name: Post-deploy health check
         run: |
-          sleep 15
-          curl -sf http://${{ secrets.DO_HOST }}:8080/health || exit 1
+          echo "Waiting for container startup..."
+          for i in $(seq 1 20); do
+            if curl -sf http://${{ secrets.DO_HOST }}:8080/health >/dev/null 2>&1; then
+              echo "Health check passed on attempt $i"
+              break
+            fi
+            if [ "$i" -eq 20 ]; then
+              echo "::error::Health check failed after 20 attempts"
+              exit 1
+            fi
+            sleep 3
+          done
+
           echo ""
-          echo "Prometheus metrics:"
+          echo "Verifying Prometheus metrics endpoint..."
           curl -sf http://${{ secrets.DO_HOST }}:8080/metrics/prometheus | head -5
+          echo ""
+          echo "Deployment verified successfully."

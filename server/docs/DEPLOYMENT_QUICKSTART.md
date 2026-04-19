@@ -44,8 +44,8 @@ sudo chown -R nanolambda:nanolambda /var/lib/nanolambda
 ```bash
 sudo -u nanolambda git clone https://github.com/ip888/nanolambda.git /opt/nanolambda/nanolambda
 cd /opt/nanolambda/nanolambda
-sudo -u nanolambda cargo build --release --bin server
-sudo cp target/release/server /usr/local/bin/nanolambda-server
+sudo -u nanolambda cargo build --release --bin nanolambda-server
+sudo cp target/release/nanolambda-server /usr/local/bin/nanolambda-server
 ```
 
 ### 3. Create systemd Service
@@ -63,7 +63,7 @@ Group=nanolambda
 WorkingDirectory=/var/lib/nanolambda
 Environment="RUST_LOG=info"
 Environment="NANOLAMBDA_HOST=127.0.0.1"
-Environment="NANOLAMBDA_PORT=3000"
+Environment="NANOLAMBDA_PORT=8080"
 Environment="NANOLAMBDA_DB_PATH=/var/lib/nanolambda/data/nanolambda.db"
 ExecStart=/usr/local/bin/nanolambda-server
 Restart=always
@@ -86,7 +86,7 @@ sudo systemctl status nanolambda
 ```bash
 sudo tee /etc/nginx/sites-available/nanolambda > /dev/null <<'EOF'
 upstream nanolambda {
-    server 127.0.0.1:3000;
+    server 127.0.0.1:8080;
     keepalive 32;
 }
 
@@ -133,7 +133,7 @@ sudo ufw status
 sudo systemctl status nanolambda
 
 # Test health endpoint
-curl http://localhost:3000/health
+curl http://localhost:8080/health
 
 # View logs
 sudo journalctl -u nanolambda -f
@@ -172,15 +172,15 @@ sudo apt install -y prometheus grafana
 sudo tee -a /etc/prometheus/prometheus.yml > /dev/null <<'EOF'
   - job_name: 'nanolambda'
     static_configs:
-      - targets: ['localhost:3000']
+      - targets: ['localhost:8080']
     metrics_path: /metrics
 EOF
 
 sudo systemctl restart prometheus
 sudo systemctl enable --now grafana-server
 
-# Access Grafana at http://localhost:3000 (admin/admin)
-# Access Grafana at http://localhost:3000 (admin/admin)
+# Access Grafana at http://localhost:8080 (admin/admin)
+# Access Grafana at http://localhost:8080 (admin/admin)
 ```
 
 ---
@@ -258,7 +258,7 @@ sudo journalctl -u nanolambda -n 100
 sudo /usr/local/bin/nanolambda-backup.sh
 
 # Health check
-curl http://localhost:3000/health
+curl http://localhost:8080/health
 ```
 
 ---
