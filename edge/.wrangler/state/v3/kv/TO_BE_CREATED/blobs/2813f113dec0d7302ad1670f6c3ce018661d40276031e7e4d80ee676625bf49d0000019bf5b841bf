@@ -1,1 +1,0 @@
-{"id":"71c8764e-f610-4b46-a8e3-3adb1d0673a6","name":"test-fn","runtime":"javascript","code":"export default { fetch() { return new Response(JSON.stringify({msg:\"Hello\"})); } }","handler":"handler","timeout_ms":30000,"memory_mb":128,"environment":{},"created_at":"2026-01-25T15:14:12.027Z","updated_at":"2026-01-25T15:14:12.027Z","version":1,"owner_id":"dev-user"}

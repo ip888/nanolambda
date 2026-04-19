@@ -16,17 +16,6 @@ updates:
           - "minor"
           - "patch"
 
-  # Rust dependencies for edge
-  - package-ecosystem: "cargo"
-    directory: "/edge"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "rust"
-
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -36,16 +25,6 @@ updates:
     labels:
       - "dependencies"
       - "ci"
-
-  # npm/edge
-  - package-ecosystem: "npm"
-    directory: "/edge"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "javascript"
 
   # Docker
   - package-ecosystem: "docker"

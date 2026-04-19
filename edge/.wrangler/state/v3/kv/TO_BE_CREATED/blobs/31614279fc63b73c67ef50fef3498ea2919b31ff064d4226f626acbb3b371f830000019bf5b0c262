@@ -1,1 +1,0 @@
-{"id":"a5925549-d923-4044-8798-a0dcc2e98470","name":"hello-world","runtime":"javascript","code":"export default { fetch(req) { return new Response(\"Hello from Edge!\"); } }","handler":"handler","timeout_ms":30000,"memory_mb":128,"environment":{},"created_at":"2026-01-25T15:06:00.669Z","updated_at":"2026-01-25T15:06:00.669Z","version":1,"owner_id":"dev-user"}

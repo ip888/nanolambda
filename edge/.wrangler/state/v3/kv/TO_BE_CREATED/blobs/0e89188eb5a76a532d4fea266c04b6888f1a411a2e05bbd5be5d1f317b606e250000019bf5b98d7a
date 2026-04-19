@@ -1,1 +1,0 @@
-{"id":"9829ab51-fe2f-4e60-a6bf-4f1f491a3aaa","name":"test-fn2","runtime":"javascript","code":"hello","handler":"handler","timeout_ms":30000,"memory_mb":128,"environment":{},"created_at":"2026-01-25T15:15:36.952Z","updated_at":"2026-01-25T15:15:36.952Z","version":1,"owner_id":"dev-user"}

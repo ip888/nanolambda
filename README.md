@@ -1,6 +1,6 @@
-# NanoLambda Platform
+# NanoLambda
 
-> **High-performance serverless computing: Self-hosted infrastructure and Edge deployment**
+> **The fastest AI-agent code-execution sandbox — self-hosted, MCP-native, sub-10ms warm starts**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.93+-orange.svg)](https://www.rust-lang.org/)
@@ -8,117 +8,98 @@
 
 ---
 
-## 📦 Project Structure
+## What is NanoLambda?
 
-This monorepo contains two independent projects designed for parallel development:
+NanoLambda lets AI agents execute Python code in a secure sandbox via a single API call. Purpose-built for LLM tool-use, MCP servers, and AI agent frameworks.
 
-```
-nanolambda/
-├── server/     # Traditional self-hosted serverless platform
-├── edge/       # Edge computing platform (Cloudflare Workers)
-├── LICENSE
-├── CHANGELOG.md
-├── CONTRIBUTING.md
-└── README.md   # This file
+```bash
+curl -X POST https://api.nanolambda.io/v1/sandbox/execute \
+  -H "Authorization: Bearer nl_..." \
+  -d '{"code": "print(2+2)", "runtime": "python"}'
+# → {"stdout": "4\n", "exit_code": 0, "duration_ms": 3}
 ```
 
----
+## Features
 
-## 🖥️ Server Platform (`/server`)
+- **~0ms warm starts** — pre-warmed process pool, 10-50x faster than AWS Lambda
+- **~32ms cold starts** — 3-10x faster than competitors
+- **OS-level isolation** — network namespace, memory limits, path sandboxing
+- **MCP server** — `nanolambda-mcp` binary for Claude Desktop, Cursor, any MCP client
+- **Python SDK** — with LangChain, CrewAI, Pydantic-AI integrations
+- **Prometheus metrics** — `/metrics/prometheus` endpoint
+- **Self-hostable** — single Docker container, MIT licensed
+- **Multi-Python** — supports Python 3.12 and 3.13
 
-**Self-hosted AWS Lambda-compatible serverless platform with microVM isolation**
+## Quick Start
 
-### Features
+**Docker (fastest):**
+```bash
+docker run -d -p 8080:8080 ghcr.io/ip888/nanolambda/nanolambda-server:latest
+```
 
-- ✅ **~0ms warm starts** - 10-50x faster than AWS Lambda
-- ✅ **~32ms cold starts** - 3-10x faster than AWS Lambda
-- ✅ **Process pooling** - Instant execution after first invocation
-- ✅ **Function versioning** - AWS Lambda-compatible versioning system
-- ✅ **API key authentication** - Secure access with Bearer tokens
-- ✅ **AWS Lambda API compatibility** - Drop-in replacement
-- ✅ **MicroVM isolation** - Hardware-backed security (coming soon)
-- ✅ **70% cost reduction** - Run on your own hardware
-- ✅ **Multi-language support** - Python (Node.js, Java coming soon)
-
-### Quick Start
-
+**From source:**
 ```bash
 cd server
 cargo build --release
-cargo test
-cargo run
+cargo run --release --bin nanolambda-server
 ```
 
-### Documentation
+See [docs/QUICKSTART.md](docs/QUICKSTART.md) for MCP, SDK, and framework integration guides.
 
-See [server/docs/](server/docs/) for detailed documentation.
+## Project Structure
 
----
-
-## 🌐 Edge Platform (`/edge`)
-
-**AI-powered Edge computing platform deployed on Cloudflare Workers**
-
-### Features
-
-- ✅ **Semantic Caching** - AI-powered response caching with similarity matching
-- ✅ **Hybrid Search** - Combined vector + BM25 full-text search
-- ✅ **Reranking** - ML-based result relevance optimization
-- ✅ **Global Edge Deployment** - 300+ Cloudflare locations worldwide
-- ✅ **Sub-10ms latency** - Cold starts under 10ms
-- ✅ **Zero infrastructure** - No servers to manage
-
-### Quick Start
-
-```bash
-cd edge
-npm install
-npx wrangler dev       # Local development
-npx wrangler deploy    # Production deployment
+```
+nanolambda/
+├── server/          # Rust API server + Python sandbox runtime
+│   ├── crates/
+│   │   ├── api-server/   # Axum HTTP API + handlers
+│   │   ├── runtime/      # PythonExecutor + process pool
+│   │   ├── storage/      # SQLite persistence
+│   │   └── mcp/          # MCP JSON-RPC server
+│   └── Dockerfile
+├── sdks/python/     # Python client SDK
+├── marketing/       # Landing page + use-case pages
+├── docs/            # Quickstart, pitch docs
+├── scripts/         # Pre-push and pre-deploy checks
+└── .github/         # CI/CD workflows
 ```
 
-### Documentation
-
-See [edge/README.md](edge/README.md) for detailed documentation.
-
----
-
-## 🛠️ Development
+## Development
 
 ### Prerequisites
 
-| Platform   | Requirements                                               |
-| ---------- | ---------------------------------------------------------- |
-| **Server** | Linux x86_64 with KVM, Rust 1.93+, 4GB+ RAM                |
-| **Edge**   | Node.js 18+, Rust 1.93+ with wasm32-unknown-unknown target |
+- Linux x86_64 (macOS for development, Linux for sandbox isolation)
+- Rust 1.93+
+- Python 3.12+
 
-### Code Quality Standards
-
-Both projects enforce strict Rust quality standards:
+### Code Quality
 
 - **Rust Edition 2024** with `rust-version = "1.93"`
-- **Clippy pedantic** lints enabled
-- **Panic safety** - All fallible operations documented
-- **Comprehensive documentation** - Business and technical decisions explained
+- **Clippy pedantic** with `-D warnings`
+- **CI matrix** — tests against Python 3.12 and 3.13
+- **Pre-push checks** — `./scripts/pre-push-check.sh`
 
-### Building Both Projects
+### Building & Testing
 
 ```bash
-# Server platform
-cd server && cargo build --release && cargo test
-
-# Edge platform
-cd edge && cargo build --target wasm32-unknown-unknown --release
+cd server
+cargo fmt --check       # formatting
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --workspace  # all tests
 ```
 
----
+## Documentation
 
-## 📄 License
+- [Quickstart](docs/QUICKSTART.md) — get running in 3 minutes
+- [Why NanoLambda](docs/WHY_NANOLAMBDA.md) — value proposition for decision-makers
+- [Python SDK](sdks/python/README.md) — client library docs
+- [MCP Server](server/crates/mcp/README.md) — MCP integration guide
+- [API Docs](server/docs/) — detailed server documentation
 
-MIT License - see [LICENSE](LICENSE) for details.
+## License
 
----
+MIT License — see [LICENSE](LICENSE) for details.
 
-## 🤝 Contributing
+## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
