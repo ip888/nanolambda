@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NanoLambda for Education</title>
+<style>
+:root { --bg: #0a0a0a; --surface: #141414; --border: #252525; --text: #e0e0e0; --muted: #888; --accent: #3b82f6; --accent2: #22d3ee; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+.container { max-width: 800px; margin: 0 auto; padding: 60px 24px; }
+h1 { font-size: 2.4rem; font-weight: 700; margin-bottom: 16px; }
+h2 { font-size: 1.5rem; font-weight: 600; margin: 48px 0 16px; color: var(--accent2); }
+p { margin-bottom: 16px; color: var(--muted); font-size: 1.05rem; }
+.hero-sub { font-size: 1.2rem; color: var(--accent); margin-bottom: 40px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin: 20px 0; }
+.card h3 { color: var(--accent2); margin-bottom: 8px; }
+ul { list-style: none; padding: 0; }
+ul li { padding: 8px 0; border-bottom: 1px solid var(--border); }
+ul li:last-child { border: none; }
+ul li::before { content: "\2713 "; color: var(--accent); font-weight: bold; }
+.cta { display: inline-block; background: var(--accent); color: #fff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 24px; }
+.cta:hover { background: #2563eb; }
+.back { color: var(--accent); text-decoration: none; display: inline-block; margin-bottom: 32px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="../index.html" class="back">&larr; Back to NanoLambda</a>
+  <h1>NanoLambda for Education</h1>
+  <p class="hero-sub">Safe, affordable code execution for students and learning platforms.</p>
+
+  <h2>The Problem</h2>
+  <p>Online learning platforms, coding bootcamps, and university courses need students to run code. Setting up per-student Docker containers is expensive and complex. Letting students run code on shared infrastructure is a security nightmare.</p>
+
+  <h2>Why NanoLambda for Education</h2>
+  <div class="card">
+    <h3>Safe Student Code Execution</h3>
+    <ul>
+      <li>Every student submission runs in its own isolated sandbox</li>
+      <li>Memory limits prevent resource abuse</li>
+      <li>Network isolation prevents unauthorized access</li>
+      <li>Filesystem sandboxing protects the host system</li>
+      <li>Automatic timeouts for infinite loops</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Affordable at Scale</h3>
+    <p>A typical student code submission uses less than 1 CPU-second. At $0.00001/CPU-sec, a class of 200 students running 50 submissions each costs about $0.10 total. That is not a typo.</p>
+    <p>The free tier (50 CPU-hours/mo) supports most small courses entirely for free.</p>
+  </div>
+
+  <div class="card">
+    <h3>AI Tutor Integration</h3>
+    <p>Building an AI-powered coding tutor? Use NanoLambda to run the code your AI generates for demonstrations, and the code your students write for grading. Same sandbox, same API, same isolation guarantees.</p>
+  </div>
+
+  <h2>Self-Host for Privacy</h2>
+  <p>Universities with strict data residency requirements can self-host NanoLambda with a single Docker command. Student code never leaves your network.</p>
+
+  <a href="../index.html#pricing" class="cta">Get Started Free &rarr;</a>
+</div>
+</body>
+</html>

@@ -1227,6 +1227,8 @@ pub async fn get_metrics(
 pub async fn get_metrics_prometheus(
     State(state): State<Arc<ApiServer>>,
 ) -> (StatusCode, [(axum::http::HeaderName, &'static str); 1], String) {
+    use std::fmt::Write;
+
     let m = state.metrics().get_all_time_metrics().await;
     let mut buf = String::with_capacity(2048);
 
@@ -1234,7 +1236,7 @@ pub async fn get_metrics_prometheus(
         ($name:expr, $typ:expr, $help:expr, $val:expr) => {{
             buf.push_str(concat!("# HELP ", $name, " ", $help, "\n"));
             buf.push_str(concat!("# TYPE ", $name, " ", $typ, "\n"));
-            buf.push_str(&format!(concat!($name, " {}\n"), $val));
+            let _ = writeln!(buf, concat!($name, " {}"), $val);
         }};
     }
 

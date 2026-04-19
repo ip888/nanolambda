@@ -248,18 +248,19 @@ fn synthesize_python(tool: &str, args: &Value) -> Result<String, String> {
 const SANDBOX_PREAMBLE: &str = r#"
 import json, os, io, sys, subprocess, traceback, pathlib
 
-SANDBOX_ROOT = os.environ.get("NANOLAMBDA_SANDBOX_ROOT", "/tmp/nanolambda/sandbox")
+SANDBOX_ROOT = os.path.realpath(os.environ.get("NANOLAMBDA_SANDBOX_ROOT", "/tmp/nanolambda/sandbox"))
 os.makedirs(SANDBOX_ROOT, exist_ok=True)
 
 def _resolve(path):
     if path.startswith("/workspace"):
         rel = path[len("/workspace"):].lstrip("/")
         target = os.path.join(SANDBOX_ROOT, rel) if rel else SANDBOX_ROOT
-    elif os.path.isabs(path):
-        target = path
     else:
         target = os.path.join(SANDBOX_ROOT, path)
-    return os.path.normpath(target)
+    target = os.path.realpath(target)
+    if not target.startswith(SANDBOX_ROOT + os.sep) and target != SANDBOX_ROOT:
+        raise PermissionError(f"path escapes sandbox: {path}")
+    return target
 "#;
 
 fn template_execute_python(code: &str, stdin: &str) -> String {
@@ -491,5 +492,75 @@ mod tests {
         let projected = project_result(exec);
         assert_eq!(projected.stderr, "boom");
         assert_eq!(projected.exit_code, 1);
+    }
+
+    /// Helper: run the `_resolve()` Python function and return its result or error.
+    fn run_resolve(path: &str) -> Result<String, String> {
+        let script = format!(
+            r#"
+import os, sys
+SANDBOX_ROOT = os.path.realpath("/tmp/nanolambda/sandbox")
+os.makedirs(SANDBOX_ROOT, exist_ok=True)
+
+def _resolve(path):
+    if path.startswith("/workspace"):
+        rel = path[len("/workspace"):].lstrip("/")
+        target = os.path.join(SANDBOX_ROOT, rel) if rel else SANDBOX_ROOT
+    else:
+        target = os.path.join(SANDBOX_ROOT, path)
+    target = os.path.realpath(target)
+    if not target.startswith(SANDBOX_ROOT + os.sep) and target != SANDBOX_ROOT:
+        raise PermissionError(f"path escapes sandbox: {{path}}")
+    return target
+
+try:
+    print(_resolve("{path}"))
+except PermissionError as e:
+    print(f"BLOCKED:{{e}}", file=sys.stderr)
+    sys.exit(1)
+"#
+        );
+        let output = std::process::Command::new("python3")
+            .args(["-c", &script])
+            .output()
+            .expect("python3 must be available for tests");
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        }
+    }
+
+    #[test]
+    fn resolve_blocks_absolute_path_escape() {
+        let err = run_resolve("/etc/passwd").unwrap_err();
+        assert!(err.contains("BLOCKED"), "should block /etc/passwd: {err}");
+    }
+
+    #[test]
+    fn resolve_blocks_dotdot_escape() {
+        let err = run_resolve("../../etc/passwd").unwrap_err();
+        assert!(err.contains("BLOCKED"), "should block ../../etc/passwd: {err}");
+    }
+
+    #[test]
+    fn resolve_blocks_workspace_dotdot_escape() {
+        let err = run_resolve("/workspace/../../../etc/passwd").unwrap_err();
+        assert!(err.contains("BLOCKED"), "should block /workspace/../../: {err}");
+    }
+
+    #[test]
+    fn resolve_allows_workspace_subpath() {
+        let result = run_resolve("/workspace/subdir/file.txt").unwrap();
+        assert!(
+            result.ends_with("/sandbox/subdir/file.txt"),
+            "should resolve inside sandbox: {result}"
+        );
+    }
+
+    #[test]
+    fn resolve_allows_workspace_root() {
+        let result = run_resolve("/workspace").unwrap();
+        assert!(result.ends_with("/sandbox"), "should resolve to sandbox root: {result}");
     }
 }

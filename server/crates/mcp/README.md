@@ -16,7 +16,7 @@ Python execution, shell access, and filesystem I/O.
 
 | Tool             | Purpose                                              |
 | ---------------- | ---------------------------------------------------- |
-| `execute_python` | Run Python 3.11 source in an isolated sandbox        |
+| `execute_python` | Run Python 3.12+ source in an isolated sandbox        |
 | `execute_shell`  | Run a single shell command via `/bin/sh -c`          |
 | `read_file`      | Read a UTF-8 file from the sandbox FS                |
 | `write_file`     | Write UTF-8 content, creating parent dirs as needed  |

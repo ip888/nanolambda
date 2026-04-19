@@ -2224,6 +2224,7 @@ dependencies = [
  "futures",
  "nanolambda-runtime",
  "nanolambda-storage",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlx",

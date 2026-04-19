@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NanoLambda for CI/CD Verification</title>
+<style>
+:root { --bg: #0a0a0a; --surface: #141414; --border: #252525; --text: #e0e0e0; --muted: #888; --accent: #3b82f6; --accent2: #22d3ee; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+.container { max-width: 800px; margin: 0 auto; padding: 60px 24px; }
+h1 { font-size: 2.4rem; font-weight: 700; margin-bottom: 16px; }
+h2 { font-size: 1.5rem; font-weight: 600; margin: 48px 0 16px; color: var(--accent2); }
+p { margin-bottom: 16px; color: var(--muted); font-size: 1.05rem; }
+.hero-sub { font-size: 1.2rem; color: var(--accent); margin-bottom: 40px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin: 20px 0; }
+.card h3 { color: var(--accent2); margin-bottom: 8px; }
+pre { background: #1a1a2e; padding: 20px; border-radius: 8px; overflow-x: auto; margin: 16px 0; font-size: 0.9rem; }
+.cta { display: inline-block; background: var(--accent); color: #fff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 24px; }
+.cta:hover { background: #2563eb; }
+.back { color: var(--accent); text-decoration: none; display: inline-block; margin-bottom: 32px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="../index.html" class="back">&larr; Back to NanoLambda</a>
+  <h1>NanoLambda for CI/CD Verification</h1>
+  <p class="hero-sub">Verify AI-generated code before it reaches your main branch.</p>
+
+  <h2>The Problem</h2>
+  <p>Teams are using AI to generate pull requests, fix bugs, and write features. But AI-generated code can contain subtle bugs, security vulnerabilities, or unexpected behavior. You need to verify it runs correctly before merging.</p>
+
+  <h2>Pre-Merge Sandbox Verification</h2>
+  <div class="card">
+    <h3>Add a Sandbox Step to Your Pipeline</h3>
+    <p>Run AI-generated code in a NanoLambda sandbox as a CI check. If the code crashes, times out, or produces unexpected output, block the merge.</p>
+    <pre># GitHub Actions example
+- name: Verify AI-generated code
+  run: |
+    pip install nanolambda
+    python -c "
+    from nanolambda import NanoLambda
+    sandbox = NanoLambda(api_key='\${{ secrets.NANOLAMBDA_KEY }}')
+    result = sandbox.execute_python(open('generated_code.py').read())
+    assert result.exit_code == 0, f'Code failed: {result.stderr}'
+    "</pre>
+  </div>
+
+  <div class="card">
+    <h3>Safe and Isolated</h3>
+    <p>The AI-generated code runs in a sandbox, not on your CI runner. Even if the code is malicious (e.g., tries to exfiltrate secrets), it cannot access your CI environment, your source code, or your network.</p>
+  </div>
+
+  <div class="card">
+    <h3>Fast Feedback</h3>
+    <p>Sub-millisecond warm starts mean your CI pipeline does not wait. Verification adds seconds, not minutes, to your build time.</p>
+  </div>
+
+  <h2>Self-Host for Air-Gapped Environments</h2>
+  <p>For teams in regulated industries where CI traffic cannot leave the network, self-host NanoLambda alongside your CI runners. Same isolation guarantees, zero external dependencies.</p>
+
+  <a href="../index.html#pricing" class="cta">Add to Your Pipeline &rarr;</a>
+</div>
+</body>
+</html>

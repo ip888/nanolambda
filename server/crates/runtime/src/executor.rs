@@ -3,7 +3,7 @@
 //! This module provides actual Python execution with:
 //! - Process isolation and resource limits
 //! - Comprehensive metrics (cold start, execution time, memory, CPU)
-//! - Support for Python 3.11 and 3.12
+//! - Support for Python 3.12 and 3.13
 //! - Proper error handling and timeout management
 
 use crate::pool::ProcessPool;
@@ -205,7 +205,7 @@ impl PythonExecutor {
         }
 
         Err(ExecutorError::PythonNotFound(
-            "Could not find Python 3.11 or 3.12. Please install Python.".to_string(),
+            "Could not find Python 3.12 or 3.13. Please install Python.".to_string(),
         ))
     }
 
@@ -314,6 +314,18 @@ impl PythonExecutor {
                 use std::os::unix::process::CommandExt;
                 unsafe {
                     cmd.pre_exec(move || {
+                        // Network isolation: create a new network namespace so the
+                        // child process cannot reach the host network.
+                        #[cfg(target_os = "linux")]
+                        {
+                            use libc::CLONE_NEWNET;
+                            if libc::unshare(CLONE_NEWNET) != 0 {
+                                // Non-fatal: may require CAP_SYS_ADMIN; log and continue
+                                eprintln!("Warning: Failed to create network namespace (needs CAP_SYS_ADMIN)");
+                            }
+                        }
+
+                        // Memory limit via RLIMIT_AS
                         use libc::{RLIMIT_AS, rlimit, setrlimit};
                         let limit = rlimit {
                             rlim_cur: memory_bytes,

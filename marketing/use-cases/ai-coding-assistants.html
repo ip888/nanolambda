@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NanoLambda for AI Coding Assistants</title>
+<style>
+:root { --bg: #0a0a0a; --surface: #141414; --border: #252525; --text: #e0e0e0; --muted: #888; --accent: #3b82f6; --accent2: #22d3ee; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+.container { max-width: 800px; margin: 0 auto; padding: 60px 24px; }
+h1 { font-size: 2.4rem; font-weight: 700; margin-bottom: 16px; }
+h2 { font-size: 1.5rem; font-weight: 600; margin: 48px 0 16px; color: var(--accent2); }
+p { margin-bottom: 16px; color: var(--muted); font-size: 1.05rem; }
+.hero-sub { font-size: 1.2rem; color: var(--accent); margin-bottom: 40px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin: 20px 0; }
+.card h3 { color: var(--accent2); margin-bottom: 8px; }
+ul { list-style: none; padding: 0; }
+ul li { padding: 8px 0; border-bottom: 1px solid var(--border); }
+ul li:last-child { border: none; }
+ul li::before { content: "\2713 "; color: var(--accent); font-weight: bold; }
+code { background: #1a1a2e; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+pre { background: #1a1a2e; padding: 20px; border-radius: 8px; overflow-x: auto; margin: 16px 0; font-size: 0.9rem; }
+.cta { display: inline-block; background: var(--accent); color: #fff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 24px; }
+.cta:hover { background: #2563eb; }
+.back { color: var(--accent); text-decoration: none; display: inline-block; margin-bottom: 32px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="../index.html" class="back">&larr; Back to NanoLambda</a>
+  <h1>NanoLambda for AI Coding Assistants</h1>
+  <p class="hero-sub">Give Claude, Cursor, Copilot, and Windsurf a safe place to run the code they generate.</p>
+
+  <h2>The Problem</h2>
+  <p>AI coding assistants generate code constantly. They need to execute it to verify correctness, run tests, install packages, and iterate. Running untrusted AI-generated code on a user's machine is risky. Running it on your servers without isolation is dangerous.</p>
+
+  <h2>Why NanoLambda</h2>
+  <div class="card">
+    <h3>MCP-Native Integration</h3>
+    <p>NanoLambda ships as a standalone MCP server binary. Any MCP-compatible agent host (Claude Desktop, Cursor, Zed, Windsurf) can attach it as a tool with zero code changes.</p>
+    <pre>{
+  "mcpServers": {
+    "nanolambda": {
+      "command": "nanolambda-mcp",
+      "env": {
+        "NANOLAMBDA_URL": "https://api.nanolambda.io",
+        "NANOLAMBDA_API_KEY": "nl_live_..."
+      }
+    }
+  }
+}</pre>
+  </div>
+
+  <div class="card">
+    <h3>Sub-Millisecond Warm Starts</h3>
+    <p>Warm sandbox invocations complete in under 1ms. Your AI assistant gets instant feedback, enabling rapid code-test-iterate loops without latency frustration.</p>
+  </div>
+
+  <div class="card">
+    <h3>Every Execution is Isolated</h3>
+    <ul>
+      <li>Process-level isolation with memory limits (RLIMIT_AS)</li>
+      <li>Network namespace isolation (no outbound access from sandboxes)</li>
+      <li>Filesystem sandboxing (writes confined to /workspace)</li>
+      <li>Non-root execution with minimal capabilities</li>
+    </ul>
+  </div>
+
+  <h2>Pricing That Scales</h2>
+  <p>Unlike E2B's $150/mo Pro floor, NanoLambda Pro has no monthly minimum. You pay $0.00001/CPU-second. A typical coding assistant tool call costs fractions of a cent.</p>
+
+  <a href="../index.html#pricing" class="cta">See Pricing &rarr;</a>
+</div>
+</body>
+</html>

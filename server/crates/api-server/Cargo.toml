@@ -47,3 +47,4 @@ nanolambda-storage = { path = "../storage" }
 [dev-dependencies]
 tower = "0.5"
 tokio-test = "0.4"
+reqwest = { version = "0.12", features = ["json"] }
