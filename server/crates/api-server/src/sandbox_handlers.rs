@@ -80,12 +80,13 @@ pub async fn sandbox_invoke(
     let timeout_ms = req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS);
     let memory_mb = req.memory_mb.unwrap_or(DEFAULT_MEMORY_MB).min(MAX_MEMORY_MB);
 
-    // Each sandbox call gets a dedicated name+id so the executor's per-run
-    // workdir does not collide and the process pool treats it as cold.
+    // Each sandbox call gets a unique id+version so the executor's warm
+    // pool never reuses a stale process from a different tool invocation.
     let request_id = Uuid::new_v4();
+    let unique_id = request_id.as_u128() as i64; // effectively random
     let config = FunctionConfig {
-        id: 0,
-        version: 0,
+        id: unique_id,
+        version: unique_id,
         name: format!("sandbox_{request_id}"),
         code: python_code,
         handler: "handler".into(),
