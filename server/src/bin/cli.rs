@@ -33,7 +33,7 @@ enum Commands {
         /// Function name
         name: String,
 
-        /// Runtime (python, nodejs, java)
+        /// Runtime (python)
         #[arg(short, long, default_value = "python")]
         runtime: String,
     },
@@ -135,8 +135,6 @@ fn init_function(name: &str, runtime: &str) -> Result<()> {
         "runtime": runtime,
         "handler": match runtime {
             "python" => "handler",
-            "nodejs" => "handler",
-            "java" => "Handler.handleRequest",
             _ => "handler"
         },
         "memory_mb": 128,
@@ -156,10 +154,10 @@ fn init_function(name: &str, runtime: &str) -> Result<()> {
             r#"def handler(event):
     """
     NanoLambda function handler.
-    
+
     Args:
         event: Input event data (dict)
-    
+
     Returns:
         dict: Response data
     """
@@ -169,43 +167,7 @@ fn init_function(name: &str, runtime: &str) -> Result<()> {
     }
 "#,
         ),
-        "nodejs" => (
-            "handler.js",
-            r#"/**
- * NanoLambda function handler
- * 
- * @param {Object} event - Input event data
- * @returns {Object} Response data
- */
-exports.handler = async (event) => {
-    return {
-        message: "Hello from NanoLambda!",
-        event: event
-    };
-};
-"#,
-        ),
-        "java" => (
-            "Handler.java",
-            r#"import com.google.gson.JsonElement;
-
-public class Handler {
-    /**
-     * NanoLambda function handler
-     * 
-     * @param event Input event data
-     * @return Response data
-     */
-    public Object handleRequest(JsonElement event) {
-        return Map.of(
-            "message", "Hello from NanoLambda!",
-            "event", event.toString()
-        );
-    }
-}
-"#,
-        ),
-        _ => return Err(anyhow::anyhow!("Unsupported runtime: {}", runtime)),
+        _ => return Err(anyhow::anyhow!("Unsupported runtime: {}. Only Python is currently supported.", runtime)),
     };
 
     fs::write(dir.join(code_file), template_code)?;
@@ -236,9 +198,7 @@ async fn deploy_function(client: &Client, url: &str, api_key: &str, path: &str) 
         .context("runtime not specified in function.json")?;
     let code_file = match runtime {
         "python" => "handler.py",
-        "nodejs" => "handler.js",
-        "java" => "Handler.java",
-        _ => return Err(anyhow::anyhow!("Unknown runtime: {}", runtime)),
+        _ => return Err(anyhow::anyhow!("Unsupported runtime: {}. Only Python is currently supported.", runtime)),
     };
 
     let code_path = Path::new(path).join(code_file);

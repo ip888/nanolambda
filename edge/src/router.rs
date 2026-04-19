@@ -134,18 +134,6 @@ async fn route_request(
             handlers::cache::cache_stats(env, &auth_ctx, Some(namespace)).await
         }
 
-        // Hybrid Search endpoints (UNIQUE FEATURE)
-        (Method::Post, ["search", "index"]) => {
-            handlers::hybrid::index_documents(req, env, &auth_ctx).await
-        }
-        (Method::Post, ["search", "hybrid"]) => {
-            handlers::hybrid::hybrid_search(req, env, &auth_ctx).await
-        }
-        (Method::Post, ["search", "rerank"]) => handlers::hybrid::rerank(req, env, &auth_ctx).await,
-        (Method::Delete, ["search", "index"]) => {
-            handlers::hybrid::remove_documents(req, env, &auth_ctx).await
-        }
-
         // Usage & billing
         (Method::Get, ["usage"]) => handlers::usage::get_usage(req, env, &auth_ctx).await,
         (Method::Get, ["usage", "summary"]) => handlers::usage::get_summary(env, &auth_ctx).await,

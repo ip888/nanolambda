@@ -16,7 +16,6 @@ members = [
     "crates/mcp",
     "crates/runtime",
     "crates/storage",
-    "crates/vmm",
     "benchmarks",
 ]
 

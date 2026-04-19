@@ -47,8 +47,6 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::ApiServer;
-use nanolambda_runtime::runtime_trait::Runtime;
-use nanolambda_runtime::{GenericFunctionConfig, Language};
 use nanolambda_storage::{
     FunctionConfig as StorageFunctionConfig, InvocationRecord, InvocationStatus,
 };
@@ -540,109 +538,57 @@ pub async fn invoke_function(
         ));
     }
 
-    // 3. Detect language from runtime
-    let language = if function.runtime.starts_with("python") {
-        Language::Python
-    } else if function.runtime.starts_with("nodejs") {
-        Language::NodeJS
-    } else {
+    // 3. Python is the only supported runtime after the 2026-04 niche refocus.
+    if !function.runtime.starts_with("python") {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "UnsupportedRuntime".to_string(),
-                message: format!("Runtime '{}' is not supported", function.runtime),
+                message: format!(
+                    "Runtime '{}' is not supported. Only Python 3.11/3.12 is currently available.",
+                    function.runtime
+                ),
             }),
         ));
+    }
+
+    // 4. Dispatch to Python executor
+    let py_config = nanolambda_runtime::FunctionConfig {
+        id: function.id,
+        version: function.version,
+        name: function.name.clone(),
+        code: function.code.clone(),
+        handler: function.handler.clone(),
+        environment: function.environment.clone(),
+        memory_limit_mb: function.memory_mb,
+        timeout_seconds: function.timeout_ms / 1000,
+        working_dir: None,
     };
 
-    // 4. Build configuration based on runtime type
-    let execution_result = match language {
-        Language::Python => {
-            // Python uses synchronous FunctionConfig
-            let py_config = nanolambda_runtime::FunctionConfig {
-                id: function.id,
-                version: function.version,
-                name: function.name.clone(),
-                code: function.code.clone(),
-                handler: function.handler.clone(),
-                environment: function.environment.clone(),
-                memory_limit_mb: function.memory_mb,
-                timeout_seconds: function.timeout_ms / 1000,
-                working_dir: None,
-            };
+    let payload = request.payload.clone();
+    let executor = Arc::clone(state.python_executor());
 
-            // Clone the payload for the blocking task
-            let payload = request.payload.clone();
-            let executor = Arc::clone(state.python_executor());
-
-            tokio::task::spawn_blocking(move || {
-                // This runs in a blocking thread pool
-                let runtime = tokio::runtime::Handle::try_current().ok();
-                let exec = if let Some(rt) = runtime {
-                    rt.block_on(executor.lock())
-                } else {
-                    // Fallback: create a new runtime for the blocking task
-                    tokio::runtime::Runtime::new()
-                        .expect("Failed to create tokio runtime")
-                        .block_on(executor.lock())
-                };
-                exec.execute(py_config, payload)
-            })
-            .await
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "ExecutionError".to_string(),
-                        message: format!("Task join error: {}", e),
-                    }),
-                )
-            })?
-        }
-        Language::NodeJS => {
-            // Node.js implements Runtime trait with GenericFunctionConfig
-            let config = GenericFunctionConfig::new(
-                function.name.clone(),
-                Language::NodeJS,
-                function.code.clone(),
-                function.handler.clone(),
-            )
-            .with_memory_limit(function.memory_mb)
-            .with_timeout(function.timeout_ms / 1000);
-
-            let executor = state.nodejs_executor().lock().await;
-            executor.execute(&config, request.payload.clone()).await
-        }
-        Language::Java => {
-            // Check if Java executor is available
-            let java_exec = match state.java_executor() {
-                Some(exec) => exec,
-                None => {
-                    return Err((
-                        StatusCode::NOT_IMPLEMENTED,
-                        Json(ErrorResponse {
-                            error: "NotImplemented".to_string(),
-                            message:
-                                "Java runtime not available. Please install JDK 11, 17, or 21."
-                                    .to_string(),
-                        }),
-                    ));
-                }
-            };
-
-            let config = nanolambda_runtime::types::GenericFunctionConfig::new(
-                function.name.clone(),
-                Language::Java,
-                function.code.clone(),
-                function.handler.clone(),
-            )
-            .with_memory_limit(function.memory_mb)
-            .with_timeout(function.timeout_ms / 1000);
-
-            let executor = java_exec.lock().await;
-            executor.execute(&config, request.payload.clone()).await
-        }
-    };
+    let execution_result = tokio::task::spawn_blocking(move || {
+        let runtime = tokio::runtime::Handle::try_current().ok();
+        let exec = if let Some(rt) = runtime {
+            rt.block_on(executor.lock())
+        } else {
+            tokio::runtime::Runtime::new()
+                .expect("Failed to create tokio runtime")
+                .block_on(executor.lock())
+        };
+        exec.execute(py_config, payload)
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "ExecutionError".to_string(),
+                message: format!("Task join error: {}", e),
+            }),
+        )
+    })?;
 
     // 5. Process execution result
     match execution_result {

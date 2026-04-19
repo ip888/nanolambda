@@ -9,12 +9,8 @@
 //! - API key and JWT authentication
 //! - Rate limiting and usage tracking
 //! - **Semantic Caching** - Intelligent AI response caching based on query similarity
-//! - **Hybrid Search** - Combined BM25 (keyword) and vector search
-//! - **Reranking** - Multi-signal result reranking for superior relevance
 //! - **Smart Routing** - Geo-aware request routing with A/B testing
-//! - **Function Composition** - Chain functions for complex workflows
 //! - **Durable State** - Persistent key-value state with versioning
-//! - **Predictive Pre-warming** - ML-based function pre-warming
 //! - **Analytics Engine** - Real-time analytics and metrics collection
 
 use worker::*;
@@ -25,14 +21,11 @@ mod error;
 mod handlers;
 mod router;
 pub mod runtime;
-pub mod search;
 mod types;
 mod vector;
 
 // Advanced edge features
 pub mod analytics;
-pub mod composition;
-pub mod prewarm;
 pub mod routing;
 pub mod state;
 

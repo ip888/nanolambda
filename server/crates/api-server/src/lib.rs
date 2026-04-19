@@ -12,9 +12,6 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 use tracing::info;
 
-// Import Runtime trait to make execute method available
-use nanolambda_runtime::Runtime;
-
 pub mod analytics_handlers;
 pub mod annual_handlers;
 pub mod auth;
@@ -40,7 +37,7 @@ use crate::concurrency::{ConcurrencyConfig, ConcurrencyController};
 use crate::metrics::MetricsCollector;
 use crate::rate_limiter::{RateLimitTier, RateLimiter};
 use crate::usage_tracker::UsageTracker;
-use nanolambda_runtime::{JavaExecutor, NodeJSExecutor, PythonExecutor};
+use nanolambda_runtime::PythonExecutor;
 use nanolambda_storage::{
     JwtManager, SchedulerManager, StorageManager, UserManager, payment::PaymentManager,
     pricing::PricingManager, tier::TierManager, trial::TrialManager, usage_db::UsageDb,
@@ -50,8 +47,6 @@ use nanolambda_storage::{
 pub struct ApiServer {
     storage: Arc<StorageManager>,
     python_executor: Arc<Mutex<PythonExecutor>>,
-    nodejs_executor: Arc<Mutex<NodeJSExecutor>>,
-    java_executor: Option<Arc<Mutex<JavaExecutor>>>,
     metrics: Arc<MetricsCollector>,
     concurrency: Arc<ConcurrencyController>,
     rate_limiter: Arc<RateLimiter>,
@@ -80,22 +75,6 @@ impl ApiServer {
     pub async fn new(db_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let storage = StorageManager::new(db_path)?;
         let python_executor = PythonExecutor::new()?;
-        let nodejs_executor = NodeJSExecutor::new()?;
-
-        // Java is optional - log warning if not available
-        let java_executor = match JavaExecutor::new() {
-            Ok(executor) => {
-                info!("Java executor initialized successfully");
-                Some(Arc::new(Mutex::new(executor)))
-            }
-            Err(e) => {
-                info!(
-                    "Java executor unavailable: {}. Java functions will return 501.",
-                    e
-                );
-                None
-            }
-        };
 
         let concurrency_config = ConcurrencyConfig::default();
 
@@ -169,8 +148,6 @@ impl ApiServer {
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
-            nodejs_executor: Arc::new(Mutex::new(nodejs_executor)),
-            java_executor,
             metrics: Arc::new(MetricsCollector::new()),
             concurrency: Arc::new(ConcurrencyController::new(concurrency_config)),
             rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
@@ -198,8 +175,6 @@ impl ApiServer {
     pub async fn new_in_memory() -> Result<Self, Box<dyn std::error::Error>> {
         let storage = StorageManager::new_in_memory()?;
         let python_executor = PythonExecutor::new()?;
-        let nodejs_executor = NodeJSExecutor::new()?;
-        let java_executor = JavaExecutor::new().ok().map(|e| Arc::new(Mutex::new(e)));
         let concurrency_config = ConcurrencyConfig::default();
 
         // Create in-memory invoice manager for testing
@@ -242,8 +217,6 @@ impl ApiServer {
         Ok(Self {
             storage: Arc::new(storage),
             python_executor: Arc::new(Mutex::new(python_executor)),
-            nodejs_executor: Arc::new(Mutex::new(nodejs_executor)),
-            java_executor,
             metrics: Arc::new(MetricsCollector::new()),
             concurrency: Arc::new(ConcurrencyController::new(concurrency_config)),
             rate_limiter: Arc::new(RateLimiter::new(RateLimitTier::Free)),
@@ -275,16 +248,6 @@ impl ApiServer {
     /// Get Python executor reference
     pub fn python_executor(&self) -> &Arc<Mutex<PythonExecutor>> {
         &self.python_executor
-    }
-
-    /// Get Node.js executor reference
-    pub fn nodejs_executor(&self) -> &Arc<Mutex<NodeJSExecutor>> {
-        &self.nodejs_executor
-    }
-
-    /// Get Java executor reference (optional)
-    pub fn java_executor(&self) -> Option<&Arc<Mutex<JavaExecutor>>> {
-        self.java_executor.as_ref()
     }
 
     /// Get metrics collector reference
@@ -400,41 +363,23 @@ impl ApiServer {
             .ok_or_else(|| format!("Function '{}' not found", function_name))?;
         let payload = payload.unwrap_or(serde_json::json!({}));
 
-        // Determine runtime and execute
-        let result = match function.runtime.as_str() {
-            "python3.11" | "python3.12" => {
-                let config = nanolambda_runtime::FunctionConfig {
-                    id: function.id,
-                    version: function.version,
-                    name: function.name.clone(),
-                    code: function.code.clone(),
-                    handler: function.handler.clone(),
-                    environment: function.environment.clone(),
-                    memory_limit_mb: function.memory_mb,
-                    timeout_seconds: function.timeout_ms / 1000,
-                    working_dir: None,
-                };
-                let executor = self.python_executor.lock().await;
-                executor.execute(config, payload)?
-            }
-            "nodejs20.x" => {
-                let config = nanolambda_runtime::GenericFunctionConfig {
-                    name: function.name.clone(),
-                    language: nanolambda_runtime::Language::NodeJS,
-                    code: function.code.clone(),
-                    handler: function.handler.clone(),
-                    environment: function.environment.clone(),
-                    memory_limit_mb: function.memory_mb,
-                    timeout_seconds: function.timeout_ms / 1000,
-                    working_dir: None,
-                    extra_config: None,
-                };
-                let executor = self.nodejs_executor.lock().await;
-                executor.execute(&config, payload).await?
-            }
-            _ => {
-                return Err(format!("Unsupported runtime: {}", function.runtime).into());
-            }
+        // Python is the only supported runtime after the 2026-04 niche refocus.
+        let result = if function.runtime.starts_with("python") {
+            let config = nanolambda_runtime::FunctionConfig {
+                id: function.id,
+                version: function.version,
+                name: function.name.clone(),
+                code: function.code.clone(),
+                handler: function.handler.clone(),
+                environment: function.environment.clone(),
+                memory_limit_mb: function.memory_mb,
+                timeout_seconds: function.timeout_ms / 1000,
+                working_dir: None,
+            };
+            let executor = self.python_executor.lock().await;
+            executor.execute(config, payload)?
+        } else {
+            return Err(format!("Unsupported runtime: {}", function.runtime).into());
         };
 
         Ok(serde_json::json!({
@@ -1136,7 +1081,6 @@ mod tests {
         // Verify core components are accessible
         let _storage = server.storage();
         let _python = server.python_executor();
-        let _nodejs = server.nodejs_executor();
         let _metrics = server.metrics();
         let _concurrency = server.concurrency();
         let _rate_limiter = server.rate_limiter();

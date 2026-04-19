@@ -2337,18 +2337,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nanolambda-vmm"
-version = "0.1.0"
-dependencies = [
- "hex",
- "libc",
- "serde",
- "serde_json",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "native-tls"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
