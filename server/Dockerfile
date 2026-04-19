@@ -54,6 +54,9 @@ WORKDIR /app/nanolambda-server
 
 COPY . .
 
+# Invalidate cached dummy crate artifacts so the real source is compiled
+RUN find crates src benchmarks -name '*.rs' -exec touch {} +
+
 RUN cargo build --release --bin nanolambda-server && \
     cargo build --release -p nanolambda-mcp --bin nanolambda-mcp
 
