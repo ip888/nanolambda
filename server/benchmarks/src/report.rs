@@ -28,9 +28,7 @@ pub fn render_markdown(results: &[BenchmarkResult]) -> String {
         out.push_str(
             "| Platform | Cold (ms) | P50 (ms) | P95 (ms) | P99 (ms) | RPS | Memory (MB) |\n",
         );
-        out.push_str(
-            "|---|---:|---:|---:|---:|---:|---:|\n",
-        );
+        out.push_str("|---|---:|---:|---:|---:|---:|---:|\n");
         for r in rows {
             let _ = writeln!(
                 out,

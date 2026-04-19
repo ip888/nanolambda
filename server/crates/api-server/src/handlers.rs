@@ -1226,7 +1226,11 @@ pub async fn get_metrics(
 /// GET /metrics/prometheus - Prometheus text exposition format
 pub async fn get_metrics_prometheus(
     State(state): State<Arc<ApiServer>>,
-) -> (StatusCode, [(axum::http::HeaderName, &'static str); 1], String) {
+) -> (
+    StatusCode,
+    [(axum::http::HeaderName, &'static str); 1],
+    String,
+) {
     use std::fmt::Write;
 
     let m = state.metrics().get_all_time_metrics().await;
@@ -1240,21 +1244,79 @@ pub async fn get_metrics_prometheus(
         }};
     }
 
-    metric!("nanolambda_invocations_total", "counter", "Total function invocations", m.total_invocations);
-    metric!("nanolambda_cold_starts_total", "counter", "Total cold-start invocations", m.cold_starts);
-    metric!("nanolambda_errors_total", "counter", "Total errored invocations", m.errors);
-    metric!("nanolambda_timeouts_total", "counter", "Total timed-out invocations", m.timeouts);
-    metric!("nanolambda_execution_duration_avg_ms", "gauge", "Average execution duration in milliseconds", m.avg_latency_ms);
-    metric!("nanolambda_execution_duration_p50_ms", "gauge", "P50 execution duration in milliseconds", m.p50_latency_ms);
-    metric!("nanolambda_execution_duration_p95_ms", "gauge", "P95 execution duration in milliseconds", m.p95_latency_ms);
-    metric!("nanolambda_execution_duration_p99_ms", "gauge", "P99 execution duration in milliseconds", m.p99_latency_ms);
-    metric!("nanolambda_invocations_per_second", "gauge", "Current invocation rate", m.invocations_per_second);
-    metric!("nanolambda_cold_start_rate", "gauge", "Fraction of invocations that are cold starts", m.cold_start_rate);
-    metric!("nanolambda_error_rate", "gauge", "Fraction of invocations that errored", m.error_rate);
+    metric!(
+        "nanolambda_invocations_total",
+        "counter",
+        "Total function invocations",
+        m.total_invocations
+    );
+    metric!(
+        "nanolambda_cold_starts_total",
+        "counter",
+        "Total cold-start invocations",
+        m.cold_starts
+    );
+    metric!(
+        "nanolambda_errors_total",
+        "counter",
+        "Total errored invocations",
+        m.errors
+    );
+    metric!(
+        "nanolambda_timeouts_total",
+        "counter",
+        "Total timed-out invocations",
+        m.timeouts
+    );
+    metric!(
+        "nanolambda_execution_duration_avg_ms",
+        "gauge",
+        "Average execution duration in milliseconds",
+        m.avg_latency_ms
+    );
+    metric!(
+        "nanolambda_execution_duration_p50_ms",
+        "gauge",
+        "P50 execution duration in milliseconds",
+        m.p50_latency_ms
+    );
+    metric!(
+        "nanolambda_execution_duration_p95_ms",
+        "gauge",
+        "P95 execution duration in milliseconds",
+        m.p95_latency_ms
+    );
+    metric!(
+        "nanolambda_execution_duration_p99_ms",
+        "gauge",
+        "P99 execution duration in milliseconds",
+        m.p99_latency_ms
+    );
+    metric!(
+        "nanolambda_invocations_per_second",
+        "gauge",
+        "Current invocation rate",
+        m.invocations_per_second
+    );
+    metric!(
+        "nanolambda_cold_start_rate",
+        "gauge",
+        "Fraction of invocations that are cold starts",
+        m.cold_start_rate
+    );
+    metric!(
+        "nanolambda_error_rate",
+        "gauge",
+        "Fraction of invocations that errored",
+        m.error_rate
+    );
 
     (
         StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
         buf,
     )
 }

@@ -88,7 +88,9 @@ impl<C: SandboxClient> Server<C> {
 
         let id = req.id.clone()?; // notification → no response
 
-        let result = self.dispatch(&req.method, req.params.unwrap_or(Value::Null)).await;
+        let result = self
+            .dispatch(&req.method, req.params.unwrap_or(Value::Null))
+            .await;
         match result {
             Ok(value) => Some(JsonRpcResponse::ok(id, value)),
             Err(err) => {
@@ -103,7 +105,9 @@ impl<C: SandboxClient> Server<C> {
             "initialize" => Ok(serde_json::to_value(InitializeResult {
                 protocol_version: MCP_PROTOCOL_VERSION,
                 capabilities: ServerCapabilities {
-                    tools: ToolsCapability { list_changed: false },
+                    tools: ToolsCapability {
+                        list_changed: false,
+                    },
                 },
                 server_info: ServerInfo {
                     name: "nanolambda-mcp",
@@ -184,10 +188,7 @@ mod tests {
     struct FakeClient;
 
     impl SandboxClient for FakeClient {
-        async fn invoke(
-            &self,
-            req: SandboxRequest<'_>,
-        ) -> Result<SandboxResult, McpError> {
+        async fn invoke(&self, req: SandboxRequest<'_>) -> Result<SandboxResult, McpError> {
             Ok(SandboxResult {
                 stdout: format!("ran {}", req.tool),
                 stderr: String::new(),

@@ -11,11 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, warn};
@@ -77,8 +73,14 @@ pub async fn sandbox_invoke(
         )
     })?;
 
-    let timeout_ms = req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(MAX_TIMEOUT_MS);
-    let memory_mb = req.memory_mb.unwrap_or(DEFAULT_MEMORY_MB).min(MAX_MEMORY_MB);
+    let timeout_ms = req
+        .timeout_ms
+        .unwrap_or(DEFAULT_TIMEOUT_MS)
+        .min(MAX_TIMEOUT_MS);
+    let memory_mb = req
+        .memory_mb
+        .unwrap_or(DEFAULT_MEMORY_MB)
+        .min(MAX_MEMORY_MB);
 
     // Each sandbox call gets a unique id+version so the executor's warm
     // pool never reuses a stale process from a different tool invocation.
@@ -90,10 +92,7 @@ pub async fn sandbox_invoke(
         name: format!("sandbox_{request_id}"),
         code: python_code,
         handler: "handler".into(),
-        environment: HashMap::from([(
-            "NANOLAMBDA_SANDBOX_ROOT".into(),
-            SANDBOX_ROOT.into(),
-        )]),
+        environment: HashMap::from([("NANOLAMBDA_SANDBOX_ROOT".into(), SANDBOX_ROOT.into())]),
         memory_limit_mb: memory_mb,
         timeout_seconds: timeout_ms.div_ceil(1000),
         working_dir: None,
@@ -141,18 +140,14 @@ pub async fn sandbox_invoke(
 /// The wrapper script the runtime injects prints a JSON envelope
 /// (`{"success": true, "result": ...}`) so the tool's stdout/stderr is carried
 /// inside `result`, not in `metrics.stdout`. Unpack it back out.
-fn project_result(
-    exec: nanolambda_runtime::ExecutionResult,
-) -> SandboxInvokeResponse {
+fn project_result(exec: nanolambda_runtime::ExecutionResult) -> SandboxInvokeResponse {
     if !exec.success {
         // The tool errored before it could shape an output envelope — surface
         // the traceback as stderr and preserve the cold-start signal so the
         // MCP client still reports accurate latency/coldness telemetry.
         return SandboxInvokeResponse {
             stdout: String::new(),
-            stderr: exec
-                .error
-                .unwrap_or_else(|| exec.metrics.stderr.clone()),
+            stderr: exec.error.unwrap_or_else(|| exec.metrics.stderr.clone()),
             exit_code: if exec.metrics.exit_code == 0 {
                 1
             } else {
@@ -401,41 +396,28 @@ mod tests {
 
     #[test]
     fn execute_python_embeds_source() {
-        let py = synthesize_python(
-            "execute_python",
-            &json!({ "code": "print('hi')" }),
-        )
-        .unwrap();
+        let py = synthesize_python("execute_python", &json!({ "code": "print('hi')" })).unwrap();
         assert!(py.contains("print('hi')"));
         assert!(py.contains("def handler(event, context):"));
     }
 
     #[test]
     fn execute_shell_defaults_cwd_to_sandbox_root() {
-        let py = synthesize_python(
-            "execute_shell",
-            &json!({ "command": "ls -la" }),
-        )
-        .unwrap();
+        let py = synthesize_python("execute_shell", &json!({ "command": "ls -la" })).unwrap();
         assert!(py.contains("cwd = SANDBOX_ROOT"));
         assert!(py.contains("ls -la"));
     }
 
     #[test]
     fn read_file_routes_workspace_prefix() {
-        let py = synthesize_python(
-            "read_file",
-            &json!({ "path": "/workspace/foo.txt" }),
-        )
-        .unwrap();
+        let py = synthesize_python("read_file", &json!({ "path": "/workspace/foo.txt" })).unwrap();
         // The _resolve() helper is what maps /workspace → SANDBOX_ROOT.
         assert!(py.contains(r#"_resolve("/workspace/foo.txt")"#));
     }
 
     #[test]
     fn write_file_requires_content() {
-        let err = synthesize_python("write_file", &json!({ "path": "/workspace/x" }))
-            .unwrap_err();
+        let err = synthesize_python("write_file", &json!({ "path": "/workspace/x" })).unwrap_err();
         assert!(err.contains("content"));
     }
 
@@ -541,13 +523,19 @@ except PermissionError as e:
     #[test]
     fn resolve_blocks_dotdot_escape() {
         let err = run_resolve("../../etc/passwd").unwrap_err();
-        assert!(err.contains("BLOCKED"), "should block ../../etc/passwd: {err}");
+        assert!(
+            err.contains("BLOCKED"),
+            "should block ../../etc/passwd: {err}"
+        );
     }
 
     #[test]
     fn resolve_blocks_workspace_dotdot_escape() {
         let err = run_resolve("/workspace/../../../etc/passwd").unwrap_err();
-        assert!(err.contains("BLOCKED"), "should block /workspace/../../: {err}");
+        assert!(
+            err.contains("BLOCKED"),
+            "should block /workspace/../../: {err}"
+        );
     }
 
     #[test]
@@ -562,6 +550,9 @@ except PermissionError as e:
     #[test]
     fn resolve_allows_workspace_root() {
         let result = run_resolve("/workspace").unwrap();
-        assert!(result.ends_with("/sandbox"), "should resolve to sandbox root: {result}");
+        assert!(
+            result.ends_with("/sandbox"),
+            "should resolve to sandbox root: {result}"
+        );
     }
 }

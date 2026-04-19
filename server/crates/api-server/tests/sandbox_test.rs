@@ -81,7 +81,10 @@ async fn test_execute_python_error() {
     let status = resp.status().as_u16();
     let body: serde_json::Value = resp.json().await.unwrap();
     if status == 200 {
-        assert_ne!(body["exit_code"], 0, "syntax error should have non-zero exit_code");
+        assert_ne!(
+            body["exit_code"], 0,
+            "syntax error should have non-zero exit_code"
+        );
     }
     // A 500 is also acceptable — the executor surfaced the error.
 }
@@ -131,7 +134,10 @@ async fn test_write_read_roundtrip() {
         .unwrap();
     assert_eq!(write_resp.status(), 200);
     let write_body: serde_json::Value = write_resp.json().await.unwrap();
-    assert_eq!(write_body["exit_code"], 0, "write should succeed: {write_body}");
+    assert_eq!(
+        write_body["exit_code"], 0,
+        "write should succeed: {write_body}"
+    );
 
     // Read it back.
     let read_resp = client
@@ -145,7 +151,10 @@ async fn test_write_read_roundtrip() {
         .unwrap();
     assert_eq!(read_resp.status(), 200);
     let read_body: serde_json::Value = read_resp.json().await.unwrap();
-    assert_eq!(read_body["exit_code"], 0, "read should succeed: {read_body}");
+    assert_eq!(
+        read_body["exit_code"], 0,
+        "read should succeed: {read_body}"
+    );
     assert!(
         read_body["stdout"]
             .as_str()

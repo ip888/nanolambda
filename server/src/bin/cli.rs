@@ -167,7 +167,12 @@ fn init_function(name: &str, runtime: &str) -> Result<()> {
     }
 "#,
         ),
-        _ => return Err(anyhow::anyhow!("Unsupported runtime: {}. Only Python is currently supported.", runtime)),
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unsupported runtime: {}. Only Python is currently supported.",
+                runtime
+            ));
+        }
     };
 
     fs::write(dir.join(code_file), template_code)?;
@@ -198,7 +203,12 @@ async fn deploy_function(client: &Client, url: &str, api_key: &str, path: &str) 
         .context("runtime not specified in function.json")?;
     let code_file = match runtime {
         "python" => "handler.py",
-        _ => return Err(anyhow::anyhow!("Unsupported runtime: {}. Only Python is currently supported.", runtime)),
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unsupported runtime: {}. Only Python is currently supported.",
+                runtime
+            ));
+        }
     };
 
     let code_path = Path::new(path).join(code_file);

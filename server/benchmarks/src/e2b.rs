@@ -52,9 +52,7 @@ impl E2B {
     /// runs fail loudly instead of silently benchmarking 404s.
     pub fn new() -> anyhow::Result<Self> {
         let api_key = std::env::var("E2B_API_KEY").map_err(|_| {
-            anyhow::anyhow!(
-                "E2B_API_KEY not set — export it to enable the E2B benchmark platform"
-            )
+            anyhow::anyhow!("E2B_API_KEY not set — export it to enable the E2B benchmark platform")
         })?;
         let host = std::env::var("E2B_HOST").unwrap_or_else(|_| E2B_DEFAULT_HOST.to_string());
         let template =

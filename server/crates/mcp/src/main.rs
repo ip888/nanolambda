@@ -19,11 +19,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 )]
 struct Cli {
     /// NanoLambda control-plane base URL.
-    #[arg(
-        long,
-        env = "NANOLAMBDA_URL",
-        default_value = "http://127.0.0.1:3000"
-    )]
+    #[arg(long, env = "NANOLAMBDA_URL", default_value = "http://127.0.0.1:3000")]
     url: String,
 
     /// API key for the NanoLambda control plane.
