@@ -54,7 +54,8 @@ WORKDIR /app/nanolambda-server
 
 COPY . .
 
-RUN cargo build --release --bin nanolambda-server -p nanolambda-mcp --bin nanolambda-mcp
+RUN cargo build --release --bin nanolambda-server && \
+    cargo build --release -p nanolambda-mcp --bin nanolambda-mcp
 
 RUN ls -la target/release/nanolambda-server target/release/nanolambda-mcp
 
