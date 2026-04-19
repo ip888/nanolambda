@@ -335,7 +335,7 @@ impl InvoiceManager {
             amount_due: r.get("amount_due"),
             amount_paid: r.get("amount_paid"),
             currency: r.get("currency"),
-            status: InvoiceStatus::from_str(r.get("status")).unwrap(),
+            status: InvoiceStatus::from_str(r.get("status")).unwrap_or(InvoiceStatus::Draft),
             period_start: r.get("period_start"),
             period_end: r.get("period_end"),
             due_date: r.get("due_date"),
@@ -380,7 +380,7 @@ impl InvoiceManager {
             amount_due: r.get("amount_due"),
             amount_paid: r.get("amount_paid"),
             currency: r.get("currency"),
-            status: InvoiceStatus::from_str(r.get("status")).unwrap(),
+            status: InvoiceStatus::from_str(r.get("status")).unwrap_or(InvoiceStatus::Draft),
             period_start: r.get("period_start"),
             period_end: r.get("period_end"),
             due_date: r.get("due_date"),
@@ -456,7 +456,7 @@ impl InvoiceManager {
                 amount_due: r.get("amount_due"),
                 amount_paid: r.get("amount_paid"),
                 currency: r.get("currency"),
-                status: InvoiceStatus::from_str(r.get("status")).unwrap(),
+                status: InvoiceStatus::from_str(r.get("status")).unwrap_or(InvoiceStatus::Draft),
                 period_start: r.get("period_start"),
                 period_end: r.get("period_end"),
                 due_date: r.get("due_date"),
@@ -659,7 +659,7 @@ impl InvoiceManager {
 
         // Update status
         if let Some(status_str) = stripe_invoice.get("status").and_then(|s| s.as_str()) {
-            invoice.status = InvoiceStatus::from_str(status_str).unwrap();
+            invoice.status = InvoiceStatus::from_str(status_str).unwrap_or(InvoiceStatus::Draft);
         }
 
         // Update payment info

@@ -13,9 +13,9 @@
 NanoLambda lets AI agents execute Python code in a secure sandbox via a single API call. Purpose-built for LLM tool-use, MCP servers, and AI agent frameworks.
 
 ```bash
-curl -X POST https://api.nanolambda.io/v1/sandbox/execute \
+curl -X POST https://nanolambda.fly.dev/sandbox/invoke \
   -H "Authorization: Bearer nl_..." \
-  -d '{"code": "print(2+2)", "runtime": "python"}'
+  -d '{"tool": "execute_python", "args": {"code": "print(2+2)"}}'
 # → {"stdout": "4\n", "exit_code": 0, "duration_ms": 3}
 ```
 
@@ -28,7 +28,7 @@ curl -X POST https://api.nanolambda.io/v1/sandbox/execute \
 - **Python SDK** — with LangChain, CrewAI, Pydantic-AI integrations
 - **Prometheus metrics** — `/metrics/prometheus` endpoint
 - **Self-hostable** — single Docker container, MIT licensed
-- **Multi-Python** — supports Python 3.12 and 3.13
+- **Multi-Python** — supports Python 3.11, 3.12, and 3.13
 
 ## Quick Start
 
@@ -70,13 +70,13 @@ nanolambda/
 
 - Linux x86_64 (macOS for development, Linux for sandbox isolation)
 - Rust 1.93+
-- Python 3.12+
+- Python 3.11+
 
 ### Code Quality
 
 - **Rust Edition 2024** with `rust-version = "1.93"`
 - **Clippy pedantic** with `-D warnings`
-- **CI matrix** — tests against Python 3.12 and 3.13
+- **CI matrix** — tests against Python 3.11, 3.12, and 3.13
 - **Pre-push checks** — `./scripts/pre-push-check.sh`
 
 ### Building & Testing

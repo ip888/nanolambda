@@ -417,12 +417,10 @@ curl -X POST http://localhost:8080/auth/keys \
 
 ## Next Steps
 
-- **Learn about versioning**: [API_VERSIONING.md](./API_VERSIONING.md)
 - **Explore the API**: See all available endpoints in the main README
 - **Production deployment**: Enable HTTPS and configure environment variables
 
 ---
 
-**Documentation Version:** 1.0.0  
-**Last Updated:** 2024-11-27  
+**Last Updated:** 2026-04-19  
 **NanoLambda Version:** 0.1.0

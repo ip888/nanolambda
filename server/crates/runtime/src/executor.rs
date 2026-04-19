@@ -3,7 +3,7 @@
 //! This module provides actual Python execution with:
 //! - Process isolation and resource limits
 //! - Comprehensive metrics (cold start, execution time, memory, CPU)
-//! - Support for Python 3.12 and 3.13
+//! - Support for Python 3.11, 3.12, and 3.13
 //! - Proper error handling and timeout management
 
 use crate::pool::ProcessPool;
@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime};
 use thiserror::Error;
+use tracing::warn;
 
 #[derive(Error, Debug)]
 pub enum ExecutorError {
@@ -261,7 +262,7 @@ impl PythonExecutor {
                 }
                 Err(e) => {
                     // Fall back to cold start if warm start fails
-                    eprintln!("Warm start failed, falling back to cold start: {}", e);
+                    warn!("Warm start failed, falling back to cold start: {}", e);
                 }
             }
         }

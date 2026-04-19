@@ -106,8 +106,8 @@ cargo test --workspace --test '*'
 
 | Layer | Platform | Purpose |
 |---|---|---|
-| API Server | Fly.io / DigitalOcean | Sandbox execution, auth, metrics |
-| Website | Cloudflare Pages (planned) | Marketing, docs, dashboard |
+| API Server | Fly.io | Sandbox execution, auth, metrics |
+| Website | Static HTML / Fly.io | Marketing, docs |
 | Docker Registry | GitHub Container Registry | Image distribution |
 | CI/CD | GitHub Actions | Build, test, deploy |
 

@@ -6,7 +6,7 @@ All notable changes to NanoLambda will be documented in this file.
 
 ### Added
 - Sandbox execution API (`/v1/sandbox/execute`)
-- Python 3.12 + 3.13 support with CI matrix
+- Python 3.11, 3.12, and 3.13 support with CI matrix
 - MCP server (`nanolambda-mcp`) for Claude Desktop / Cursor integration
 - Python SDK with LangChain, CrewAI, Pydantic-AI examples
 - Prometheus metrics endpoint (`/metrics/prometheus`)

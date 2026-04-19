@@ -255,7 +255,8 @@ impl DiscountManager {
         Ok(row.map(|r| DiscountCode {
             id: r.get("id"),
             code: r.get("code"),
-            discount_type: DiscountType::from_str(r.get("discount_type")).unwrap(),
+            discount_type: DiscountType::from_str(r.get("discount_type"))
+                .unwrap_or(DiscountType::Percentage),
             amount: r.get("amount"),
             description: r.get("description"),
             max_uses: r.get("max_uses"),
@@ -287,7 +288,8 @@ impl DiscountManager {
         Ok(row.map(|r| DiscountCode {
             id: r.get("id"),
             code: r.get("code"),
-            discount_type: DiscountType::from_str(r.get("discount_type")).unwrap(),
+            discount_type: DiscountType::from_str(r.get("discount_type"))
+                .unwrap_or(DiscountType::Percentage),
             amount: r.get("amount"),
             description: r.get("description"),
             max_uses: r.get("max_uses"),
@@ -318,7 +320,8 @@ impl DiscountManager {
             .map(|r| DiscountCode {
                 id: r.get("id"),
                 code: r.get("code"),
-                discount_type: DiscountType::from_str(r.get("discount_type")).unwrap(),
+                discount_type: DiscountType::from_str(r.get("discount_type"))
+                    .unwrap_or(DiscountType::Percentage),
                 amount: r.get("amount"),
                 description: r.get("description"),
                 max_uses: r.get("max_uses"),

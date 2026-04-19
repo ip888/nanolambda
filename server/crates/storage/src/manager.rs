@@ -286,7 +286,8 @@ impl StorageManager {
                         last_invoked_at: row.get(11)?,
                         invocation_count: row.get(12)?,
                         total_execution_time_ms: row.get(13)?,
-                        status: FunctionStatus::from_str(&row.get::<_, String>(14)?).unwrap(),
+                        status: FunctionStatus::from_str(&row.get::<_, String>(14)?)
+                            .unwrap_or(FunctionStatus::Active),
                         version: row.get(15)?,
                         is_latest: row.get(16)?,
                     })
@@ -450,7 +451,8 @@ impl StorageManager {
                         last_invoked_at: row.get(11)?,
                         invocation_count: row.get(12)?,
                         total_execution_time_ms: row.get(13)?,
-                        status: FunctionStatus::from_str(&row.get::<_, String>(14)?).unwrap(),
+                        status: FunctionStatus::from_str(&row.get::<_, String>(14)?)
+                            .unwrap_or(FunctionStatus::Active),
                         version: row.get(15)?,
                         is_latest: row.get(16)?,
                     })
@@ -497,7 +499,8 @@ impl StorageManager {
                     last_invoked_at: row.get(11)?,
                     invocation_count: row.get(12)?,
                     total_execution_time_ms: row.get(13)?,
-                    status: FunctionStatus::from_str(&row.get::<_, String>(14)?).unwrap(),
+                    status: FunctionStatus::from_str(&row.get::<_, String>(14)?)
+                        .unwrap_or(FunctionStatus::Active),
                     version: row.get(15)?,
                     is_latest: row.get(16)?,
                 })
@@ -543,7 +546,8 @@ impl StorageManager {
                     last_invoked_at: row.get(11)?,
                     invocation_count: row.get(12)?,
                     total_execution_time_ms: row.get(13)?,
-                    status: FunctionStatus::from_str(&row.get::<_, String>(14)?).unwrap(),
+                    status: FunctionStatus::from_str(&row.get::<_, String>(14)?)
+                        .unwrap_or(FunctionStatus::Active),
                     version: row.get(15)?,
                     is_latest: row.get(16)?,
                 })
@@ -674,7 +678,8 @@ impl StorageManager {
                 Ok(InvocationRecord {
                     function_id: row.get(0)?,
                     request_id: row.get(1)?,
-                    status: InvocationStatus::from_str(&row.get::<_, String>(2)?).unwrap(),
+                    status: InvocationStatus::from_str(&row.get::<_, String>(2)?)
+                        .unwrap_or(InvocationStatus::Error),
                     started_at: row.get(3)?,
                     completed_at: row.get(4)?,
                     execution_time_ms: row.get(5)?,
@@ -764,7 +769,8 @@ impl StorageManager {
                         permissions,
                         created_at: row.get(4)?,
                         expires_at: row.get(5)?,
-                        status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?).unwrap(),
+                        status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?)
+                            .unwrap_or(ApiKeyStatus::Active),
                         last_used_at: row.get(7)?,
                     })
                 },
@@ -796,7 +802,8 @@ impl StorageManager {
                     permissions,
                     created_at: row.get(4)?,
                     expires_at: row.get(5)?,
-                    status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?).unwrap(),
+                    status: ApiKeyStatus::from_str(&row.get::<_, String>(6)?)
+                        .unwrap_or(ApiKeyStatus::Active),
                     last_used_at: row.get(7)?,
                 })
             })?

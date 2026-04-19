@@ -15,7 +15,7 @@ cargo test --workspace
 cargo run --bin nanolambda-server
 ```
 
-**Requirements**: Rust 1.93+, Python 3.12+, Linux (for full sandbox isolation).
+**Requirements**: Rust 1.93+, Python 3.11+, Linux (for full sandbox isolation).
 
 ## Code Quality
 

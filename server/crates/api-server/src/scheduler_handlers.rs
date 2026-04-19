@@ -132,7 +132,7 @@ pub async fn create_schedule(
 
     // Verify function exists
     let func_result = state.storage().get_function(&request.function_name);
-    if func_result.is_err() || func_result.as_ref().unwrap().is_none() {
+    if !matches!(func_result, Ok(Some(_))) {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({"error": format!("Function '{}' not found", request.function_name)})),

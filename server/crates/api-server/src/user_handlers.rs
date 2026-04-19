@@ -621,7 +621,7 @@ pub async fn check_limits(
                 violations: result
                     .violations
                     .iter()
-                    .map(|v| serde_json::to_value(v).unwrap())
+                    .map(|v| serde_json::to_value(v).unwrap_or(serde_json::Value::Null))
                     .collect(),
                 limits: LimitDetails {
                     invocations_per_month: result.limits.invocations_per_month,

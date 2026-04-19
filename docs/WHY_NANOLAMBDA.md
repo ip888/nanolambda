@@ -90,8 +90,8 @@ structured results. Works with any language or framework.
 ## Self-Hosting
 
 For regulated industries -- banking, healthcare, government -- NanoLambda can run entirely
-on your own infrastructure. The server is a single binary that deploys to any Linux host,
-Docker environment, or Kubernetes cluster.
+on your own infrastructure. The server is a single binary that deploys to any Linux host
+or Docker environment.
 
 Self-hosted benefits:
 

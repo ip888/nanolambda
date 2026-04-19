@@ -63,7 +63,7 @@ The dashboard will:
 For programmatic access or custom integrations:
 
 ```bash
-curl http://localhost:8080/metrics
+curl http://localhost:8080/metrics/prometheus
 ```
 
 **Response Format:**
@@ -231,13 +231,7 @@ For production deployments:
    cargo run --bin nanolambda-server -- --tls-cert cert.pem --tls-key key.pem
    ```
 
-3. **Restrict Access**: Use firewall rules or reverse proxy to limit access:
-   ```nginx
-   location /dashboard {
-       allow 10.0.0.0/8;  # Internal network only
-       deny all;
-   }
-   ```
+3. **Restrict Access**: Use firewall rules or reverse proxy to limit access.
 
 ### Scaling
 
@@ -301,7 +295,7 @@ Optimize for your use case:
 1. **Invoke a function:** Metrics only appear after invocations
 2. **Check metrics API:**
    ```bash
-   curl http://localhost:8080/metrics | jq '.'
+   curl http://localhost:8080/metrics/prometheus | jq '.'
    ```
 3. **Check time window:** Try "All Time" if recent invocations are sparse
 
@@ -337,5 +331,4 @@ Found a bug or want to add a feature? See [CONTRIBUTING.md](../CONTRIBUTING.md) 
 ## Related Documentation
 
 - [API Authentication](./API_AUTHENTICATION.md)
-- [Quickstart Guide](../QUICKSTART.md)
-- [API Reference](./setup-guide.md)
+- [Quickstart Guide](../../docs/QUICKSTART.md)
