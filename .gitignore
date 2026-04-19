@@ -66,3 +66,4 @@ final_test.log
 # Business strategy, competitive analysis, financial planning
 /internal/
 
+__pycache__/
