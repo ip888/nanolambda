@@ -171,7 +171,7 @@ jobs:
         run: cargo build --release --bin nanolambda-server
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nanolambda-server-linux-x64
           path: server/target/release/nanolambda-server
