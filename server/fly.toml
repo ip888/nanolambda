@@ -26,6 +26,11 @@ primary_region = "iad"
 [env]
   RUST_LOG = "info,nanolambda=debug"
   PORT = "8080"
+  HOST = "0.0.0.0"
+
+[mounts]
+  source = "nanolambda_data"
+  destination = "/data"
 
 [[vm]]
   size = "shared-cpu-2x"

@@ -1,35 +1,44 @@
 # Contributing to NanoLambda
 
-Thank you for your interest in contributing to NanoLambda!
-
 ## Development Setup
 
-See [docs/setup-guide.md](docs/setup-guide.md) for detailed setup instructions.
+```bash
+# Clone
+git clone https://github.com/ip888/nanolambda.git
+cd nanolambda/server
 
-## Code Style
+# Build and test
+cargo build
+cargo test --workspace
 
-- Follow Rust standard formatting (`cargo fmt`)
-- Run clippy before committing (`cargo clippy`)
-- Add tests for new functionality
-- Update documentation
+# Run locally
+cargo run --bin nanolambda-server
+```
+
+**Requirements**: Rust 1.93+, Python 3.12+, Linux (for full sandbox isolation).
+
+## Code Quality
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --workspace
+```
+
+Or use the pre-push check: `../scripts/pre-push-check.sh`
 
 ## Pull Request Process
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests (`cargo test`)
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+3. Make changes, add tests
+4. Run `../scripts/pre-push-check.sh`
+5. Commit and push
+6. Open a Pull Request
 
-## Code of Conduct
+## Standards
 
-- Be respectful and inclusive
-- Provide constructive feedback
-- Focus on the code, not the person
-- Help others learn
-
-## Questions?
-
-Open an issue or start a discussion on GitHub.
+- **Rust Edition 2024**, `rust-version = "1.93"`
+- **Clippy pedantic** with `-D warnings`
+- Tests for new functionality
+- No secrets or `.env` files in commits

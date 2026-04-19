@@ -1,45 +1,29 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to NanoLambda will be documented in this file.
 
 ## [Unreleased]
 
 ### Added
-- Initial project structure
-- Comprehensive documentation
-- VMM crate skeleton
-- API server crate skeleton
-- Runtime crate skeleton
-- Scheduler crate skeleton
-- Storage crate skeleton
-- CLI tool skeleton
-- Server binary
-
-### Changed
-- N/A
-
-### Deprecated
-- N/A
-
-### Removed
-- N/A
-
-### Fixed
-- N/A
+- Sandbox execution API (`/v1/sandbox/execute`)
+- Python 3.12 + 3.13 support with CI matrix
+- MCP server (`nanolambda-mcp`) for Claude Desktop / Cursor integration
+- Python SDK with LangChain, CrewAI, Pydantic-AI examples
+- Prometheus metrics endpoint (`/metrics/prometheus`)
+- OS-level sandbox isolation (network namespace, memory limits, path sandboxing)
+- Pre-warmed process pool for sub-millisecond warm starts
+- Pre-push and pre-deploy check scripts
+- Fly.io deployment configuration
+- Marketing landing page and use-case pages
 
 ### Security
-- N/A
+- Path traversal fix: `os.path.realpath` + prefix check in sandbox
+- Network isolation: `CLONE_NEWNET` namespace per execution
+- Process pool cache collision fix: unique IDs per invocation
 
-## [0.1.0] - 2025-10-06
-
-### Added
-- Project initialization
-- Documentation suite
-- Development roadmap
-- Setup guide
+### Removed
+- Edge platform (Cloudflare Workers) — consolidated to single-server architecture
+- Kubernetes manifests — using Fly.io instead
+- DigitalOcean deployment workflow — replaced with Fly.io
 
 [Unreleased]: https://github.com/ip888/nanolambda/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/ip888/nanolambda/releases/tag/v0.1.0

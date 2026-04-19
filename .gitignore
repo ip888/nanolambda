@@ -1,10 +1,9 @@
-# Target directories
-/target/
+# Build artifacts
 **/target/
-
-# Lock files (commit Cargo.lock for binaries, ignore for libraries)
-# We'll keep it since this is a binary project
-# Cargo.lock
+*.o
+*.so
+*.dylib
+*.dll
 
 # IDE
 .vscode/
@@ -26,44 +25,18 @@ logs/
 *.profraw
 *.profdata
 
-# Function storage (runtime data)
+# Runtime data
 /functions/
 /snapshots/
 /data/
 
-# Build artifacts
-*.o
-*.so
-*.dylib
-*.dll
-
-# Documentation build
-/target/doc/
-
-# Temporary files
-tmp/
-temp/
-
 # Database files
 *.db
 *.db-*
-nanolambda.db*
 *.db.usage.db
 
-# Test results
-test-suite/results/
-test-results.txt
-
-# Additional logs
-tier_test.log
-test_server.log
-test_output.log
-server.log
-server_debug.log
-final_test.log
-
-# Internal/Confidential Documentation
-# Business strategy, competitive analysis, financial planning
-/internal/
-
+# Python
 __pycache__/
+
+# Internal/Confidential
+/internal/
