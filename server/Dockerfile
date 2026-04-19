@@ -65,7 +65,7 @@ RUN ls -la target/release/nanolambda-server target/release/nanolambda-mcp
 # -----------------------------------------------------------------------------
 # Stage 3: Runtime Image
 # -----------------------------------------------------------------------------
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 LABEL org.opencontainers.image.title="NanoLambda Server"
 LABEL org.opencontainers.image.description="AI-agent code-execution sandbox — fast, cheap, self-hostable"
@@ -73,17 +73,15 @@ LABEL org.opencontainers.image.version="0.1.0"
 LABEL org.opencontainers.image.vendor="NanoLambda"
 LABEL org.opencontainers.image.source="https://github.com/ip888/nanolambda"
 
-# Python 3.12 — pinned for production stability
+# Python runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     python3 \
-    python3-pip \
     python3-venv \
     curl \
     tini \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
-    && python3 --version | grep -q "3.12" || echo "WARNING: expected Python 3.12"
+    && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Non-root user
 RUN groupadd --gid 1000 nanolambda \
@@ -112,5 +110,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-ENTRYPOINT ["/usr/bin/tini", "--", "docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["nanolambda-server"]
