@@ -88,8 +88,8 @@ spec:
         app.kubernetes.io/component: server
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
-        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics/prometheus"
     spec:
       serviceAccountName: nanolambda
       securityContext:

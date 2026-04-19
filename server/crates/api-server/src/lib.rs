@@ -679,6 +679,8 @@ impl ApiServer {
             )
             // Sandbox (MCP tool-exec endpoint; auth handled by MCP daemon)
             .route("/sandbox/invoke", post(sandbox_handlers::sandbox_invoke))
+            // Observability
+            .route("/metrics/prometheus", get(handlers::get_metrics_prometheus))
             // Health check
             .route("/health", get(handlers::health_check))
             .with_state(state);
@@ -992,6 +994,7 @@ impl ApiServer {
                 get(websocket_handlers::websocket_handler),
             )
             .route("/sandbox/invoke", post(sandbox_handlers::sandbox_invoke))
+            .route("/metrics/prometheus", get(handlers::get_metrics_prometheus))
             .route("/health", get(handlers::health_check))
             .with_state(state);
 
