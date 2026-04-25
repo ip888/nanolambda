@@ -13,7 +13,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-cd "$(git rev-parse --show-toplevel)/server"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+cd "$REPO_ROOT/server"
 
 pass() { echo -e "${GREEN}✓${NC} $1"; }
 fail() { echo -e "${RED}✗${NC} $1"; exit 1; }
@@ -30,7 +33,7 @@ trap cleanup EXIT
 
 # ── 1. Run pre-push checks first ─────────────────────────────────────────────
 echo "── Running pre-push checks ──"
-bash "$(dirname "$0")/pre-push-check.sh" --quick || fail "pre-push checks failed"
+bash "$SCRIPT_DIR/pre-push-check.sh" --quick || fail "pre-push checks failed"
 
 # ── 2. Docker build ──────────────────────────────────────────────────────────
 echo "── Building Docker image ──"
@@ -89,10 +92,10 @@ echo "$METRICS" | grep -q "nanolambda_invocations_total" && pass "Prometheus met
 
 # ── 7. Quick sandbox smoke test ──────────────────────────────────────────────
 echo "── Sandbox smoke test ──"
-SANDBOX_RESP=$(curl -sf -X POST http://localhost:18080/v1/sandbox/execute \
+SANDBOX_RESP=$(curl -sf -X POST http://localhost:18080/sandbox/invoke \
     -H 'Content-Type: application/json' \
-    -d '{"code":"print(1+1)","runtime":"python"}' 2>&1) || warn "sandbox execute returned error (may need Python in container PATH)"
-if echo "$SANDBOX_RESP" | grep -q '"stdout"'; then
+    -d '{"tool":"execute_python","args":{"code":"print(1+1)"}}' 2>&1) || warn "sandbox invoke returned error"
+if echo "$SANDBOX_RESP" | grep -q '"exit_code":0'; then
     pass "sandbox execution works"
 else
     warn "sandbox test inconclusive: $SANDBOX_RESP"

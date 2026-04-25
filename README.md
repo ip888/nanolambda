@@ -1,105 +1,131 @@
 # NanoLambda
 
-> **The fastest AI-agent code-execution sandbox — self-hosted, MCP-native, sub-10ms warm starts**
+Secure code execution for AI assistants and automation.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.93+-orange.svg)](https://www.rust-lang.org/)
-[![Edition](https://img.shields.io/badge/edition-2024-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/)
+NanoLambda gives your team a safe place to run AI-generated code without exposing production systems. It is built for fast, isolated execution of Python and shell tasks through a simple API, MCP integration, and Python SDK.
 
----
+## What Is NanoLambda
 
-## What is NanoLambda?
+NanoLambda is a sandbox platform.
 
-NanoLambda lets AI agents execute Python code in a secure sandbox via a single API call. Purpose-built for LLM tool-use, MCP servers, and AI agent frameworks.
+- Your app or AI assistant sends code to NanoLambda
+- NanoLambda runs that code in an isolated environment
+- NanoLambda returns output, errors, and execution timing
 
-```bash
-curl -X POST https://nanolambda.fly.dev/sandbox/invoke \
-  -H "Authorization: Bearer nl_..." \
-  -d '{"tool": "execute_python", "args": {"code": "print(2+2)"}}'
-# → {"stdout": "4\n", "exit_code": 0, "duration_ms": 3}
-```
+This lets teams ship AI features faster while keeping security controls in place.
 
-## Features
+## Who It Is For
 
-- **~0ms warm starts** — pre-warmed process pool, 10-50x faster than AWS Lambda
-- **~32ms cold starts** — 3-10x faster than competitors
-- **OS-level isolation** — network namespace, memory limits, path sandboxing
-- **MCP server** — `nanolambda-mcp` binary for Claude Desktop, Cursor, any MCP client
-- **Python SDK** — with LangChain, CrewAI, Pydantic-AI integrations
-- **Prometheus metrics** — `/metrics/prometheus` endpoint
-- **Self-hostable** — single Docker container, MIT licensed
-- **Multi-Python** — supports Python 3.11, 3.12, and 3.13
+- Product teams adding AI-powered workflows
+- Internal automation teams that run generated scripts
+- Organizations that need safer execution boundaries for untrusted code
+- Customers who want either managed cloud or self-hosted deployment
+
+## Core Benefits
+
+- Safe execution with isolation controls
+- Fast execution with warm workers
+- Easy integration (REST API, MCP, Python SDK)
+- Observability via health and Prometheus metrics
+- Self-hosting support for private environments
+
+## Key Features
+
+- Isolated sandbox execution
+- Path and filesystem safety checks
+- Memory and timeout limits per execution
+- Network isolation controls
+- Prometheus metrics endpoint
+- MCP server for AI clients
+- Python SDK with framework examples
+
+## Architecture In Simple Terms
+
+NanoLambda has four main blocks:
+
+1. API Layer
+Receives requests from customers, apps, or AI tools.
+
+2. Security and Control Layer
+Validates requests and applies limits (time, memory, isolation rules).
+
+3. Sandbox Runtime
+Executes code in isolated workers and captures stdout, stderr, and exit codes.
+
+4. Storage and Monitoring
+Tracks data and exposes health/metrics for operations.
+
+### Request Flow
+
+Client -> NanoLambda API -> Isolated Sandbox Runtime -> Result + Metrics
 
 ## Quick Start
 
-**Docker (fastest):**
-```bash
-docker run -d -p 8080:8080 ghcr.io/ip888/nanolambda/nanolambda-server:latest
-```
+### Option A: Use a deployed instance
 
-**From source:**
-```bash
-cd server
-cargo build --release
-cargo run --release --bin nanolambda-server
-```
-
-See [docs/QUICKSTART.md](docs/QUICKSTART.md) for MCP, SDK, and framework integration guides.
-
-## Project Structure
-
-```
-nanolambda/
-├── server/          # Rust API server + Python sandbox runtime
-│   ├── crates/
-│   │   ├── api-server/   # Axum HTTP API + handlers
-│   │   ├── runtime/      # PythonExecutor + process pool
-│   │   ├── storage/      # SQLite persistence
-│   │   └── mcp/          # MCP JSON-RPC server
-│   └── Dockerfile
-├── sdks/python/     # Python client SDK
-├── marketing/       # Landing page + use-case pages
-├── docs/            # Quickstart, pitch docs
-├── scripts/         # Pre-push and pre-deploy checks
-└── .github/         # CI/CD workflows
-```
-
-## Development
-
-### Prerequisites
-
-- Linux x86_64 (macOS for development, Linux for sandbox isolation)
-- Rust 1.93+
-- Python 3.11+
-
-### Code Quality
-
-- **Rust Edition 2024** with `rust-version = "1.93"`
-- **Clippy pedantic** with `-D warnings`
-- **CI matrix** — tests against Python 3.11, 3.12, and 3.13
-- **Pre-push checks** — `./scripts/pre-push-check.sh`
-
-### Building & Testing
+Set environment variables:
 
 ```bash
-cd server
-cargo fmt --check       # formatting
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --workspace  # all tests
+export BASE_URL="https://your-instance.example.com"
+export API_KEY="nl_your_key_here"
 ```
+
+Health check:
+
+```bash
+curl -sS "$BASE_URL/health"
+```
+
+Sandbox execution:
+
+```bash
+curl -sS -X POST "$BASE_URL/sandbox/invoke" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tool":"execute_python","args":{"code":"print(2+2)"}}'
+```
+
+Metrics check:
+
+```bash
+curl -sS "$BASE_URL/metrics/prometheus" | head -20
+```
+
+### Option B: Self-host with Docker
+
+```bash
+docker run -d -p 8080:8080 ghcr.io/ip888/nanolambda:latest
+```
+
+Then test locally:
+
+```bash
+curl -sS http://localhost:8080/health
+```
+
+## Demo Walkthrough for Customers
+
+Use the ready-to-run demo script:
+
+```bash
+bash scripts/demo-production.sh
+```
+
+The script validates:
+
+- service health
+- metrics availability
+- sandbox execution with deterministic examples
+
+You can set BASE_URL and API_KEY first to run against production.
 
 ## Documentation
 
-- [Quickstart](docs/QUICKSTART.md) — get running in 3 minutes
-- [Why NanoLambda](docs/WHY_NANOLAMBDA.md) — value proposition for decision-makers
-- [Python SDK](sdks/python/README.md) — client library docs
-- [MCP Server](server/crates/mcp/README.md) — MCP integration guide
-- [API Docs](server/docs/) — detailed server documentation
+- Product value: docs/WHY_NANOLAMBDA.md
+- Getting started: docs/QUICKSTART.md
+- Python SDK: sdks/python/README.md
+- Server docs: server/docs/
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+MIT. See LICENSE.

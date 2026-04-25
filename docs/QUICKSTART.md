@@ -51,7 +51,23 @@ print(result.stdout)       # 3.141592653589793
 print(result.duration_ms)  # 11
 ```
 
-## 3. What's next
+## 3. Reproducible production demo
+
+Run this from the repository root:
+
+```bash
+export BASE_URL="https://your-instance.example.com"
+export API_KEY="nl_..."
+bash scripts/demo-production.sh
+```
+
+What it verifies:
+
+- `/health` returns HTTP 200
+- `/metrics/prometheus` is reachable and contains expected metrics
+- Two deterministic sandbox executions return expected outputs (`4` and `60`)
+
+## 4. What's next
 
 - Browse framework examples: [LangChain](../sdks/python/examples/langchain_tool.py), [CrewAI](../sdks/python/examples/crewai_tool.py), [Pydantic-AI](../sdks/python/examples/pydantic_ai_tool.py)
 - Read the [Python SDK docs](../sdks/python/README.md)
