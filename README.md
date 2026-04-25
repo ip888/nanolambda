@@ -76,6 +76,15 @@ Health check:
 curl -sS "$BASE_URL/health"
 ```
 
+Create an API key (bootstrap):
+
+```bash
+API_KEY=$(curl -sS -X POST "$BASE_URL/auth/keys" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"customer-demo","permissions":["sandbox:invoke"],"expires_at":null}' \
+  | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
+```
+
 Sandbox execution:
 
 ```bash
@@ -118,6 +127,17 @@ The script validates:
 - sandbox execution with deterministic examples
 
 You can set BASE_URL and API_KEY first to run against production.
+
+## Customer UI
+
+Open the built-in customer console at `/dashboard`.
+
+It supports:
+
+- connection setup (BASE_URL + API key)
+- API key creation and revocation
+- deterministic examples for Python and shell sandbox tools
+- custom sandbox execution playground
 
 ## Documentation
 

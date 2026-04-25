@@ -92,9 +92,21 @@ echo "$METRICS" | grep -q "nanolambda_invocations_total" && pass "Prometheus met
 
 # ── 7. Quick sandbox smoke test ──────────────────────────────────────────────
 echo "── Sandbox smoke test ──"
-SANDBOX_RESP=$(curl -sf -X POST http://localhost:18080/sandbox/invoke \
+# Bootstrap API key for protected sandbox endpoint
+API_KEY=$(curl -sf -X POST http://localhost:18080/auth/keys \
     -H 'Content-Type: application/json' \
+    -d '{"name":"pre-deploy-check","permissions":["sandbox:invoke"],"expires_at":null}' | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
+
+if [[ -z "${API_KEY:-}" ]]; then
+    warn "could not bootstrap API key; sandbox smoke test skipped"
+    SANDBOX_RESP=""
+else
+    SANDBOX_RESP=$(curl -sf -X POST http://localhost:18080/sandbox/invoke \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $API_KEY" \
     -d '{"tool":"execute_python","args":{"code":"print(1+1)"}}' 2>&1) || warn "sandbox invoke returned error"
+fi
+
 if echo "$SANDBOX_RESP" | grep -q '"exit_code":0'; then
     pass "sandbox execution works"
 else

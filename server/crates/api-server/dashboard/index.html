@@ -3,98 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NanoLambda Dashboard</title>
+    <title>NanoLambda Console</title>
     <link rel="stylesheet" href="/dashboard/css/main.css">
-    <link rel="stylesheet" href="/dashboard/css/components.css">
 </head>
 <body>
-    <div id="app">
-        <!-- Header -->
-        <header class="dashboard-header">
-            <div class="header-content">
-                <h1>⚡ NanoLambda Dashboard</h1>
-                <div class="api-key-section">
-                    <input 
-                        v-model="apiKey" 
-                        @change="saveApiKey"
-                        type="text" 
-                        placeholder="Enter your API key..."
-                        class="api-key-input"
-                    />
-                    <button @click="fetchMetrics" class="refresh-btn">🔄 Refresh</button>
-                </div>
+    <div class="shell-bg"></div>
+    <div class="page">
+        <header class="masthead">
+            <div>
+                <p class="eyebrow">NanoLambda</p>
+                <h1>Customer Console</h1>
+                <p class="subtitle">Run sandbox examples, manage API keys, and verify production in one place.</p>
             </div>
+            <div class="status" id="status-pill">Idle</div>
         </header>
 
-        <!-- Loading State -->
-        <div v-if="loading" class="loading-container">
-            <div class="loading-spinner"></div>
-            <p>Loading metrics...</p>
-        </div>
+        <main class="grid">
+            <section class="card connection">
+                <h2>1. Connect</h2>
+                <label for="base-url">Base URL</label>
+                <input id="base-url" type="url" placeholder="https://nanolambda.fly.dev" />
 
-        <!-- Error State -->
-        <div v-if="error" class="error-container">
-            <p>❌ {{ error }}</p>
-        </div>
+                <label for="api-key">API Key</label>
+                <input id="api-key" type="text" placeholder="nl_..." />
 
-        <!-- Dashboard Content -->
-        <main v-if="!loading && !error" class="dashboard-main">
-            <!-- Stats Grid -->
-            <stats-grid 
-                :metrics="metrics"
-                :usage="usage"
-                @open-analytics="openAnalyticsModal"
-                @open-clv="openCLVModal"
-                @open-churn="openChurnModal"
-                @open-payment-retry="openPaymentRetryModal"
-            ></stats-grid>
+                <div class="actions">
+                    <button id="save-connection" class="btn primary">Save</button>
+                    <button id="check-health" class="btn">Health</button>
+                    <button id="check-metrics" class="btn">Metrics</button>
+                </div>
 
-            <!-- Charts Panel -->
-            <charts-panel :metrics="metrics"></charts-panel>
+                <p class="hint">Security default: sandbox invocations require API keys when <code>NANOLAMBDA_REQUIRE_API_KEY=true</code>.</p>
+            </section>
+
+            <section class="card key-mgmt">
+                <h2>2. API Keys</h2>
+                <div class="inline-form">
+                    <input id="new-key-name" type="text" placeholder="customer-demo-key" />
+                    <input id="new-key-days" type="number" min="1" placeholder="expires in days (optional)" />
+                </div>
+                <div class="actions">
+                    <button id="create-key" class="btn primary">Create Key</button>
+                    <button id="refresh-keys" class="btn">Refresh List</button>
+                </div>
+                <div id="key-table"></div>
+            </section>
+
+            <section class="card examples">
+                <h2>3. Example Workflows</h2>
+                <div class="actions wrap">
+                    <button class="btn" data-example="python-basic">Python: 2 + 2</button>
+                    <button class="btn" data-example="python-data">Python: sum([10,20,30])</button>
+                    <button class="btn" data-example="shell-basic">Shell: pwd + ls</button>
+                </div>
+                <p class="hint">Click any example to run it via <code>/sandbox/invoke</code> with your saved API key.</p>
+            </section>
+
+            <section class="card playground">
+                <h2>4. Sandbox Playground</h2>
+                <label for="code">Python Code</label>
+                <textarea id="code" rows="10">print("Hello from NanoLambda")</textarea>
+                <div class="actions">
+                    <button id="run-code" class="btn accent">Run Python</button>
+                </div>
+            </section>
+
+            <section class="card output">
+                <h2>Output</h2>
+                <pre id="output">Ready.</pre>
+            </section>
         </main>
-
-        <!-- Modals -->
-        <analytics-modal 
-            v-if="modals.analytics"
-            :api-key="apiKey"
-            @close="modals.analytics = false"
-        ></analytics-modal>
-
-        <clv-modal 
-            v-if="modals.clv"
-            :api-key="apiKey"
-            @close="modals.clv = false"
-        ></clv-modal>
-
-        <churn-modal 
-            v-if="modals.churn"
-            :api-key="apiKey"
-            @close="modals.churn = false"
-        ></churn-modal>
-
-        <payment-retry-modal 
-            v-if="modals.paymentRetry"
-            :api-key="apiKey"
-            @close="modals.paymentRetry = false"
-        ></payment-retry-modal>
     </div>
 
-    <!-- Vue 3 from CDN -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    
-    <!-- Chart.js for charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- App modules -->
-    <script type="module" src="/dashboard/js/api.js"></script>
-    <script type="module" src="/dashboard/js/store.js"></script>
-    <script type="module" src="/dashboard/js/components/MetricCard.js"></script>
-    <script type="module" src="/dashboard/js/components/StatsGrid.js"></script>
-    <script type="module" src="/dashboard/js/components/ChartsPanel.js"></script>
-    <script type="module" src="/dashboard/js/components/AnalyticsModal.js"></script>
-    <script type="module" src="/dashboard/js/components/CLVModal.js"></script>
-    <script type="module" src="/dashboard/js/components/ChurnModal.js"></script>
-    <script type="module" src="/dashboard/js/components/PaymentRetryModal.js"></script>
     <script type="module" src="/dashboard/js/app.js"></script>
 </body>
 </html>

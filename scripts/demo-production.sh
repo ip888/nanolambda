@@ -6,8 +6,7 @@
 # Usage:
 #   BASE_URL="https://your-instance.example.com" API_KEY="nl_..." bash scripts/demo-production.sh
 #
-# API_KEY is optional for deployments that expose sandbox endpoints publicly,
-# but recommended for production environments.
+# API_KEY is required for production environments.
 # =============================================================================
 set -euo pipefail
 
@@ -27,13 +26,13 @@ if [[ -z "$BASE_URL" ]]; then
     fail "BASE_URL is required. Example: BASE_URL=https://your-instance.example.com"
 fi
 
+if [[ -z "$API_KEY" ]]; then
+    fail "API_KEY is required. Example: API_KEY=nl_your_key_here"
+fi
+
 BASE_URL="${BASE_URL%/}"
 AUTH_HEADER=()
-if [[ -n "$API_KEY" ]]; then
-    AUTH_HEADER=(-H "Authorization: Bearer $API_KEY")
-else
-    warn "API_KEY is not set. Continuing without Authorization header."
-fi
+AUTH_HEADER=(-H "Authorization: Bearer $API_KEY")
 
 echo "Running NanoLambda production demo against: $BASE_URL"
 

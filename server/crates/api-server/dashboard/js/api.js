@@ -1,126 +1,87 @@
-// API Client for NanoLambda Dashboard
 export class ApiClient {
-    constructor(baseUrl = '') {
-        this.baseUrl = baseUrl;
+    constructor() {
+        this.baseUrl = localStorage.getItem('nl_base_url') || '';
+        this.apiKey = localStorage.getItem('nl_api_key') || '';
     }
 
-    async request(endpoint, options = {}) {
+    setConnection({ baseUrl, apiKey }) {
+        this.baseUrl = (baseUrl || '').trim().replace(/\/$/, '');
+        this.apiKey = (apiKey || '').trim();
+        localStorage.setItem('nl_base_url', this.baseUrl);
+        localStorage.setItem('nl_api_key', this.apiKey);
+    }
+
+    authHeaders() {
+        if (!this.apiKey) {
+            return {};
+        }
+        return {
+            Authorization: `Bearer ${this.apiKey}`,
+            'x-api-key': this.apiKey,
+        };
+    }
+
+    async request(endpoint, options = {}, expect = 'json') {
         const url = `${this.baseUrl}${endpoint}`;
-        const config = {
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers,
-            },
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(options.auth === false ? {} : this.authHeaders()),
+            ...(options.headers || {}),
         };
 
-        try {
-            const response = await fetch(url, config);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+        const response = await fetch(url, {
+            ...options,
+            headers,
+        });
+
+        if (!response.ok) {
+            let details = '';
+            try {
+                details = await response.text();
+            } catch {
+                details = '';
             }
-            return await response.json();
-        } catch (error) {
-            console.error(`API request failed: ${endpoint}`, error);
-            throw error;
+            throw new Error(`HTTP ${response.status} ${response.statusText}${details ? ` - ${details}` : ''}`);
         }
+
+        if (expect === 'text') {
+            return response.text();
+        }
+        return response.json();
     }
 
-    // Metrics endpoints
-    async getMetrics() {
-        return this.request('/metrics');
+    getHealth() {
+        return this.request('/health', { method: 'GET', auth: false });
     }
 
-    async getDashboard() {
-        return this.request('/dashboard');
+    getMetricsPrometheus() {
+        return this.request('/metrics/prometheus', { method: 'GET', auth: false }, 'text');
     }
 
-    // Analytics endpoints
-    async getHealthScore(apiKey) {
-        return this.request('/analytics/health', {
-            headers: { 'x-api-key': apiKey }
-        });
-    }
-
-    async getChurnPrediction(apiKey) {
-        return this.request('/analytics/churn-prediction', {
-            headers: { 'x-api-key': apiKey }
-        });
-    }
-
-    async getGrowthTrend(apiKey) {
-        return this.request('/analytics/growth-trend', {
-            headers: { 'x-api-key': apiKey }
-        });
-    }
-
-    async getRecommendations(apiKey) {
-        return this.request('/analytics/recommendations', {
-            headers: { 'x-api-key': apiKey }
-        });
-    }
-
-    async getPlatformAnalytics() {
-        return this.request('/analytics/platform');
-    }
-
-    // CLV endpoints
-    async getCLV(apiKey) {
-        return this.request('/clv/calculate', {
-            headers: { 'x-api-key': apiKey }
-        });
-    }
-
-    async getCLVPrediction(apiKey, months) {
-        return this.request(`/clv/predict?months=${months}`, {
-            headers: { 'x-api-key': apiKey }
-        });
-    }
-
-    async getCLVSegment(apiKey) {
-        return this.request('/clv/segment', {
-            headers: { 'x-api-key': apiKey }
-        });
-    }
-
-    async getCLVSegments() {
-        return this.request('/clv/segments');
-    }
-
-    async getPlatformCLVSummary() {
-        return this.request('/clv/summary');
-    }
-
-    // Churn endpoints
-    async getChurnRisk(apiKey) {
-        return this.request('/churn/risk', {
-            headers: { 'x-api-key': apiKey }
-        });
-    }
-
-    async getChurnMetrics() {
-        return this.request('/churn/metrics');
-    }
-
-    async predictChurn() {
-        return this.request('/churn/predict');
-    }
-
-    // Payment Retry endpoints
-    async getPaymentRetryStatus(apiKey) {
-        return this.request('/payment-retry/status', {
-            headers: { 'x-api-key': apiKey }
-        });
-    }
-
-    async getPaymentRetryMetrics() {
-        return this.request('/payment-retry/metrics');
-    }
-
-    async processRetry(apiKey) {
-        return this.request('/payment-retry/process', {
+    createApiKey(name, expiresAt) {
+        return this.request('/auth/keys', {
             method: 'POST',
-            headers: { 'x-api-key': apiKey }
+            auth: false,
+            body: JSON.stringify({
+                name,
+                permissions: ['sandbox:invoke'],
+                expires_at: expiresAt,
+            }),
+        });
+    }
+
+    listApiKeys() {
+        return this.request('/auth/keys', { method: 'GET' });
+    }
+
+    revokeApiKey(id) {
+        return this.request(`/auth/keys/${id}`, { method: 'DELETE' }, 'text');
+    }
+
+    invokeTool(tool, args) {
+        return this.request('/sandbox/invoke', {
+            method: 'POST',
+            body: JSON.stringify({ tool, args }),
         });
     }
 }

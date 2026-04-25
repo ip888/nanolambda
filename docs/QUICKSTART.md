@@ -10,7 +10,17 @@ Get a sandbox running in under 3 minutes.
 
 ```bash
 docker run -d -p 8080:8080 ghcr.io/ip888/nanolambda:latest
-# Your base URL is http://localhost:8080 — no API key required in local mode
+# Your base URL is http://localhost:8080
+```
+
+Create your first API key:
+
+```bash
+BASE_URL="http://localhost:8080"
+API_KEY=$(curl -sS -X POST "$BASE_URL/auth/keys" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"quickstart","permissions":["sandbox:invoke"],"expires_at":null}' \
+  | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
 ```
 
 ## 2. Choose your integration
@@ -68,6 +78,8 @@ What it verifies:
 - Two deterministic sandbox executions return expected outputs (`4` and `60`)
 
 ## 4. What's next
+
+- Use the customer console: open `/dashboard` in your browser
 
 - Browse framework examples: [LangChain](../sdks/python/examples/langchain_tool.py), [CrewAI](../sdks/python/examples/crewai_tool.py), [Pydantic-AI](../sdks/python/examples/pydantic_ai_tool.py)
 - Read the [Python SDK docs](../sdks/python/README.md)

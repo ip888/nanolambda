@@ -11,7 +11,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{
+    Json,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+};
+use nanolambda_storage::ApiKeyStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, warn};
@@ -58,8 +63,13 @@ pub struct SandboxInvokeResponse {
 /// through the Python executor, and projects the result onto `SandboxResult`.
 pub async fn sandbox_invoke(
     State(state): State<Arc<ApiServer>>,
+    headers: HeaderMap,
     Json(req): Json<SandboxInvokeRequest>,
 ) -> Result<Json<SandboxInvokeResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if require_api_key_for_sandbox() {
+        validate_api_key(&state, &headers)?;
+    }
+
     let tool = req.tool.as_str();
     debug!(tool = %tool, "sandbox invoke");
 
@@ -133,6 +143,102 @@ pub async fn sandbox_invoke(
     })?;
 
     Ok(Json(project_result(exec_result)))
+}
+
+fn require_api_key_for_sandbox() -> bool {
+    match std::env::var("NANOLAMBDA_REQUIRE_API_KEY") {
+        Ok(v) => {
+            let normalized = v.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        }
+        Err(_) => true,
+    }
+}
+
+fn extract_api_key(headers: &HeaderMap) -> Option<String> {
+    if let Some(auth) = headers.get("Authorization")
+        && let Ok(auth_str) = auth.to_str()
+        && let Some(token) = auth_str.strip_prefix("Bearer ")
+    {
+        let trimmed = token.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    headers
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+}
+
+fn validate_api_key(
+    state: &ApiServer,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let token = extract_api_key(headers).ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".into(),
+                message:
+                    "Missing API key. Include Authorization: Bearer <token> or x-api-key header."
+                        .into(),
+            }),
+        )
+    })?;
+
+    let api_key = state
+        .storage()
+        .get_api_key(&token)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "StorageError".into(),
+                    message: format!("Failed to validate API key: {e}"),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Unauthorized".into(),
+                    message: "Invalid API key".into(),
+                }),
+            )
+        })?;
+
+    if api_key.status != ApiKeyStatus::Active {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Forbidden".into(),
+                message: "API key is revoked".into(),
+            }),
+        ));
+    }
+
+    if let Some(expires_at) = api_key.expires_at {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        if now > expires_at {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(ErrorResponse {
+                    error: "Forbidden".into(),
+                    message: "API key has expired".into(),
+                }),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 /// Turn an [`ExecutionResult`] into the `SandboxResult` wire shape.
