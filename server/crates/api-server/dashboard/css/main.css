@@ -204,6 +204,26 @@ textarea:focus {
     font-size: 0.86rem;
 }
 
+.flash {
+    min-height: 1.2rem;
+    margin: 0 0 0.6rem;
+    padding: 0.2rem 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+.flash.ok {
+    color: var(--ok);
+}
+
+.flash.error {
+    color: var(--danger);
+}
+
+.flash.working {
+    color: var(--warn);
+}
+
 code,
 pre {
     font-family: "IBM Plex Mono", "Consolas", monospace;

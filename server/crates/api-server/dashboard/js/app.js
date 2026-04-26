@@ -14,12 +14,36 @@ const els = {
     keyTable: document.getElementById('key-table'),
     code: document.getElementById('code'),
     runCode: document.getElementById('run-code'),
+    flash: document.getElementById('flash'),
     output: document.getElementById('output'),
 };
+
+const requiredElementKeys = [
+    'statusPill',
+    'baseUrl',
+    'apiKey',
+    'saveConnection',
+    'checkHealth',
+    'checkMetrics',
+    'newKeyName',
+    'newKeyDays',
+    'createKey',
+    'refreshKeys',
+    'keyTable',
+    'code',
+    'runCode',
+    'flash',
+    'output',
+];
 
 function setStatus(message, kind = 'idle') {
     els.statusPill.textContent = message;
     els.statusPill.className = `status ${kind}`;
+}
+
+function setFlash(message, kind = 'ok') {
+    els.flash.textContent = message;
+    els.flash.className = `flash ${kind}`;
 }
 
 function writeOutput(label, payload) {
@@ -37,11 +61,14 @@ function unixFromDays(days) {
 async function withStatus(label, fn) {
     try {
         setStatus(label, 'working');
+        setFlash(label, 'working');
         const result = await fn();
         setStatus('Success', 'ok');
+        setFlash('Done.', 'ok');
         return result;
     } catch (error) {
         setStatus('Failed', 'error');
+        setFlash(error.message || String(error), 'error');
         writeOutput('Error', error.message || String(error));
         throw error;
     }
@@ -53,6 +80,7 @@ function saveConnection() {
         apiKey: els.apiKey.value,
     });
     setStatus('Connection saved', 'ok');
+    setFlash('Connection saved.', 'ok');
 }
 
 async function checkHealth() {
@@ -109,16 +137,18 @@ async function refreshKeys() {
 }
 
 async function createKey() {
-    const name = (els.newKeyName.value || '').trim();
+    let name = (els.newKeyName.value || '').trim();
     if (!name) {
-        writeOutput('Validation', 'Key name is required.');
-        return;
+        name = `dashboard-key-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        els.newKeyName.value = name;
+        setFlash('Key name was empty. Auto-generated a name.', 'working');
     }
     const expiresAt = unixFromDays(els.newKeyDays.value);
     const created = await withStatus('Creating key...', () => api.createApiKey(name, expiresAt));
     if (created?.key) {
         els.apiKey.value = created.key;
         saveConnection();
+        setFlash('Key created and saved to connection.', 'ok');
     }
     writeOutput('New API Key (store this securely)', created);
     await refreshKeys();
@@ -147,8 +177,21 @@ async function runExample(kind) {
 }
 
 function init() {
+    const missing = requiredElementKeys.filter((k) => !els[k]);
+    if (missing.length > 0) {
+        const message = `Dashboard wiring error: missing elements [${missing.join(', ')}].`;
+        console.error(message);
+        if (els.output) {
+            els.output.textContent = message;
+        }
+        return;
+    }
+
     els.baseUrl.value = localStorage.getItem('nl_base_url') || window.location.origin;
     els.apiKey.value = localStorage.getItem('nl_api_key') || '';
+    if (!els.newKeyName.value.trim()) {
+        els.newKeyName.value = 'customer-demo-key';
+    }
     saveConnection();
 
     els.saveConnection.addEventListener('click', saveConnection);
@@ -157,6 +200,12 @@ function init() {
     els.createKey.addEventListener('click', createKey);
     els.refreshKeys.addEventListener('click', refreshKeys);
     els.runCode.addEventListener('click', () => runPython(els.code.value));
+    els.newKeyName.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            createKey();
+        }
+    });
 
     document.querySelectorAll('[data-example]').forEach((btn) => {
         btn.addEventListener('click', () => runExample(btn.getAttribute('data-example')));
