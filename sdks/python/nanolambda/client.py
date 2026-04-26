@@ -53,7 +53,7 @@ class NanoLambda:
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.nanolambda.io",
+        base_url: str = "https://nanolambda.fly.dev",
         timeout: float = 60.0,
     ):
         self.api_key = api_key

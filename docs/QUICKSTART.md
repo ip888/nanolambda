@@ -4,7 +4,7 @@ Get a sandbox running in under 3 minutes.
 
 ## 1. Get an API key
 
-**Cloud** (fastest): Sign up at [nanolambda.io](https://nanolambda.io) and copy your key from the dashboard.
+**Cloud** (fastest): Open [nanolambda.fly.dev/dashboard](https://nanolambda.fly.dev/dashboard) and create/copy your key from the console.
 
 **Self-host**:
 

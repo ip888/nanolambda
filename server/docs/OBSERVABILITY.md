@@ -326,7 +326,7 @@ Planned features for future releases:
 
 ## Contributing
 
-Found a bug or want to add a feature? See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
+Found a bug or want to add a feature? See [CONTRIBUTING.md](../../CONTRIBUTING.md) for guidelines.
 
 ## Related Documentation
 

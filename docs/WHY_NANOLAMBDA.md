@@ -116,7 +116,7 @@ NanoLambda is built for teams that are integrating code execution into AI-powere
 
 ## Get Started
 
-1. Sign up at [nanolambda.io](https://nanolambda.io) or self-host with Docker
+1. Start on [nanolambda.fly.dev/dashboard](https://nanolambda.fly.dev/dashboard) or self-host with Docker
 2. Follow the [Quickstart guide](QUICKSTART.md)
 3. Browse the [Python SDK documentation](../sdks/python/README.md)
 

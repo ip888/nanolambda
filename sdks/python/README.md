@@ -1,6 +1,6 @@
 # NanoLambda Python SDK
 
-Python client for the [NanoLambda](https://nanolambda.io) AI-agent code-execution sandbox.
+Python client for the [NanoLambda](https://nanolambda.fly.dev) AI-agent code-execution sandbox.
 
 ## Install
 
@@ -22,7 +22,7 @@ print(result.duration_ms)  # 12
 
 ## API Reference
 
-### `NanoLambda(api_key, base_url="https://api.nanolambda.io", timeout=60.0)`
+### `NanoLambda(api_key, base_url="https://nanolambda.fly.dev", timeout=60.0)`
 
 Create a client. Use as a context manager for automatic cleanup:
 
