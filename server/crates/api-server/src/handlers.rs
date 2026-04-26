@@ -1326,6 +1326,11 @@ pub async fn get_dashboard() -> Html<&'static str> {
     Html(include_str!("../dashboard/index.html"))
 }
 
+/// GET / - Serve customer-facing landing page
+pub async fn get_landing_page() -> Html<&'static str> {
+    Html(include_str!("../dashboard/landing.html"))
+}
+
 /// GET /dashboard/* - Serve dashboard static files
 pub async fn get_dashboard_file(
     axum::extract::Path(file_path): axum::extract::Path<String>,

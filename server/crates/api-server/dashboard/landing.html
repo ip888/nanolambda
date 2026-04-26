@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NanoLambda | Secure Sandbox Execution for AI Agents</title>
+    <meta name="description" content="NanoLambda gives teams a safe, fast sandbox for AI-generated Python and shell execution with API keys, observability, and MCP integration.">
+    <link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
+    <style>
+        :root {
+            --bg: #0a0f1c;
+            --card: #121b2e;
+            --ink: #e5ebff;
+            --muted: #98add8;
+            --line: #2b3f65;
+            --primary: #2f9dff;
+            --accent: #17c8a3;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(40rem 22rem at 10% 0%, rgba(47, 157, 255, 0.2), transparent 70%),
+                radial-gradient(32rem 18rem at 90% 12%, rgba(23, 200, 163, 0.14), transparent 70%),
+                var(--bg);
+            line-height: 1.5;
+        }
+
+        .wrap {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 1.2rem;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .brand {
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+
+        .topbar a {
+            color: var(--muted);
+            text-decoration: none;
+            margin-left: 1rem;
+        }
+
+        .hero {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 1.4rem;
+            background: rgba(9, 15, 29, 0.65);
+            margin-bottom: 1rem;
+        }
+
+        .eyebrow {
+            color: var(--primary);
+            text-transform: uppercase;
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
+            margin: 0;
+        }
+
+        h1 {
+            margin: 0.35rem 0 0.8rem;
+            font-size: clamp(1.7rem, 3vw, 2.6rem);
+            line-height: 1.2;
+        }
+
+        .sub {
+            color: var(--muted);
+            margin: 0 0 1rem;
+            max-width: 58ch;
+        }
+
+        .cta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.6rem 0.9rem;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            text-decoration: none;
+            color: var(--ink);
+            font-weight: 600;
+            background: rgba(20, 29, 48, 0.7);
+        }
+
+        .btn.primary {
+            border-color: rgba(47, 157, 255, 0.6);
+            background: rgba(47, 157, 255, 0.2);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 0.9rem;
+            margin-top: 0.9rem;
+        }
+
+        .card {
+            grid-column: span 4;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: var(--card);
+            padding: 1rem;
+        }
+
+        .card h3 {
+            margin: 0 0 0.5rem;
+            font-size: 1.02rem;
+        }
+
+        .card p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .section {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: var(--card);
+            padding: 1rem;
+            margin-top: 0.9rem;
+        }
+
+        .section h2 {
+            margin: 0 0 0.7rem;
+            font-size: 1.1rem;
+        }
+
+        code, pre {
+            font-family: "IBM Plex Mono", Consolas, monospace;
+        }
+
+        pre {
+            margin: 0.6rem 0 0;
+            border-radius: 12px;
+            border: 1px solid #1f3152;
+            background: #0b1222;
+            color: #d8e6ff;
+            padding: 0.8rem;
+            overflow-x: auto;
+            font-size: 0.84rem;
+        }
+
+        .list {
+            margin: 0;
+            padding-left: 1rem;
+            color: var(--muted);
+        }
+
+        .list li { margin-bottom: 0.4rem; }
+
+        .footer {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin: 1rem 0 0.4rem;
+        }
+
+        @media (max-width: 880px) {
+            .card { grid-column: span 12; }
+            .topbar { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="topbar">
+            <div class="brand">NanoLambda</div>
+            <div>
+                <a href="/dashboard">Console</a>
+                <a href="/health">Health</a>
+                <a href="/metrics/prometheus">Metrics</a>
+                <a href="https://github.com/ip888/nanolambda">GitHub</a>
+            </div>
+        </div>
+
+        <section class="hero">
+            <p class="eyebrow">Secure Sandbox Runtime</p>
+            <h1>Run AI-generated Python and Shell code safely, fast, and with control.</h1>
+            <p class="sub">NanoLambda is built for teams shipping AI features: isolated execution, API key security, MCP integration, and observability by default.</p>
+            <div class="cta">
+                <a class="btn primary" href="/dashboard">Open Live Console</a>
+                <a class="btn" href="https://github.com/ip888/nanolambda/releases">View Releases</a>
+                <a class="btn" href="https://github.com/ip888/nanolambda/blob/main/docs/QUICKSTART.md">Read Quickstart</a>
+            </div>
+        </section>
+
+        <div class="grid">
+            <article class="card">
+                <h3>Safe by Design</h3>
+                <p>Sandbox execution requires API keys, supports revocation/rotation, and separates customer usage per key.</p>
+            </article>
+            <article class="card">
+                <h3>Built for Evaluation</h3>
+                <p>The live console includes simple, medium, and complex scenarios for Python and shell to benchmark real workloads.</p>
+            </article>
+            <article class="card">
+                <h3>Production-Friendly</h3>
+                <p>Prometheus metrics, health endpoints, deterministic demo scripts, and CI-driven deployment for predictable operations.</p>
+            </article>
+        </div>
+
+        <section class="section">
+            <h2>Fast Start</h2>
+            <pre>BASE_URL="https://nanolambda.fly.dev"
+API_KEY=$(curl -sS -X POST "$BASE_URL/auth/keys" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"landing-demo","permissions":["sandbox:invoke"],"expires_at":null}' \
+  | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
+
+curl -sS -X POST "$BASE_URL/sandbox/invoke" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tool":"execute_python","args":{"code":"print(2+2)"}}'</pre>
+        </section>
+
+        <section class="section">
+            <h2>Why Customers Choose It</h2>
+            <ul class="list">
+                <li>Simple onboarding path: browser console + API key + ready-made scenarios.</li>
+                <li>No black box output: editable playground to prove behavior is not hardcoded.</li>
+                <li>Clear evaluation evidence: stdout/stderr, exit code, duration, cold-start signal.</li>
+            </ul>
+        </section>
+
+        <p class="footer">NanoLambda v0.1.x • Open-source runtime for secure AI code execution</p>
+    </div>
+</body>
+</html>

@@ -603,6 +603,7 @@ impl ApiServer {
 
         // Public routes (no auth required)
         let public_routes = Router::new()
+            .route("/", get(handlers::get_landing_page))
             // User authentication (public - must be public for login/register)
             .route("/auth/register", post(user_handlers::register))
             .route("/auth/login", post(user_handlers::login))
@@ -936,6 +937,7 @@ impl ApiServer {
 
         // Public routes (no auth required) - same as run()
         let public_routes = Router::new()
+            .route("/", get(handlers::get_landing_page))
             .route("/auth/register", post(user_handlers::register))
             .route("/auth/login", post(user_handlers::login))
             .route("/auth/logout", post(user_handlers::logout))
