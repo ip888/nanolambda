@@ -13,6 +13,9 @@ const els = {
     refreshKeys: document.getElementById('refresh-keys'),
     keyTable: document.getElementById('key-table'),
     code: document.getElementById('code'),
+    playgroundLabel: document.getElementById('playground-label'),
+    playgroundModeHint: document.getElementById('playground-mode-hint'),
+    playgroundScenario: document.getElementById('playground-scenario'),
     runCode: document.getElementById('run-code'),
     flash: document.getElementById('flash'),
     output: document.getElementById('output'),
@@ -31,10 +34,19 @@ const requiredElementKeys = [
     'refreshKeys',
     'keyTable',
     'code',
+    'playgroundLabel',
+    'playgroundModeHint',
+    'playgroundScenario',
     'runCode',
     'flash',
     'output',
 ];
+
+const playgroundState = {
+    tool: 'execute_python',
+    scenarioKey: 'custom-python',
+    scenarioLabel: 'Custom Python Playground',
+};
 
 const SCENARIOS = {
     'python-simple': {
@@ -182,6 +194,45 @@ function writeOutput(label, payload) {
     els.output.textContent = `[${new Date().toLocaleTimeString()}] ${label}\n${body}`;
 }
 
+function writeSandboxOutput(label, payload) {
+    const stdout = ((payload && payload.stdout) || '').replace(/\r\n/g, '\n').trimEnd();
+    const stderr = ((payload && payload.stderr) || '').replace(/\r\n/g, '\n').trimEnd();
+    const exitCode = payload && Number.isFinite(payload.exit_code) ? payload.exit_code : 'n/a';
+    const durationMs = payload && Number.isFinite(payload.duration_ms) ? payload.duration_ms : 'n/a';
+    const coldStart = payload && typeof payload.cold_start === 'boolean' ? payload.cold_start : 'n/a';
+
+    const lines = [
+        `[${new Date().toLocaleTimeString()}] ${label}`,
+        `Mode: ${playgroundState.tool === 'execute_shell' ? 'Shell' : 'Python'}`,
+        `Exit Code: ${exitCode} | Duration: ${durationMs} ms | Cold Start: ${coldStart}`,
+        '',
+        'STDOUT:',
+        stdout || '(empty)',
+        '',
+        'STDERR:',
+        stderr || '(empty)',
+    ];
+
+    els.output.textContent = lines.join('\n');
+}
+
+function setPlaygroundMode(tool, scenarioKey, scenarioLabel) {
+    const isShell = tool === 'execute_shell';
+    playgroundState.tool = tool;
+    playgroundState.scenarioKey = scenarioKey;
+    playgroundState.scenarioLabel = scenarioLabel;
+
+    els.playgroundLabel.textContent = isShell ? 'Shell Command' : 'Python Code';
+    els.playgroundModeHint.textContent = `Current mode: ${isShell ? 'Shell' : 'Python'}`;
+    els.playgroundScenario.textContent = `Scenario: ${scenarioLabel}`;
+    els.runCode.textContent = isShell ? 'Run Shell' : 'Run Python';
+    els.runCode.classList.toggle('shell-mode', isShell);
+
+    document.querySelectorAll('[data-example]').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-example') === scenarioKey);
+    });
+}
+
 function unixFromDays(days) {
     if (!days || Number(days) <= 0) {
         return null;
@@ -286,10 +337,31 @@ async function createKey() {
 }
 
 async function runPython(code) {
-    const result = await withStatus('Running sandbox code...', () =>
+    const result = await withStatus('Running Python in sandbox...', () =>
         api.invokeTool('execute_python', { code })
     );
-    writeOutput('Sandbox Result', result);
+    writeSandboxOutput('Sandbox Result', result);
+}
+
+async function runShell(command) {
+    const result = await withStatus('Running Shell in sandbox...', () =>
+        api.invokeTool('execute_shell', { command })
+    );
+    writeSandboxOutput('Sandbox Result', result);
+}
+
+async function runPlayground() {
+    const script = (els.code.value || '').trim();
+    if (!script) {
+        setFlash('Playground is empty. Add Python code or shell command first.', 'error');
+        return;
+    }
+
+    if (playgroundState.tool === 'execute_shell') {
+        await runShell(script);
+    } else {
+        await runPython(script);
+    }
 }
 
 async function runExample(kind) {
@@ -299,15 +371,14 @@ async function runExample(kind) {
         return;
     }
 
-    if (scenario.fillPlayground && scenario.tool === 'execute_python') {
-        els.code.value = scenario.args.code;
-    }
-
-    const result = await withStatus(`Running ${scenario.label}...`, () =>
-        api.invokeTool(scenario.tool, scenario.args)
+    const script = scenario.tool === 'execute_shell' ? scenario.args.command : scenario.args.code;
+    els.code.value = script;
+    setPlaygroundMode(scenario.tool, kind, scenario.label);
+    setFlash(`Loaded ${scenario.label}. Edit in Playground and click ${scenario.tool === 'execute_shell' ? 'Run Shell' : 'Run Python'}.`, 'ok');
+    writeOutput(
+        'Scenario Loaded',
+        `${scenario.label} loaded into Playground. You can now modify it to prove output is not hardcoded before execution.`
     );
-
-    writeOutput(scenario.label, result);
 }
 
 function init() {
@@ -333,7 +404,7 @@ function init() {
     els.checkMetrics.addEventListener('click', checkMetrics);
     els.createKey.addEventListener('click', createKey);
     els.refreshKeys.addEventListener('click', refreshKeys);
-    els.runCode.addEventListener('click', () => runPython(els.code.value));
+    els.runCode.addEventListener('click', runPlayground);
     els.newKeyName.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
             event.preventDefault();
@@ -344,6 +415,8 @@ function init() {
     document.querySelectorAll('[data-example]').forEach((btn) => {
         btn.addEventListener('click', () => runExample(btn.getAttribute('data-example')));
     });
+
+    setPlaygroundMode('execute_python', 'custom-python', 'Custom Python Playground');
 
     checkHealth().catch(() => {});
 }
