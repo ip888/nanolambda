@@ -36,6 +36,137 @@ const requiredElementKeys = [
     'output',
 ];
 
+const SCENARIOS = {
+    'python-simple': {
+        label: 'Python Simple Scenario',
+        tool: 'execute_python',
+        args: {
+            code: `orders = [
+    {"id": "A1", "amount": 120.0, "status": "paid"},
+    {"id": "A2", "amount": 80.5, "status": "paid"},
+    {"id": "A3", "amount": 40.0, "status": "failed"},
+    {"id": "A4", "amount": 300.0, "status": "paid"},
+]
+
+paid_total = sum(o["amount"] for o in orders if o["status"] == "paid")
+failed_count = sum(1 for o in orders if o["status"] != "paid")
+
+print("Simple Data Validation")
+print("paid_total=", round(paid_total, 2))
+print("failed_count=", failed_count)
+print("avg_paid=", round(paid_total / (len(orders) - failed_count), 2))`
+        },
+        fillPlayground: true,
+    },
+    'python-medium': {
+        label: 'Python Medium Scenario',
+        tool: 'execute_python',
+        args: {
+            code: `from collections import defaultdict
+
+events = [
+    ("2026-01", "u1", 120), ("2026-01", "u2", 125), ("2026-01", "u3", 118),
+    ("2026-02", "u1", 122), ("2026-02", "u2", 300), ("2026-02", "u4", 121),
+    ("2026-03", "u1", 119), ("2026-03", "u2", 127), ("2026-03", "u3", 600),
+    ("2026-03", "u4", 123),
+]
+
+month_users = defaultdict(set)
+month_values = defaultdict(list)
+for month, user, value in events:
+    month_users[month].add(user)
+    month_values[month].append(value)
+
+months = sorted(month_users.keys())
+print("Medium Cohort + Anomaly Scan")
+for i, month in enumerate(months):
+    users = month_users[month]
+    avg = sum(month_values[month]) / len(month_values[month])
+    retained = len(users.intersection(month_users[months[i-1]])) if i > 0 else len(users)
+    retention = retained / len(month_users[months[i-1]]) if i > 0 else 1.0
+    print(f"month={month} users={len(users)} avg={avg:.2f} retention={retention:.2%}")
+
+all_vals = [v for _, _, v in events]
+global_avg = sum(all_vals) / len(all_vals)
+threshold = global_avg * 2.2
+anomalies = [(m, u, v) for (m, u, v) in events if v > threshold]
+print("anomaly_threshold=", round(threshold, 2))
+print("anomalies=", anomalies if anomalies else "none")`
+        },
+        fillPlayground: true,
+    },
+    'python-complex': {
+        label: 'Python Complex Scenario',
+        tool: 'execute_python',
+        args: {
+            code: `import random
+import time
+from statistics import mean
+
+random.seed(42)
+start = time.time()
+
+N = 25000
+latencies_ms = []
+failures = 0
+region_stats = {"us-east": [], "eu-west": [], "ap-south": []}
+
+for i in range(N):
+    region = random.choice(list(region_stats.keys()))
+    base = random.gauss(95, 20)
+    penalty = 35 if random.random() < 0.07 else 0
+    latency = max(5, base + penalty)
+    ok = random.random() > 0.035
+    if not ok:
+        failures += 1
+    latencies_ms.append(latency)
+    region_stats[region].append(latency)
+
+latencies_ms.sort()
+p50 = latencies_ms[int(0.50 * len(latencies_ms))]
+p95 = latencies_ms[int(0.95 * len(latencies_ms))]
+p99 = latencies_ms[int(0.99 * len(latencies_ms))]
+error_rate = failures / N
+
+print("Complex Workload + Limits Profile")
+print(f"requests={N} failures={failures} error_rate={error_rate:.2%}")
+print(f"p50={p50:.2f}ms p95={p95:.2f}ms p99={p99:.2f}ms")
+for region, vals in sorted(region_stats.items()):
+    print(f"region={region} avg={mean(vals):.2f}ms max={max(vals):.2f}ms")
+
+elapsed = time.time() - start
+print(f"script_runtime={elapsed:.3f}s")
+
+if p99 > 220 or error_rate > 0.06:
+    print("assessment=HIGH_RISK tuning recommended")
+else:
+    print("assessment=PASS baseline acceptable")`
+        },
+        fillPlayground: true,
+    },
+    'shell-simple': {
+        label: 'Shell Simple Scenario',
+        tool: 'execute_shell',
+        args: {
+            command: 'echo "Shell Runtime Fingerprint" && pwd && uname -a && ls -la'
+        },
+    },
+    'shell-medium': {
+        label: 'Shell Medium Scenario',
+        tool: 'execute_shell',
+        args: {
+            command: 'set -e; mkdir -p data out; printf "id,team,score\\n1,alpha,81\\n2,beta,92\\n3,alpha,88\\n4,beta,95\\n5,gamma,77\\n" > data/input.csv; awk -F, "NR>1 {sum[$2]+=$3; count[$2]++} END {for (t in sum) printf \"%s,avg=%.2f,count=%d\\n\", t, sum[t]/count[t], count[t]}" data/input.csv | sort > out/summary.txt; echo "Medium File ETL Pipeline"; cat out/summary.txt'
+        },
+    },
+    'shell-complex': {
+        label: 'Shell Complex Scenario',
+        tool: 'execute_shell',
+        args: {
+            command: 'set -e; mkdir -p logs; for i in $(seq 1 1200); do ip="10.0.$((RANDOM%8)).$((RANDOM%40+1))"; code=$(( (RANDOM%10)<8 ? 200 : 500 )); ms=$((RANDOM%450+30)); printf "%s status=%s latency=%sms\\n" "$ip" "$code" "$ms"; done > logs/access.log; echo "Complex Log Mining"; total=$(wc -l < logs/access.log); err=$(grep -c "status=500" logs/access.log || true); p95=$(awk -F"latency=|ms" "{print \$2}" logs/access.log | sort -n | awk "{a[NR]=\$1} END{if(NR==0){print 0}else{idx=int(NR*0.95); if(idx<1) idx=1; print a[idx]}}" ); echo "total=$total errors=$err error_rate=$(awk -v e=$err -v t=$total "BEGIN{if(t==0)print 0; else printf \"%.4f\", e/t}") p95_ms=$p95"; echo "top_talkers:"; awk "{print \$1}" logs/access.log | sort | uniq -c | sort -nr | head -5'
+        },
+    },
+};
+
 function setStatus(message, kind = 'idle') {
     els.statusPill.textContent = message;
     els.statusPill.className = `status ${kind}`;
@@ -162,18 +293,21 @@ async function runPython(code) {
 }
 
 async function runExample(kind) {
-    if (kind === 'python-basic') {
-        return runPython('print(2+2)');
+    const scenario = SCENARIOS[kind];
+    if (!scenario) {
+        setFlash(`Unknown scenario: ${kind}`, 'error');
+        return;
     }
-    if (kind === 'python-data') {
-        return runPython('nums=[10,20,30]; print(sum(nums))');
+
+    if (scenario.fillPlayground && scenario.tool === 'execute_python') {
+        els.code.value = scenario.args.code;
     }
-    if (kind === 'shell-basic') {
-        const result = await withStatus('Running shell demo...', () =>
-            api.invokeTool('execute_shell', { command: 'pwd && ls -la' })
-        );
-        writeOutput('Shell Result', result);
-    }
+
+    const result = await withStatus(`Running ${scenario.label}...`, () =>
+        api.invokeTool(scenario.tool, scenario.args)
+    );
+
+    writeOutput(scenario.label, result);
 }
 
 function init() {

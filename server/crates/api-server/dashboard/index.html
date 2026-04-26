@@ -47,17 +47,28 @@
                     <button id="refresh-keys" class="btn">Refresh List</button>
                 </div>
                 <p class="hint">Tip: if key name is empty, Console will auto-generate one.</p>
+                <p class="hint">API keys identify each customer workspace, secure sandbox execution, enable per-customer usage tracking, and support key rotation/revocation.</p>
                 <div id="key-table"></div>
             </section>
 
             <section class="card examples">
-                <h2>3. Example Workflows</h2>
+                <h2>3. Evaluation Scenarios</h2>
+                <p class="hint">Use these scripts to evaluate capability boundaries before customer onboarding.</p>
+
+                <h3>Python Scenarios</h3>
                 <div class="actions wrap">
-                    <button class="btn" data-example="python-basic">Python: 2 + 2</button>
-                    <button class="btn" data-example="python-data">Python: sum([10,20,30])</button>
-                    <button class="btn" data-example="shell-basic">Shell: pwd + ls</button>
+                    <button class="btn" data-example="python-simple">Simple: Structured Data Check</button>
+                    <button class="btn" data-example="python-medium">Medium: Cohort + Anomaly Scan</button>
+                    <button class="btn" data-example="python-complex">Complex: Workload + Limits Profile</button>
                 </div>
-                <p class="hint">Click any example to run it via <code>/sandbox/invoke</code> with your saved API key.</p>
+
+                <h3>Shell Scenarios</h3>
+                <div class="actions wrap">
+                    <button class="btn" data-example="shell-simple">Simple: Runtime Fingerprint</button>
+                    <button class="btn" data-example="shell-medium">Medium: File ETL Pipeline</button>
+                    <button class="btn" data-example="shell-complex">Complex: Log Mining + Top Talkers</button>
+                </div>
+                <p class="hint">Each scenario runs through <code>/sandbox/invoke</code> and helps benchmark realistic customer usage.</p>
             </section>
 
             <section class="card playground">
