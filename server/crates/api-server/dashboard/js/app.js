@@ -167,14 +167,64 @@ else:
         label: 'Shell Medium Scenario',
         tool: 'execute_shell',
         args: {
-            command: 'set -e; mkdir -p data out; printf "id,team,score\\n1,alpha,81\\n2,beta,92\\n3,alpha,88\\n4,beta,95\\n5,gamma,77\\n" > data/input.csv; awk -F, "NR>1 {sum[$2]+=$3; count[$2]++} END {for (t in sum) printf \"%s,avg=%.2f,count=%d\\n\", t, sum[t]/count[t], count[t]}" data/input.csv | sort > out/summary.txt; echo "Medium File ETL Pipeline"; cat out/summary.txt'
+            command: `set -e
+mkdir -p data out
+cat > data/input.csv <<'CSV'
+id,team,score
+1,alpha,81
+2,beta,92
+3,alpha,88
+4,beta,95
+5,gamma,77
+CSV
+python3 - <<'PY' > out/summary.txt
+import csv
+from collections import defaultdict
+
+totals = defaultdict(float)
+counts = defaultdict(int)
+
+with open('data/input.csv', newline='') as f:
+    for row in csv.DictReader(f):
+        team = row['team']
+        score = float(row['score'])
+        totals[team] += score
+        counts[team] += 1
+
+for team in sorted(totals):
+    avg = totals[team] / counts[team]
+    print(f"{team},avg={avg:.2f},count={counts[team]}")
+PY
+echo "Medium File ETL Pipeline"
+cat out/summary.txt`
         },
     },
     'shell-complex': {
         label: 'Shell Complex Scenario',
         tool: 'execute_shell',
         args: {
-            command: 'set -e; mkdir -p logs; for i in $(seq 1 1200); do ip="10.0.$((RANDOM%8)).$((RANDOM%40+1))"; code=$(( (RANDOM%10)<8 ? 200 : 500 )); ms=$((RANDOM%450+30)); printf "%s status=%s latency=%sms\\n" "$ip" "$code" "$ms"; done > logs/access.log; echo "Complex Log Mining"; total=$(wc -l < logs/access.log); err=$(grep -c "status=500" logs/access.log || true); p95=$(awk -F"latency=|ms" "{print \$2}" logs/access.log | sort -n | awk "{a[NR]=\$1} END{if(NR==0){print 0}else{idx=int(NR*0.95); if(idx<1) idx=1; print a[idx]}}" ); echo "total=$total errors=$err error_rate=$(awk -v e=$err -v t=$total "BEGIN{if(t==0)print 0; else printf \"%.4f\", e/t}") p95_ms=$p95"; echo "top_talkers:"; awk "{print \$1}" logs/access.log | sort | uniq -c | sort -nr | head -5'
+            command: `set -e
+mkdir -p logs
+awk 'BEGIN {
+    srand(42)
+    for (i = 1; i <= 1200; i++) {
+        subnet = int(rand() * 8)
+        host = int(rand() * 40) + 1
+        code = (rand() < 0.8) ? 200 : 500
+        ms = int(rand() * 450) + 30
+        printf("10.0.%d.%d status=%d latency=%dms\\n", subnet, host, code, ms)
+    }
+}' > logs/access.log
+
+echo "Complex Log Mining"
+total=$(wc -l < logs/access.log)
+err=$(grep -c 'status=500' logs/access.log || true)
+p95=$(awk -F'latency=|ms' '{print $2}' logs/access.log | sort -n | awk '{a[NR]=$1} END {if (NR==0) {print 0} else {idx=int(NR*0.95); if (idx<1) idx=1; print a[idx]}}')
+error_rate=$(awk -v e="$err" -v t="$total" 'BEGIN {if (t==0) {print "0.0000"} else {printf "%.4f", e/t}}')
+
+echo "total=$total errors=$err error_rate=$error_rate p95_ms=$p95"
+echo "top_talkers:"
+awk '{print $1}' logs/access.log | sort | uniq -c | sort -nr | head -5`
         },
     },
 };
