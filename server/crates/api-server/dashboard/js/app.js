@@ -205,16 +205,17 @@ cat out/summary.txt`
         args: {
             command: `set -e
 mkdir -p logs
-awk 'BEGIN {
-    srand(42)
-    for (i = 1; i <= 1200; i++) {
-        subnet = int(rand() * 8)
-        host = int(rand() * 40) + 1
-        code = (rand() < 0.8) ? 200 : 500
-        ms = int(rand() * 450) + 30
-        printf("10.0.%d.%d status=%d latency=%dms\\n", subnet, host, code, ms)
-    }
-}' > logs/access.log
+python3 - <<'PY' > logs/access.log
+import random
+
+random.seed(42)
+for _ in range(1200):
+    subnet = random.randrange(8)
+    host = random.randrange(1, 41)
+    code = 200 if random.random() < 0.8 else 500
+    ms = random.randrange(30, 480)
+    print(f"10.0.{subnet}.{host} status={code} latency={ms}ms")
+PY
 
 echo "Complex Log Mining"
 total=$(wc -l < logs/access.log)
