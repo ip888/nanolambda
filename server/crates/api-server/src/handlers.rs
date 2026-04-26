@@ -1341,6 +1341,8 @@ pub async fn get_dashboard_file(
         "text/css"
     } else if file_path.ends_with(".html") {
         "text/html"
+    } else if file_path.ends_with(".svg") {
+        "image/svg+xml"
     } else {
         "application/octet-stream"
     };
@@ -1371,6 +1373,7 @@ pub async fn get_dashboard_file(
         "js/components/PaymentRetryModal.js" => {
             include_bytes!("../dashboard/js/components/PaymentRetryModal.js").to_vec()
         }
+        "favicon.svg" => include_bytes!("../dashboard/favicon.svg").to_vec(),
         "css/main.css" => include_bytes!("../dashboard/css/main.css").to_vec(),
         "css/components.css" => include_bytes!("../dashboard/css/components.css").to_vec(),
         _ => return Err(StatusCode::NOT_FOUND),
