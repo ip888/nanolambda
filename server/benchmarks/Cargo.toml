@@ -30,7 +30,7 @@ aws-sdk-lambda = "1.100"
 aws-config = { version = "1.8", features = ["behavior-version-latest"] }
 
 # Packaging
-zip = "2.2"
+zip = "8.6"
 
 # CLI and reporting
 clap = { workspace = true }
