@@ -42,4 +42,4 @@ tabled = "0.16"
 # nanolambda-runtime = { path = "../crates/runtime" }
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
