@@ -38,7 +38,7 @@ tracing = { workspace = true }
 chrono = { workspace = true }
 
 # UUID generation
-uuid = { version = "1.6", features = ["v4"] }
+uuid = { version = "1.23", features = ["v4"] }
 
 # Workspace crates
 nanolambda-runtime = { path = "../runtime" }
