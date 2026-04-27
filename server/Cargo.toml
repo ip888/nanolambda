@@ -59,7 +59,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
 
 # Hashing
-sha2 = "0.10"
+sha2 = "0.11"
 blake3 = "1.8"
 
 # Time
