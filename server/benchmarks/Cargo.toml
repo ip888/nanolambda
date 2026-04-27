@@ -34,7 +34,7 @@ zip = "2.2"
 
 # CLI and reporting
 clap = { workspace = true }
-colored = "2.1"
+colored = "3.1"
 tabled = "0.16"
 
 # Local NanoLambda client (optional, for direct API access)
