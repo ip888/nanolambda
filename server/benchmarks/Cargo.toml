@@ -35,7 +35,7 @@ zip = "2.2"
 # CLI and reporting
 clap = { workspace = true }
 colored = "2.1"
-tabled = "0.16"
+tabled = "0.21"
 
 # Local NanoLambda client (optional, for direct API access)
 # nanolambda-api = { path = "../crates/api-server" }
